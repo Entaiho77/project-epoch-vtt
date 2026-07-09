@@ -69,3 +69,60 @@ describe('campaign repository', () => {
     reopened.close();
   });
 });
+
+describe('characters & scenes', () => {
+  let dir: string;
+  let dbPath: string;
+  let repo: Repository;
+  let campaignId: string;
+
+  beforeEach(async () => {
+    dir = mkdtempSync(join(tmpdir(), 'epoch-db-'));
+    dbPath = join(dir, 'epoch.db');
+    repo = await openDatabase(dbPath, wasmPath);
+    campaignId = repo.createCampaign({ name: 'Campaign', system: 'dnd5e' }).id;
+  });
+
+  afterEach(() => {
+    repo.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('creates and lists characters scoped to their campaign', () => {
+    const other = repo.createCampaign({ name: 'Other', system: 'dnd5e' }).id;
+    repo.createCharacter({ campaignId, name: 'Aria' });
+    repo.createCharacter({ campaignId, name: 'Borin' });
+    repo.createCharacter({ campaignId: other, name: 'Elsewhere' });
+
+    const names = repo.listCharacters(campaignId).map((c) => c.name);
+    expect(names).toContain('Aria');
+    expect(names).toContain('Borin');
+    expect(names).not.toContain('Elsewhere');
+    expect(repo.listCharacters(other)).toHaveLength(1);
+  });
+
+  it('renames and deletes a scene', () => {
+    const s = repo.createScene({ campaignId, name: 'Tavern' });
+    repo.renameScene(s.id, 'The Yawning Portal');
+    expect(repo.listScenes(campaignId)[0].name).toBe('The Yawning Portal');
+    repo.deleteScene(s.id);
+    expect(repo.listScenes(campaignId)).toEqual([]);
+  });
+
+  it('cascades: deleting a campaign removes its characters and scenes', () => {
+    repo.createCharacter({ campaignId, name: 'Aria' });
+    repo.createScene({ campaignId, name: 'Tavern' });
+    repo.deleteCampaign(campaignId);
+    expect(repo.listCharacters(campaignId)).toEqual([]);
+    expect(repo.listScenes(campaignId)).toEqual([]);
+  });
+
+  it('persists characters across reopen', async () => {
+    repo.createCharacter({ campaignId, name: 'Aria' });
+    repo.close();
+
+    const reopened = await openDatabase(dbPath, wasmPath);
+    expect(reopened.listCharacters(campaignId).map((c) => c.name)).toEqual(['Aria']);
+    reopened.close();
+  });
+});

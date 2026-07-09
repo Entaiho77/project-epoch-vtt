@@ -1,12 +1,26 @@
 import { useEffect, useState } from 'react';
 import { useRelaySession } from './lib/useRelaySession';
 import { useCampaigns } from './lib/useCampaigns';
+import { useCampaignChildren, type ChildApi } from './lib/useCampaignChildren';
+import type { Campaign, Character, Scene } from './shared/persistence';
 
 const DEFAULT_RELAY_URL = 'ws://localhost:3001';
 const SYSTEMS = [
   { id: 'dnd5e', label: 'D&D 5e (SRD)' },
   { id: 'solryn', label: 'Solryn' },
 ];
+
+// Deferred access to window.db so these stable refs are safe at module load.
+const charactersApi: ChildApi<Character> = {
+  list: (id) => window.db.listCharacters(id),
+  create: (input) => window.db.createCharacter(input),
+  remove: (id) => window.db.deleteCharacter(id),
+};
+const scenesApi: ChildApi<Scene> = {
+  list: (id) => window.db.listScenes(id),
+  create: (input) => window.db.createScene(input),
+  remove: (id) => window.db.deleteScene(id),
+};
 
 export function App(): JSX.Element {
   const session = useRelaySession();
@@ -91,6 +105,13 @@ function Campaigns(): JSX.Element {
   const { campaigns, loading, create, remove } = useCampaigns();
   const [name, setName] = useState('');
   const [system, setSystem] = useState(SYSTEMS[0].id);
+  const [selected, setSelected] = useState<Campaign | null>(null);
+
+  // Keep the open detail view in sync if its campaign is deleted/renamed elsewhere.
+  const openCampaign = selected ? campaigns.find((c) => c.id === selected.id) ?? null : null;
+  if (openCampaign) {
+    return <CampaignDetail campaign={openCampaign} onBack={() => setSelected(null)} />;
+  }
 
   const submit = async (): Promise<void> => {
     if (!name.trim()) return;
@@ -134,14 +155,108 @@ function Campaigns(): JSX.Element {
                   {SYSTEMS.find((s) => s.id === c.system)?.label ?? c.system}
                 </span>
               </div>
-              <button className="ghost" onClick={() => void remove(c.id)}>
+              <div className="campaign-actions">
+                <button onClick={() => setSelected(c)}>Open</button>
+                <button className="ghost" onClick={() => void remove(c.id)}>
+                  Delete
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function CampaignDetail({
+  campaign,
+  onBack,
+}: {
+  campaign: Campaign;
+  onBack: () => void;
+}): JSX.Element {
+  return (
+    <section className="campaigns">
+      <div className="detail-header">
+        <button className="ghost" onClick={onBack}>
+          ← Campaigns
+        </button>
+        <div className="campaign-meta">
+          <span className="campaign-name">{campaign.name}</span>
+          <span className="campaign-system">
+            {SYSTEMS.find((s) => s.id === campaign.system)?.label ?? campaign.system}
+          </span>
+        </div>
+      </div>
+
+      <div className="detail-grid">
+        <ChildList
+          title="Characters"
+          noun="character"
+          campaignId={campaign.id}
+          api={charactersApi}
+        />
+        <ChildList title="Scenes" noun="scene" campaignId={campaign.id} api={scenesApi} />
+      </div>
+    </section>
+  );
+}
+
+function ChildList<T extends { id: string; name: string }>({
+  title,
+  noun,
+  campaignId,
+  api,
+}: {
+  title: string;
+  noun: string;
+  campaignId: string;
+  api: ChildApi<T>;
+}): JSX.Element {
+  const { items, loading, add, remove } = useCampaignChildren<T>(campaignId, api);
+  const [name, setName] = useState('');
+
+  const submit = async (): Promise<void> => {
+    if (!name.trim()) return;
+    await add(name);
+    setName('');
+  };
+
+  return (
+    <div className="child-list">
+      <h3>
+        {title} <span className="count">{loading ? '' : items.length}</span>
+      </h3>
+      <div className="child-new">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && void submit()}
+          placeholder={`New ${noun} name`}
+        />
+        <button disabled={!name.trim()} onClick={() => void submit()}>
+          Add
+        </button>
+      </div>
+
+      {loading ? (
+        <p className="muted">Loading…</p>
+      ) : items.length === 0 ? (
+        <p className="muted">No {noun}s yet.</p>
+      ) : (
+        <ul>
+          {items.map((item) => (
+            <li key={item.id}>
+              <span>{item.name}</span>
+              <button className="ghost" onClick={() => void remove(item.id)}>
                 Delete
               </button>
             </li>
           ))}
         </ul>
       )}
-    </section>
+    </div>
   );
 }
 

@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import type { ClientMessage } from '@solryn/protocol';
-import type { NewCampaign } from '../src/shared/persistence';
+import type { NewCampaign, NewCampaignChild } from '../src/shared/persistence';
 import { RelayClient } from './relay-client';
 import { openDatabase, type Repository } from './db';
 
@@ -97,6 +97,16 @@ function registerDbIpc(repo: Repository): void {
   ipcMain.handle('db:createCampaign', (_evt, input: NewCampaign) => repo.createCampaign(input));
   ipcMain.handle('db:renameCampaign', (_evt, id: string, name: string) => repo.renameCampaign(id, name));
   ipcMain.handle('db:deleteCampaign', (_evt, id: string) => repo.deleteCampaign(id));
+
+  ipcMain.handle('db:listCharacters', (_evt, campaignId: string) => repo.listCharacters(campaignId));
+  ipcMain.handle('db:createCharacter', (_evt, input: NewCampaignChild) => repo.createCharacter(input));
+  ipcMain.handle('db:renameCharacter', (_evt, id: string, name: string) => repo.renameCharacter(id, name));
+  ipcMain.handle('db:deleteCharacter', (_evt, id: string) => repo.deleteCharacter(id));
+
+  ipcMain.handle('db:listScenes', (_evt, campaignId: string) => repo.listScenes(campaignId));
+  ipcMain.handle('db:createScene', (_evt, input: NewCampaignChild) => repo.createScene(input));
+  ipcMain.handle('db:renameScene', (_evt, id: string, name: string) => repo.renameScene(id, name));
+  ipcMain.handle('db:deleteScene', (_evt, id: string) => repo.deleteScene(id));
 }
 
 async function initDatabase(): Promise<void> {

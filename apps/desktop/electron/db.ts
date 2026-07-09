@@ -1,7 +1,13 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import initSqlJs, { type Database as SqlDatabase } from 'sql.js';
-import type { Campaign, NewCampaign } from '../src/shared/persistence';
+import type {
+  Campaign,
+  Character,
+  NewCampaign,
+  NewCampaignChild,
+  Scene,
+} from '../src/shared/persistence';
 
 /**
  * The main-process repository. Synchronous (sql.js runs in-process), returning
@@ -14,6 +20,17 @@ export interface Repository {
   createCampaign(input: NewCampaign): Campaign;
   renameCampaign(id: string, name: string): void;
   deleteCampaign(id: string): void;
+
+  listCharacters(campaignId: string): Character[];
+  createCharacter(input: NewCampaignChild): Character;
+  renameCharacter(id: string, name: string): void;
+  deleteCharacter(id: string): void;
+
+  listScenes(campaignId: string): Scene[];
+  createScene(input: NewCampaignChild): Scene;
+  renameScene(id: string, name: string): void;
+  deleteScene(id: string): void;
+
   /** Flush + release. Exposed for tests and clean shutdown. */
   close(): void;
 }
@@ -127,6 +144,57 @@ export async function openDatabase(dbPath: string, wasmPath: string): Promise<Re
     persist();
   };
 
+  // Characters and scenes are structurally identical campaign-scoped, named rows,
+  // so share one CRUD implementation. `table` is a fixed literal, never user input.
+  const campaignChildRepo = <T extends Character | Scene>(table: 'characters' | 'scenes') => {
+    const list = (campaignId: string): T[] => {
+      const res = db.exec(
+        `SELECT id, campaign_id, name, created_at, updated_at FROM ${table} WHERE campaign_id = ? ORDER BY updated_at DESC`,
+        [campaignId],
+      );
+      if (!res.length) return [];
+      return res[0].values.map((row) => ({
+        id: String(row[0]),
+        campaignId: String(row[1]),
+        name: String(row[2]),
+        createdAt: Number(row[3]),
+        updatedAt: Number(row[4]),
+      })) as T[];
+    };
+
+    const create = (input: NewCampaignChild): T => {
+      const now = Date.now();
+      const entity = {
+        id: randomUUID(),
+        campaignId: input.campaignId,
+        name: input.name.trim(),
+        createdAt: now,
+        updatedAt: now,
+      } as T;
+      db.run(
+        `INSERT INTO ${table} (id, campaign_id, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+        [entity.id, entity.campaignId, entity.name, now, now],
+      );
+      persist();
+      return entity;
+    };
+
+    const rename = (id: string, name: string): void => {
+      db.run(`UPDATE ${table} SET name = ?, updated_at = ? WHERE id = ?`, [name.trim(), Date.now(), id]);
+      persist();
+    };
+
+    const remove = (id: string): void => {
+      db.run(`DELETE FROM ${table} WHERE id = ?`, [id]);
+      persist();
+    };
+
+    return { list, create, rename, remove };
+  };
+
+  const characters = campaignChildRepo<Character>('characters');
+  const scenes = campaignChildRepo<Scene>('scenes');
+
   const close = (): void => {
     if (closed) return;
     closed = true;
@@ -134,5 +202,19 @@ export async function openDatabase(dbPath: string, wasmPath: string): Promise<Re
     db.close();
   };
 
-  return { listCampaigns, createCampaign, renameCampaign, deleteCampaign, close };
+  return {
+    listCampaigns,
+    createCampaign,
+    renameCampaign,
+    deleteCampaign,
+    listCharacters: characters.list,
+    createCharacter: characters.create,
+    renameCharacter: characters.rename,
+    deleteCharacter: characters.remove,
+    listScenes: scenes.list,
+    createScene: scenes.create,
+    renameScene: scenes.rename,
+    deleteScene: scenes.remove,
+    close,
+  };
 }

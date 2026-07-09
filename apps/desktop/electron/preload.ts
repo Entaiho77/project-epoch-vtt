@@ -1,7 +1,14 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { ClientMessage, ServerMessage } from '@solryn/protocol';
 import type { RelayStatus } from './relay-client';
-import type { Campaign, DbApi, NewCampaign } from '../src/shared/persistence';
+import type {
+  Campaign,
+  Character,
+  DbApi,
+  NewCampaign,
+  NewCampaignChild,
+  Scene,
+} from '../src/shared/persistence';
 
 // contextIsolation is on and nodeIntegration is off, so the renderer only ever
 // sees these two narrow, typed surfaces — never `ipcRenderer` or node globals.
@@ -32,6 +39,22 @@ const dbApi: DbApi = {
   renameCampaign: (id: string, name: string): Promise<void> =>
     ipcRenderer.invoke('db:renameCampaign', id, name),
   deleteCampaign: (id: string): Promise<void> => ipcRenderer.invoke('db:deleteCampaign', id),
+
+  listCharacters: (campaignId: string): Promise<Character[]> =>
+    ipcRenderer.invoke('db:listCharacters', campaignId),
+  createCharacter: (input: NewCampaignChild): Promise<Character> =>
+    ipcRenderer.invoke('db:createCharacter', input),
+  renameCharacter: (id: string, name: string): Promise<void> =>
+    ipcRenderer.invoke('db:renameCharacter', id, name),
+  deleteCharacter: (id: string): Promise<void> => ipcRenderer.invoke('db:deleteCharacter', id),
+
+  listScenes: (campaignId: string): Promise<Scene[]> =>
+    ipcRenderer.invoke('db:listScenes', campaignId),
+  createScene: (input: NewCampaignChild): Promise<Scene> =>
+    ipcRenderer.invoke('db:createScene', input),
+  renameScene: (id: string, name: string): Promise<void> =>
+    ipcRenderer.invoke('db:renameScene', id, name),
+  deleteScene: (id: string): Promise<void> => ipcRenderer.invoke('db:deleteScene', id),
 };
 
 contextBridge.exposeInMainWorld('relay', relayApi);
