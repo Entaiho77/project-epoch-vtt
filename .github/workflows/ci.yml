@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Consumed as TS source with no build step, so typecheck IS the compile check.
+env:
+  # The desktop app only needs to typecheck + bundle here; never launch Electron,
+  # so skip the (slow, sometimes blocked) binary download.
+  ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+
+jobs:
+  build:
+    name: typecheck · test · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install (workspaces)
+        run: npm ci
+
+      - name: Typecheck packages
+        run: |
+          npx tsc -b packages/shared-types/tsconfig.json
+          npx tsc -b packages/protocol/tsconfig.json
+          npx tsc -b packages/engine/tsconfig.json
+          npx tsc -b packages/systems/tsconfig.json
+
+      - name: Typecheck relay
+        run: npm run -w @solryn/relay typecheck
+
+      - name: Test relay
+        run: npm run -w @solryn/relay test
+
+      - name: Typecheck desktop (main + renderer)
+        run: npm run -w @solryn/desktop typecheck
+
+      - name: Test desktop (db layer)
+        run: npm run -w @solryn/desktop test
+
+      - name: Build desktop (electron-vite)
+        run: npm run -w @solryn/desktop build
