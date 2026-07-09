@@ -36,6 +36,17 @@ npm run -w @solryn/desktop dev     # electron-vite dev (opens the app window)
 Then click **Host game** in one window to get a room code; run a second instance
 (or a second machine) and **Join** with that code.
 
+### Headless / CI / sandbox launch
+
+On a normal desktop, leave the defaults alone — Electron detects X11/Wayland and
+the GPU itself. Only for headless-ish hosts (no GPU, restricted `/tmp`, XWayland
+quirks) set `EPOCH_LINUX_COMPAT=1` to force the software path
+(`ozone-platform=x11`, `disable-gpu`, `no-sandbox`, `disable-dev-shm-usage`):
+
+```bash
+EPOCH_LINUX_COMPAT=1 npm run -w @solryn/desktop dev
+```
+
 ## Verify without a window
 
 The Electron binary can't always be downloaded in sandboxed CI, so verify with:

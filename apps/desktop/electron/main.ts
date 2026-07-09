@@ -3,13 +3,19 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import type { ClientMessage } from '@solryn/protocol';
 import { RelayClient } from './relay-client';
 
-// --- Linux / X11 stability switches -----------------------------------------
-// Headless-ish Linux hosts (and many X11 setups) otherwise render a blank or
-// never-shown window. These switches force a predictable software path.
-app.commandLine.appendSwitch('ozone-platform', 'x11');
-app.commandLine.appendSwitch('disable-gpu');
-app.commandLine.appendSwitch('no-sandbox');
-app.commandLine.appendSwitch('disable-dev-shm-usage');
+// --- Linux headless / sandbox compatibility switches ------------------------
+// These force a predictable software path for headless-ish CI/sandbox hosts
+// (no GPU, small or missing /dev/shm, XWayland quirks). They are HARMFUL on a
+// normal desktop — e.g. `disable-dev-shm-usage` redirects shared memory into
+// /tmp, which fails on systems where /tmp is namespaced or restricted — so they
+// are opt-in. Set EPOCH_LINUX_COMPAT=1 to enable them; a real desktop should
+// leave it unset and use Electron's own platform detection.
+if (process.platform === 'linux' && process.env['EPOCH_LINUX_COMPAT'] === '1') {
+  app.commandLine.appendSwitch('ozone-platform', 'x11');
+  app.commandLine.appendSwitch('disable-gpu');
+  app.commandLine.appendSwitch('no-sandbox');
+  app.commandLine.appendSwitch('disable-dev-shm-usage');
+}
 
 let mainWindow: BrowserWindow | null = null;
 let relay: RelayClient | null = null;
