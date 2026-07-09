@@ -43,5 +43,8 @@ jobs:
       - name: Typecheck desktop (main + renderer)
         run: npm run -w @solryn/desktop typecheck
 
+      - name: Test desktop (db layer)
+        run: npm run -w @solryn/desktop test
+
       - name: Build desktop (electron-vite)
         run: npm run -w @solryn/desktop build

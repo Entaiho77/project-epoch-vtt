@@ -1,4 +1,5 @@
 import type { ClientMessage, ServerMessage } from '@solryn/protocol';
+import type { DbApi } from '../shared/persistence';
 
 export type RelayStatus = 'connecting' | 'open' | 'closed' | 'error';
 
@@ -19,5 +20,6 @@ declare global {
   interface Window {
     relay: RelayBridge;
     app: AppBridge;
+    db: DbApi;
   }
 }

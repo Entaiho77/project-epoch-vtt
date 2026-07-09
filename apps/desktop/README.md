@@ -22,6 +22,23 @@ The shared `@solryn/*` packages are consumed as TypeScript **source** via the
 aliases in `electron.vite.config.ts` (mirroring `tsconfig.base.json` paths) — no
 package build step.
 
+## Local persistence
+
+Campaigns/characters/scenes live in a local SQLite database, opened in the
+**main process** and exposed to the renderer over an IPC bridge (`window.db`),
+never by giving the renderer filesystem access.
+
+- Engine: **sql.js** (SQLite compiled to WebAssembly) — no native module, so no
+  `node-gyp` / electron-rebuild step. The whole DB is exported to
+  `<userData>/epoch.db` after every mutation (temp-file + rename for crash
+  safety).
+- The engine sits entirely behind `DbApi` (`src/shared/persistence.ts`) and the
+  `electron/db.ts` `Repository`. Swapping to `better-sqlite3` later would not
+  change those shapes or the schema.
+- Schema migrations are keyed off `PRAGMA user_version` in `electron/db.ts`.
+- Verified headlessly by `electron/__tests__/db.test.ts` (`npm run -w
+  @solryn/desktop test`) — CRUD, ordering, and persistence across reopen.
+
 ## Develop
 
 ```bash
@@ -56,11 +73,22 @@ npm run -w @solryn/desktop typecheck   # node + renderer typecheck
 npm run -w @solryn/desktop build       # electron-vite build (main + preload + renderer)
 ```
 
-## Package
+## Package (UNVERIFIED)
 
 ```bash
 npm run -w @solryn/desktop dist        # electron-builder → AppImage / nsis / dmg
 ```
+
+⚠️ Packaging has **not** been run/verified yet. The main bundle keeps `sql.js`
+and `ws` as external `require()`s, so the packaged app must ship those
+production `node_modules` — hence `build.files` includes `node_modules/**/*` and
+`build.asarUnpack` unpacks `sql-wasm.wasm`. In this hoisted npm-workspaces repo
+those deps live in the **root** `node_modules`, which electron-builder's
+monorepo handling may or may not collect cleanly. When someone does a real
+`dist`, confirm the AppImage launches and can create a campaign; if `sql.js` /
+`ws` aren't found, the likely fix is bundling them into the main output
+(`externalizeDepsPlugin({ exclude: ['sql.js', 'ws'] })`) and copying the wasm
+into `out/`.
 
 ## Version pins (do not bump blindly)
 

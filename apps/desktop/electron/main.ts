@@ -1,7 +1,9 @@
 import { join } from 'node:path';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import type { ClientMessage } from '@solryn/protocol';
+import type { NewCampaign } from '../src/shared/persistence';
 import { RelayClient } from './relay-client';
+import { openDatabase, type Repository } from './db';
 
 // --- Linux headless / sandbox compatibility switches ------------------------
 // These force a predictable software path for headless-ish CI/sandbox hosts
@@ -19,6 +21,7 @@ if (process.platform === 'linux' && process.env['EPOCH_LINUX_COMPAT'] === '1') {
 
 let mainWindow: BrowserWindow | null = null;
 let relay: RelayClient | null = null;
+let repo: Repository | null = null;
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -88,11 +91,33 @@ ipcMain.handle('relay:send', (_evt, msg: ClientMessage) => {
 
 ipcMain.handle('app:getVersion', () => app.getVersion());
 
-app.whenReady().then(createWindow);
+// --- IPC: local database (sql.js, persisted under userData) -----------------
+function registerDbIpc(repo: Repository): void {
+  ipcMain.handle('db:listCampaigns', () => repo.listCampaigns());
+  ipcMain.handle('db:createCampaign', (_evt, input: NewCampaign) => repo.createCampaign(input));
+  ipcMain.handle('db:renameCampaign', (_evt, id: string, name: string) => repo.renameCampaign(id, name));
+  ipcMain.handle('db:deleteCampaign', (_evt, id: string) => repo.deleteCampaign(id));
+}
+
+async function initDatabase(): Promise<void> {
+  // sql.js loads its wasm from node_modules; require.resolve keeps this working
+  // both in dev and inside a packaged asar.
+  const wasmPath = require.resolve('sql.js/dist/sql-wasm.wasm');
+  const dbPath = join(app.getPath('userData'), 'epoch.db');
+  repo = await openDatabase(dbPath, wasmPath);
+  registerDbIpc(repo);
+}
+
+app.whenReady().then(async () => {
+  await initDatabase();
+  createWindow();
+});
 
 app.on('window-all-closed', () => {
   relay?.disconnect();
   relay = null;
+  repo?.close();
+  repo = null;
   if (process.platform !== 'darwin') app.quit();
 });
 

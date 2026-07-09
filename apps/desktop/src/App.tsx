@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useRelaySession } from './lib/useRelaySession';
+import { useCampaigns } from './lib/useCampaigns';
 
 const DEFAULT_RELAY_URL = 'ws://localhost:3001';
+const SYSTEMS = [
+  { id: 'dnd5e', label: 'D&D 5e (SRD)' },
+  { id: 'solryn', label: 'Solryn' },
+];
 
 export function App(): JSX.Element {
   const session = useRelaySession();
@@ -76,7 +81,67 @@ function Lobby({ session }: { session: ReturnType<typeof useRelaySession> }): JS
           </button>
         </section>
       </div>
+
+      <Campaigns />
     </div>
+  );
+}
+
+function Campaigns(): JSX.Element {
+  const { campaigns, loading, create, remove } = useCampaigns();
+  const [name, setName] = useState('');
+  const [system, setSystem] = useState(SYSTEMS[0].id);
+
+  const submit = async (): Promise<void> => {
+    if (!name.trim()) return;
+    await create({ name, system });
+    setName('');
+  };
+
+  return (
+    <section className="campaigns">
+      <h2>Your campaigns</h2>
+      <div className="campaign-new">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && void submit()}
+          placeholder="New campaign name"
+        />
+        <select value={system} onChange={(e) => setSystem(e.target.value)}>
+          {SYSTEMS.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.label}
+            </option>
+          ))}
+        </select>
+        <button disabled={!name.trim()} onClick={() => void submit()}>
+          Create
+        </button>
+      </div>
+
+      {loading ? (
+        <p className="muted">Loading…</p>
+      ) : campaigns.length === 0 ? (
+        <p className="muted">No campaigns yet. Create one — it persists locally.</p>
+      ) : (
+        <ul className="campaign-list">
+          {campaigns.map((c) => (
+            <li key={c.id}>
+              <div className="campaign-meta">
+                <span className="campaign-name">{c.name}</span>
+                <span className="campaign-system">
+                  {SYSTEMS.find((s) => s.id === c.system)?.label ?? c.system}
+                </span>
+              </div>
+              <button className="ghost" onClick={() => void remove(c.id)}>
+                Delete
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 

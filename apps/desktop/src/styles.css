@@ -286,3 +286,79 @@ button:disabled {
   color: var(--accent);
   border: 1px solid rgba(233, 69, 96, 0.3);
 }
+
+/* --- Campaigns --- */
+.campaigns {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.campaigns h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.campaign-new {
+  display: flex;
+  gap: 8px;
+}
+
+.campaign-new input {
+  flex: 1;
+}
+
+.campaign-new select {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.campaign-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.campaign-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.campaign-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.campaign-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.campaign-system {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+button.ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 6px 12px;
+  font-weight: 500;
+}
