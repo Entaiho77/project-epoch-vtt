@@ -1,0 +1,14 @@
+# Relay server for local / self-hosted runs. Compatible with both docker-compose
+# and podman-compose:  `docker compose up` / `podman-compose up`.
+services:
+  relay:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: solryn-relay:latest
+    ports:
+      - '3001:3001'
+    environment:
+      PORT: '3001'
+      MAX_ROOMS: '50'
+    restart: unless-stopped
