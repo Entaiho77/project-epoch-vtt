@@ -1,0 +1,77 @@
+/*
+ * Design tokens — Solryn VTT visual language (Design Doc §6).
+ * Dark theme, flat surfaces, no gradients / heavy shadows.
+ * A future parchment/light variant can override these on a [data-theme] selector.
+ */
+:root {
+  /* Surfaces (darkest -> raised) */
+  --surface-board: #1a1d24; /* board / app background */
+  --surface-bar: #23262e; /* bars, header, panels */
+  --surface-raised: #2e323c; /* raised elements: cards, inputs, chips */
+  --surface-overlay: #1a1d24f2; /* dimmed modal backdrop base */
+
+  /* Text */
+  --text-primary: #e6e7ea;
+  --text-muted: #9aa0ab;
+
+  /* Borders */
+  --border-hairline: rgba(255, 255, 255, 0.12);
+  --border-strong: rgba(255, 255, 255, 0.22);
+
+  /* Semantic accents (consistent across the app) */
+  --accent-teal: #5dcaa5; /* accent / active / HP / primary actions */
+  --accent-amber: #ef9f27; /* earned-but-not-realized / pending / penalty / level-up */
+  --accent-purple: #7f77dd; /* Arcana / spells */
+  --accent-red: #e24b4a; /* damage / minus actions */
+
+  /* Tints (low-alpha fills for chips / states) */
+  --teal-tint: rgba(93, 202, 165, 0.14);
+  --amber-tint: rgba(239, 159, 39, 0.14);
+  --purple-tint: rgba(127, 119, 221, 0.14);
+  --red-tint: rgba(226, 75, 74, 0.14);
+
+  /* On-accent text (for filled accent buttons) */
+  --on-accent: #0f1115;
+
+  /* Role badges */
+  --role-gm: var(--accent-teal);
+  --role-player: var(--text-muted);
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  /* Typography */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Roboto Mono', Menlo,
+    Consolas, monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2.5rem;
+
+  /* Elevation — kept subtle/flat per visual language */
+  --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.5);
+  --shadow-drawer: 0 6px 24px rgba(0, 0, 0, 0.35);
+
+  --z-board: 0;
+  --z-drawer: 100;
+  --z-header: 200;
+  --z-modal: 1000;
+  --z-toast: 2000;
+}

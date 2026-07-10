@@ -1,0 +1,115 @@
+.sheet {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  text-align: left;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.headText {
+  flex: 1;
+}
+.name {
+  font-size: var(--text-2xl);
+}
+.sub {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+/* Core stats */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--space-2);
+}
+@media (max-width: 560px) {
+  .stats {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+.stat {
+  background: var(--surface-bar);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.statAbbr {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-weight: 700;
+}
+.statScore {
+  font-size: var(--text-xl);
+  font-weight: 800;
+}
+.statMod {
+  font-size: var(--text-sm);
+  color: var(--accent-teal);
+}
+
+/* Resource trackers row */
+.pools {
+  display: flex;
+  gap: var(--space-3);
+}
+@media (max-width: 560px) {
+  .pools {
+    flex-direction: column;
+  }
+}
+
+/* Combat & movement reference strip */
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.ref {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+}
+.refLabel {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.refVal {
+  font-weight: 700;
+}
+
+.h3 {
+  font-size: var(--text-lg);
+  margin-bottom: var(--space-3);
+}
+.gear {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.gearItem {
+  font-size: var(--text-sm);
+  background: var(--surface-bar);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+}
+.kit {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}

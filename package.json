@@ -1,0 +1,10 @@
+{
+  "name": "project-epoch-vtt",
+  "private": true,
+  "workspaces": ["packages/*", "apps/*"],
+  "scripts": {
+    "dev": "npm run dev --workspace=apps/desktop",
+    "build": "npm run build --workspace=apps/desktop",
+    "test": "npm run test --workspaces --if-present"
+  }
+}

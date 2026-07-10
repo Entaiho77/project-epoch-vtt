@@ -1,0 +1,21 @@
+{
+  "name": "@solryn/relay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "WebSocket relay server routing messages between a GM and player clients. In-memory only; no persistence.",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/server.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "@types/ws": "^8.18.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
+  }
+}

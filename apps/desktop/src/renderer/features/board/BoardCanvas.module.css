@@ -1,0 +1,14 @@
+.scroll {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden; /* the camera (pan/zoom) replaces native scrolling */
+  position: relative;
+  background: var(--surface-board);
+}
+
+.canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none; /* let the camera handle pointer gestures */
+}

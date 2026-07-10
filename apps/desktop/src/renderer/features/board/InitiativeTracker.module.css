@@ -1,0 +1,143 @@
+/* Full-width initiative bar: round (left) · centered turn carousel · controls (right). */
+.bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-drawer);
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: rgba(25, 28, 35, 0.97);
+  border-top: 1px solid var(--border-hairline);
+}
+
+/* Left zone: round counter */
+.round {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-width: 64px;
+  padding-right: var(--space-3);
+  border-right: 1px solid var(--border-hairline);
+}
+.roundLabel {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.roundNum {
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  color: var(--accent-teal);
+  line-height: 1;
+}
+
+/* Center zone: the carousel. overflow:hidden clips distant combatants, so big fights show
+   only a handful around the active one without any explicit windowing. */
+.carousel {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 88px;
+  overflow: hidden;
+}
+.track {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  transition: transform 0.35s cubic-bezier(0.22, 0.61, 0.36, 1);
+  will-change: transform;
+}
+.slot {
+  width: 100px; /* must match SLOT in InitiativeTracker.tsx */
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+}
+.combatant {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  transform-origin: center bottom;
+  transition: transform 0.35s ease, opacity 0.35s ease, border-color 0.15s ease;
+}
+.clickable {
+  cursor: pointer;
+}
+.clickable:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-raised);
+}
+.current {
+  border-color: var(--accent-teal);
+  background: var(--teal-tint);
+}
+.defeated {
+  filter: grayscale(1);
+}
+.turnLabel {
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 800;
+  color: var(--accent-teal);
+  line-height: 1;
+}
+.disk {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  color: #0f1115;
+  font-size: 1.1rem;
+}
+.cname {
+  font-size: var(--text-xs);
+  max-width: 88px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.init {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+/* Right zone: controls */
+.controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--border-hairline);
+}
+
+.pulse {
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(93, 202, 165, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(93, 202, 165, 0);
+  }
+}

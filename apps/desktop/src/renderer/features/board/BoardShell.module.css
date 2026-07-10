@@ -1,0 +1,114 @@
+.shell {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Icon strips on each edge — icon + caption stacked, sized for legibility. */
+.strip {
+  width: 72px;
+  flex-shrink: 0;
+  background: var(--surface-bar);
+  border-left: 1px solid var(--border-hairline);
+  border-right: 1px solid var(--border-hairline);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) 0;
+}
+
+.tool {
+  width: 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: var(--space-2) var(--space-1);
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  /* Strong default contrast — icons read clearly instead of sitting faint. */
+  color: var(--text-primary);
+}
+.tool:hover {
+  background: var(--surface-raised);
+  color: var(--text-primary);
+}
+.toolActive {
+  background: var(--teal-tint);
+  color: var(--accent-teal);
+  border-color: var(--accent-teal);
+}
+.glyph {
+  font-size: 1.65rem;
+  line-height: 1;
+}
+.toolLabel {
+  font-size: 0.625rem;
+  line-height: 1.1;
+  text-align: center;
+  letter-spacing: 0.01em;
+  overflow-wrap: anywhere;
+}
+.divider {
+  width: 24px;
+  height: 1px;
+  background: var(--border-hairline);
+  margin: var(--space-1) 0;
+}
+
+/* Fly-out drawers */
+.drawer {
+  width: 280px;
+  flex-shrink: 0;
+  background: var(--surface-bar);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+/* Opt-in wider drawer (5e character sheet only) — ~50% wider; board stays visible. */
+.drawerWide {
+  width: 420px;
+}
+.leftDrawer {
+  border-right: 1px solid var(--border-hairline);
+}
+.rightDrawer {
+  border-left: 1px solid var(--border-hairline);
+}
+.drawerHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-hairline);
+}
+.drawerTitle {
+  font-weight: 600;
+}
+.drawerClose {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.3rem;
+  line-height: 1;
+}
+.drawerClose:hover {
+  color: var(--text-primary);
+}
+.drawerBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4);
+}
+
+/* The board fills whatever space the strips/drawers leave. */
+.board {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}

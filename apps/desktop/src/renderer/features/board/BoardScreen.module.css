@@ -1,0 +1,16 @@
+.boardArea {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--space-6);
+  color: var(--text-muted);
+}

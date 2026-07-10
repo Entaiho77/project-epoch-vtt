@@ -1,0 +1,130 @@
+.page {
+  /* Anchor the game view to the viewport DIRECTLY (dvh, vh fallback) rather than height:100%.
+   * height:100% only works if EVERY ancestor (html/body/#root) resolves a definite height —
+   * one weak link and the tall board canvas grows the page, scrolling <html> itself. dvh
+   * references the viewport with no chain dependency; overflow:hidden is the hard backstop
+   * that guarantees nothing escapes to scroll the window. Panes below scroll internally. */
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.center {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  color: var(--text-muted);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-5);
+  background: var(--surface-bar);
+  border-bottom: 1px solid var(--border-hairline);
+}
+.back {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+}
+.back:hover {
+  color: var(--text-primary);
+  background: var(--surface-raised);
+}
+.titleBlock {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: 1;
+  min-width: 0;
+}
+.glyph {
+  font-size: 1.4rem;
+}
+.gameName {
+  font-weight: 700;
+  font-size: var(--text-lg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.systemLabel {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  border: 1px solid var(--border-hairline);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-5);
+  padding: var(--space-6);
+  text-align: center;
+}
+
+/* For the builder / sheet, which own their own internal layout. */
+.bodyFlow {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* For the board, which fills the area and manages its own scrolling. */
+.bodyBoard {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+.placeholder {
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.muted {
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+.inviteBox {
+  margin-top: var(--space-3);
+  background: var(--surface-bar);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: center;
+}
+.inviteCode {
+  font-family: var(--font-mono);
+  font-size: var(--text-xl);
+  letter-spacing: 0.1em;
+  color: var(--accent-teal);
+}
+.engineNote {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}

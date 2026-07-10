@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "paths": {
+      "@solryn/shared-types": ["./packages/shared-types/src/index.ts"],
+      "@solryn/shared-types/*": ["./packages/shared-types/src/*"],
+      "@solryn/engine": ["./packages/engine/src/index.ts"],
+      "@solryn/engine/*": ["./packages/engine/src/*"],
+      "@solryn/systems": ["./packages/systems/src/index.ts"],
+      "@solryn/systems/*": ["./packages/systems/src/*"],
+      "@solryn/protocol": ["./packages/protocol/src/index.ts"],
+      "@solryn/protocol/*": ["./packages/protocol/src/*"]
+    }
+  }
+}
