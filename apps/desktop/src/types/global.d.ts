@@ -16,10 +16,16 @@ export interface AppBridge {
   getVersion(): Promise<string>;
 }
 
+export interface MapsBridge {
+  import(): Promise<string | null>;
+  read(filename: string): Promise<string | null>;
+}
+
 declare global {
   interface Window {
     relay: RelayBridge;
     app: AppBridge;
     db: DbApi;
+    maps: MapsBridge;
   }
 }

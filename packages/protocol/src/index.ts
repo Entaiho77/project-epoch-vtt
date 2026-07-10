@@ -90,3 +90,50 @@ export type ServerMessage =
 
 /** Convenience unions covering both directions. */
 export type AnyMessage = ClientMessage | ServerMessage;
+
+// --- Application game events -------------------------------------------------
+// These ride inside a `game-message` payload's opaque `data` field, so the relay
+// stays a dumb router (it never inspects them). All map/token/fog state is
+// authoritative on the GM's machine; the GM broadcasts these to keep players in
+// sync, and sends a full `scene:load` snapshot when a player joins.
+
+/** Scale of a scene's grid — mirrors the Firebase version's two options. */
+export type MapScale = 'battle' | 'area';
+
+/** A token as it travels on the wire (grid-space coordinates, in squares). */
+export interface TokenWire {
+  id: string;
+  name: string;
+  /** Top-left grid cell the token occupies, in square units (may be fractional while dragging). */
+  x: number;
+  y: number;
+  /** Footprint in squares (1 = medium, 2 = large, …). */
+  size: number;
+  color: string;
+  /** Optional token image as a data URL (portrait), or null. */
+  image: string | null;
+  /** GM-only token: players never receive hidden tokens. */
+  hidden: boolean;
+}
+
+/** The active scene as broadcast to players (map image inlined as a data URL). */
+export interface SceneWire {
+  id: string;
+  name: string;
+  /** The uploaded map image as a data URL, or null if the scene has no map yet. */
+  mapDataUrl: string | null;
+  /** Pixels per grid square in the map image's own coordinate space. */
+  gridSize: number;
+  scale: MapScale;
+}
+
+/** Every application event carried over the relay. `kind` discriminates. */
+export type GameEvent =
+  /** GM announces the active scene + full token/fog snapshot (also sent on player join). */
+  | { kind: 'scene:load'; scene: SceneWire; tokens: TokenWire[]; fog: string[] }
+  | { kind: 'token:add'; token: TokenWire }
+  | { kind: 'token:move'; id: string; x: number; y: number }
+  | { kind: 'token:update'; token: TokenWire }
+  | { kind: 'token:remove'; id: string }
+  /** Full fog cell set (list of "col,row" keys). Authoritative replace. */
+  | { kind: 'fog:update'; fog: string[] };

@@ -1,7 +1,15 @@
-import { join } from 'node:path';
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { join, extname } from 'node:path';
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import type { ClientMessage } from '@solryn/protocol';
-import type { NewCampaign, NewCampaignChild } from '../src/shared/persistence';
+import type {
+  NewCampaign,
+  NewCampaignChild,
+  NewToken,
+  SceneMapPatch,
+  TokenPatch,
+} from '../src/shared/persistence';
 import { RelayClient } from './relay-client';
 import { openDatabase, type Repository } from './db';
 
@@ -107,6 +115,66 @@ function registerDbIpc(repo: Repository): void {
   ipcMain.handle('db:createScene', (_evt, input: NewCampaignChild) => repo.createScene(input));
   ipcMain.handle('db:renameScene', (_evt, id: string, name: string) => repo.renameScene(id, name));
   ipcMain.handle('db:deleteScene', (_evt, id: string) => repo.deleteScene(id));
+  ipcMain.handle('db:getScene', (_evt, id: string) => repo.getScene(id));
+  ipcMain.handle('db:updateSceneMap', (_evt, id: string, patch: SceneMapPatch) => repo.updateSceneMap(id, patch));
+  ipcMain.handle('db:setSceneFog', (_evt, id: string, fog: string[]) => repo.setSceneFog(id, fog));
+
+  ipcMain.handle('db:listTokens', (_evt, sceneId: string) => repo.listTokens(sceneId));
+  ipcMain.handle('db:addToken', (_evt, input: NewToken) => repo.addToken(input));
+  ipcMain.handle('db:updateToken', (_evt, id: string, patch: TokenPatch) => repo.updateToken(id, patch));
+  ipcMain.handle('db:moveToken', (_evt, id: string, x: number, y: number) => repo.moveToken(id, x, y));
+  ipcMain.handle('db:removeToken', (_evt, id: string) => repo.removeToken(id));
+
+  ipcMain.handle('db:getActiveScene', (_evt, campaignId: string) => repo.getActiveScene(campaignId));
+  ipcMain.handle('db:setActiveScene', (_evt, campaignId: string, sceneId: string | null) =>
+    repo.setActiveScene(campaignId, sceneId),
+  );
+}
+
+// --- IPC: map images (stored as files under userData/maps, kept out of the DB
+// so token moves don't re-export a multi-MB image on every write) --------------
+const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'webp', 'gif'];
+
+function mapsDir(): string {
+  return join(app.getPath('userData'), 'maps');
+}
+
+function mimeFor(filename: string): string {
+  switch (extname(filename).toLowerCase()) {
+    case '.png':
+      return 'image/png';
+    case '.webp':
+      return 'image/webp';
+    case '.gif':
+      return 'image/gif';
+    default:
+      return 'image/jpeg';
+  }
+}
+
+function registerMapIpc(): void {
+  ipcMain.handle('map:import', async () => {
+    const res = await dialog.showOpenDialog({
+      title: 'Choose a map image',
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: IMAGE_EXTS }],
+    });
+    if (res.canceled || res.filePaths.length === 0) return null;
+    const src = res.filePaths[0];
+    const ext = extname(src).toLowerCase() || '.png';
+    const filename = `${randomUUID()}${ext}`;
+    mkdirSync(mapsDir(), { recursive: true });
+    copyFileSync(src, join(mapsDir(), filename));
+    return filename;
+  });
+
+  // Return a stored map image as a data URL so the renderer can draw it and the
+  // GM can inline it into a scene:load broadcast for players.
+  ipcMain.handle('map:read', (_evt, filename: string): string | null => {
+    const path = join(mapsDir(), filename);
+    if (!existsSync(path)) return null;
+    return `data:${mimeFor(filename)};base64,${readFileSync(path).toString('base64')}`;
+  });
 }
 
 async function initDatabase(): Promise<void> {
@@ -120,6 +188,7 @@ async function initDatabase(): Promise<void> {
 
 app.whenReady().then(async () => {
   await initDatabase();
+  registerMapIpc();
   createWindow();
 });
 

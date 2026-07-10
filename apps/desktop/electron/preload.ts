@@ -7,7 +7,11 @@ import type {
   DbApi,
   NewCampaign,
   NewCampaignChild,
+  NewToken,
   Scene,
+  SceneMapPatch,
+  Token,
+  TokenPatch,
 } from '../src/shared/persistence';
 
 // contextIsolation is on and nodeIntegration is off, so the renderer only ever
@@ -55,11 +59,38 @@ const dbApi: DbApi = {
   renameScene: (id: string, name: string): Promise<void> =>
     ipcRenderer.invoke('db:renameScene', id, name),
   deleteScene: (id: string): Promise<void> => ipcRenderer.invoke('db:deleteScene', id),
+  getScene: (id: string): Promise<Scene | null> => ipcRenderer.invoke('db:getScene', id),
+  updateSceneMap: (id: string, patch: SceneMapPatch): Promise<Scene> =>
+    ipcRenderer.invoke('db:updateSceneMap', id, patch),
+  setSceneFog: (id: string, fog: string[]): Promise<void> =>
+    ipcRenderer.invoke('db:setSceneFog', id, fog),
+
+  listTokens: (sceneId: string): Promise<Token[]> => ipcRenderer.invoke('db:listTokens', sceneId),
+  addToken: (input: NewToken): Promise<Token> => ipcRenderer.invoke('db:addToken', input),
+  updateToken: (id: string, patch: TokenPatch): Promise<Token> =>
+    ipcRenderer.invoke('db:updateToken', id, patch),
+  moveToken: (id: string, x: number, y: number): Promise<void> =>
+    ipcRenderer.invoke('db:moveToken', id, x, y),
+  removeToken: (id: string): Promise<void> => ipcRenderer.invoke('db:removeToken', id),
+
+  getActiveScene: (campaignId: string): Promise<string | null> =>
+    ipcRenderer.invoke('db:getActiveScene', campaignId),
+  setActiveScene: (campaignId: string, sceneId: string | null): Promise<void> =>
+    ipcRenderer.invoke('db:setActiveScene', campaignId, sceneId),
+};
+
+const mapsApi = {
+  /** Open a file picker, copy the chosen image locally, return its stored filename (or null). */
+  import: (): Promise<string | null> => ipcRenderer.invoke('map:import'),
+  /** Read a stored map image back as a data URL (or null if missing). */
+  read: (filename: string): Promise<string | null> => ipcRenderer.invoke('map:read', filename),
 };
 
 contextBridge.exposeInMainWorld('relay', relayApi);
 contextBridge.exposeInMainWorld('app', appApi);
 contextBridge.exposeInMainWorld('db', dbApi);
+contextBridge.exposeInMainWorld('maps', mapsApi);
 
 export type RelayApi = typeof relayApi;
 export type AppApi = typeof appApi;
+export type MapsApi = typeof mapsApi;

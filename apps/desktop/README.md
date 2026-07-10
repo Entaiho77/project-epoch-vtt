@@ -35,9 +35,29 @@ never by giving the renderer filesystem access.
 - The engine sits entirely behind `DbApi` (`src/shared/persistence.ts`) and the
   `electron/db.ts` `Repository`. Swapping to `better-sqlite3` later would not
   change those shapes or the schema.
-- Schema migrations are keyed off `PRAGMA user_version` in `electron/db.ts`.
+- Schema migrations are keyed off `PRAGMA user_version` in `electron/db.ts`
+  (currently v2 — v1 campaigns/characters/scenes, v2 adds map config, tokens,
+  and per-campaign session state).
 - Verified headlessly by `electron/__tests__/db.test.ts` (`npm run -w
-  @solryn/desktop test`) — CRUD, ordering, and persistence across reopen.
+  @solryn/desktop test`) — CRUD, ordering, persistence across reopen, and the
+  v1→v2 upgrade path.
+
+### Tabletop (map, tokens, fog)
+
+The GM hosts a session from a campaign (**Host Session**), picks a scene as the
+active map, and shares it with players over the relay. State is authoritative on
+the GM's machine:
+
+- **Map images** are stored as files under `userData/maps/` (not in the DB, so
+  token moves don't re-export a multi-MB blob). The renderer reads them back as
+  data URLs via `window.maps`. Players receive the image inlined in the
+  `scene:load` relay event.
+- **Tokens & fog** live in SQLite and sync to players through the existing relay
+  as `@solryn/protocol` `GameEvent`s (`scene:load`, `token:*`, `fog:update`),
+  carried inside the opaque `game-message` envelope — the relay itself is
+  unchanged. GM sees hidden tokens (faded) and semi-transparent fog; players
+  never receive hidden tokens and see fog as solid black.
+- Canvas coordinate math is a pure, unit-tested module (`src/lib/geometry.ts`).
 
 ## Develop
 

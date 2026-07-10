@@ -435,3 +435,165 @@ button.ghost {
   border-radius: 8px;
   font-size: 14px;
 }
+
+.host-session {
+  margin-left: auto;
+  background: var(--accent);
+}
+
+/* --- Session (tabletop) --- */
+.session {
+  display: flex;
+  height: 100%;
+}
+
+.session-side {
+  width: 280px;
+  flex-shrink: 0;
+  background: var(--bg-2);
+  border-right: 1px solid var(--border);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+}
+
+.side-block h3,
+.side-chat h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.side-block select {
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.drag-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.drag-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: grab;
+}
+
+.drag-list li.placed {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.drag-list li .tag {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--mono, monospace);
+}
+
+.side-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-height: 160px;
+}
+
+.side-chat .chat-log {
+  flex: 1;
+  min-height: 80px;
+}
+
+.session-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.session-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.session-bar .scene-name {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.tools button {
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  background: var(--panel);
+}
+
+.seg {
+  display: inline-flex;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.seg button {
+  border-radius: 0;
+  background: var(--bg-2);
+  color: var(--muted);
+}
+
+.seg button.on {
+  background: var(--accent);
+  color: #fff;
+}
+
+.map-canvas {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: #0b0c16;
+}
+
+.map-canvas canvas {
+  display: block;
+  touch-action: none;
+}
+
+.map-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  pointer-events: none;
+  font-size: 15px;
+}
