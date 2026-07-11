@@ -1,4 +1,5 @@
-import { WebSocket } from 'ws';
+import WebSocket from 'ws';
+process.env['WS_NO_BUFFER_UTIL'] = '1';
 
 /**
  * Main-process WebSocket client to the relay server (apps/relay). On connect it
