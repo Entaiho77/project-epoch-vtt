@@ -18,7 +18,12 @@ const alias = {
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
-    resolve: { alias },
+    resolve: {
+      alias: {
+        ...alias,
+        bufferutil: resolve(__dirname, 'electron/bufferutil-stub.cjs'),
+      },
+    },
     build: {
       rollupOptions: {
         input: { index: resolve(__dirname, 'electron/main.ts') },
