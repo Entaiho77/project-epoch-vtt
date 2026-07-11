@@ -1,4 +1,7 @@
-import { WebSocket } from 'ws';
+import WebSocket from 'ws';
+// Disable native bufferUtil — compiled for wrong ABI in Electron/Flatpak.
+// The pure-JS fallback is fast enough for VTT relay traffic.
+process.env['WS_NO_BUFFER_UTIL'] = '1';
 import type { ClientMessage, ServerMessage } from '@solryn/protocol';
 
 export type RelayStatus = 'connecting' | 'open' | 'closed' | 'error';
