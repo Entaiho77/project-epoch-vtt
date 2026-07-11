@@ -25,6 +25,11 @@ export default defineConfig({
     // (Flatpak, electron-builder) then don't need a node_modules/ws at runtime.
     // better-sqlite3 is NOT excluded — it's a native addon Rollup can't inline
     // and must ship as a raw node_modules subtree alongside the app.
+    resolve: {
+      alias: {
+        bufferutil: resolve(__dirname, 'electron/bufferutil-stub.cjs'),
+      },
+    },
     build: {
       externalizeDeps: { exclude: ['ws'] },
       rollupOptions: { input: { index: resolve(__dirname, 'electron/main.ts') } },
