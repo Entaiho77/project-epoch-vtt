@@ -20,8 +20,13 @@ const alias = [
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    // All node_modules are externalized by default (build.externalizeDeps: true).
+    // Exclude ws so it gets bundled into out/main/index.js: packaged builds
+    // (Flatpak, electron-builder) then don't need a node_modules/ws at runtime.
+    // better-sqlite3 is NOT excluded — it's a native addon Rollup can't inline
+    // and must ship as a raw node_modules subtree alongside the app.
     build: {
+      externalizeDeps: { exclude: ['ws'] },
       rollupOptions: { input: { index: resolve(__dirname, 'electron/main.ts') } },
     },
   },

@@ -109,10 +109,17 @@ modules:
       # Raw directory required so Node.js can dlopen the native better_sqlite3.node
       # binary at runtime; asar packaging would block that.
       - mkdir -p /app/epoch-vtt/resources/app/node_modules
-      - cp -r apps/desktop/out     /app/epoch-vtt/resources/app/out
+      - cp -r apps/desktop/out       /app/epoch-vtt/resources/app/out
       - cp apps/desktop/package.json /app/epoch-vtt/resources/app/package.json
-      # Only the native module needs to ship; all JS is bundled by electron-vite.
-      - cp -r node_modules/better-sqlite3 /app/epoch-vtt/resources/app/node_modules/
+      # ws and all other pure-JS deps are bundled into out/main/index.js by
+      # electron-vite (externalizeDepsPlugin was removed from the main config).
+      # Only the native-addon chain needs to ship as raw node_modules:
+      #   better-sqlite3  — native .node file, can't be inlined by Rollup
+      #   bindings        — locates the .node file at runtime (dep of better-sqlite3)
+      #   file-uri-to-path — used by bindings for file:// URI resolution
+      - cp -r node_modules/better-sqlite3  /app/epoch-vtt/resources/app/node_modules/
+      - cp -r node_modules/bindings        /app/epoch-vtt/resources/app/node_modules/
+      - cp -r node_modules/file-uri-to-path /app/epoch-vtt/resources/app/node_modules/
 
       # ── 6. Desktop integration ────────────────────────────────────────────
       - install -Dm755 build-aux/flatpak/run.sh /app/bin/run.sh
