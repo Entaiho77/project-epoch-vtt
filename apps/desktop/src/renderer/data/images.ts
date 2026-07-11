@@ -6,7 +6,7 @@
  * larger values than RTDB comfortably did.
  */
 
-const INLINE_MAX = 4 * 1024 * 1024; // 4 MB inline cap (maps and token art)
+const INLINE_MAX = 50 * 1024 * 1024; // 50 MB inline cap (maps and token art)
 
 export function loadImageSize(
   src: string,
@@ -45,7 +45,7 @@ export async function prepareTokenImage(_scope: string, file: File): Promise<str
     throw new Error('Please choose an image file.');
   }
   if (file.size > INLINE_MAX) {
-    throw new Error('Image too large (max 4 MB).');
+    throw new Error('Image too large (max 50 MB).');
   }
   return readDataUrl(file);
 }
@@ -67,7 +67,7 @@ export async function prepareMapImage(
   }
 
   if (file.size > INLINE_MAX) {
-    throw new Error('Image too large (max 4 MB).');
+    throw new Error('Image too large (max 50 MB).');
   }
   const dataUrl = await readDataUrl(file);
   return { imageUrl: dataUrl, ...dims, stored: false };
