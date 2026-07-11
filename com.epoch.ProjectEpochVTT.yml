@@ -3,13 +3,11 @@
 # BEFORE BUILDING — generate the offline npm source archive:
 #
 #   pip install flatpak-node-generator
-#   flatpak-node-generator --electron-node-headers \
-#     npm package-lock.json \
-#     -o generated-sources.json
+#   flatpak-node-generator npm package-lock.json -o generated-sources.json
 #
-# The --electron-node-headers flag downloads Electron 33's node headers into
-# generated-sources.json so that better-sqlite3 can be rebuilt offline inside
-# the Flatpak sandbox (no network access during build).
+# (No --electron-node-headers needed: we use a pre-built better-sqlite3
+# binary instead of rebuilding from source, so no Electron headers are
+# required during the build.)
 #
 # BUILD:
 #   flatpak-builder --user --install --force-clean _build com.epoch.ProjectEpochVTT.yml
@@ -76,26 +74,38 @@ modules:
         dest: flatpak-electron
         dest-filename: electron-v33.0.0-linux-x64.zip
 
+      # ── Pre-built better-sqlite3 native module (Electron 33, ABI 130) ─────
+      # Avoids the node-gyp rebuild-from-source path, which fails inside the
+      # Flatpak sandbox because npm_config_nodedir (set to the Node 22 SDK)
+      # overrides --runtime=electron and causes an ABI 127 vs 130 mismatch.
+      # This tarball contains only: build/Release/better_sqlite3.node
+      # SHA-256 verified from:
+      #   https://github.com/WiseLibs/better-sqlite3/releases/tag/v11.10.0
+      - type: archive
+        url: https://github.com/WiseLibs/better-sqlite3/releases/download/v11.10.0/better-sqlite3-v11.10.0-electron-v130-linux-x64.tar.gz
+        sha256: c167ada36b9f363b165b4825629d4b4f6533269f4d530789f8ffb9126fc5706f
+        dest: better-sqlite3-prebuilt
+        strip-components: 0
+
       # ── Offline npm packages (generated; not committed) ───────────────────
       # Generate with:
-      #   flatpak-node-generator --electron-node-headers npm package-lock.json
+      #   flatpak-node-generator npm package-lock.json
       - generated-sources.json
 
     build-commands:
       # ── 1. Install npm dependencies (fully offline) ───────────────────────
+      # --ignore-scripts suppresses postinstall hooks (prebuild-install, etc.)
+      # that would attempt to download or rebuild better-sqlite3; the correct
+      # Electron-ABI binary is installed in step 2 instead.
       - npm ci --offline --ignore-scripts
 
-      # ── 2. Rebuild better-sqlite3 for Electron 33 ABI ────────────────────
-      # flatpak-node-generator --electron-node-headers stages the Electron
-      # node-headers tarball so npm rebuild can find them without network access.
-      # The dist-url below is used as the cache-key prefix; the actual tarball
-      # comes from the pre-staged XDG_CACHE_HOME populated by generated-sources.
-      - >
-        npm rebuild better-sqlite3
-        --runtime=electron
-        --target=33.0.0
-        --dist-url=https://electronjs.org/headers
-        --build-from-source
+      # ── 2. Install pre-built better-sqlite3 (Electron 33, ABI 130) ───────
+      # Replace the Node-22-ABI binary placed by npm ci with the correct
+      # Electron-ABI binary from the manifest source above.
+      # The tarball extracts to better-sqlite3-prebuilt/build/Release/*.node
+      - mkdir -p node_modules/better-sqlite3/build/Release
+      - cp better-sqlite3-prebuilt/build/Release/better_sqlite3.node
+          node_modules/better-sqlite3/build/Release/better_sqlite3.node
 
       # ── 3. Build JS bundles (electron-vite: main + preload + renderer) ────
       - npm run build -w @epoch/desktop
@@ -112,7 +122,7 @@ modules:
       - cp -r apps/desktop/out       /app/epoch-vtt/resources/app/out
       - cp apps/desktop/package.json /app/epoch-vtt/resources/app/package.json
       # ws and all other pure-JS deps are bundled into out/main/index.js by
-      # electron-vite (externalizeDepsPlugin was removed from the main config).
+      # electron-vite (build.externalizeDeps: { exclude: ['ws'] }).
       # Only the native-addon chain needs to ship as raw node_modules:
       #   better-sqlite3  — native .node file, can't be inlined by Rollup
       #   bindings        — locates the .node file at runtime (dep of better-sqlite3)
