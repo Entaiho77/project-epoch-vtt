@@ -1,0 +1,128 @@
+# Project Epoch VTT — Flatpak manifest
+#
+# BEFORE BUILDING — generate the offline npm source archive:
+#
+#   pip install flatpak-node-generator
+#   flatpak-node-generator --electron-node-headers \
+#     npm package-lock.json \
+#     -o generated-sources.json
+#
+# The --electron-node-headers flag downloads Electron 33's node headers into
+# generated-sources.json so that better-sqlite3 can be rebuilt offline inside
+# the Flatpak sandbox (no network access during build).
+#
+# BUILD:
+#   flatpak-builder --user --install --force-clean _build com.epoch.ProjectEpochVTT.yml
+#
+# REQUIRED FLATPAK REMOTES (add once):
+#   flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+#   flatpak install flathub org.freedesktop.Platform/x86_64/24.08
+#   flatpak install flathub org.freedesktop.Sdk/x86_64/24.08
+#   flatpak install flathub org.electronjs.Electron2.BaseApp/x86_64/24.08
+#   flatpak install flathub org.freedesktop.Sdk.Extension.node22/x86_64/24.08
+
+app-id: com.epoch.ProjectEpochVTT
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+
+# Electron2.BaseApp bundles the zypak sandbox shim that redirects /dev/shm to
+# $XDG_RUNTIME_DIR so Chromium's shared-memory allocator works on ostree/immutable
+# distros (Bazzite, Silverblue, Aurora) without --disable-dev-shm-usage.
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
+
+command: run.sh
+separate-locales: false
+
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --share=network           # relay WebSocket + on-demand image URLs
+  - --device=dri              # hardware-accelerated canvas rendering
+  - --filesystem=home         # read/write game data the user selects
+  - --talk-name=org.freedesktop.Notifications
+
+build-options:
+  # Node 22 and npm from the SDK extension
+  append-path: /usr/lib/sdk/node22/bin
+  env:
+    npm_config_cache: /run/build/project-epoch-vtt/flatpak-node/npm-cache
+    npm_config_nodedir: /usr/lib/sdk/node22
+    XDG_CACHE_HOME: /run/build/project-epoch-vtt/flatpak-node/xdg-cache
+    # Prevent npm postinstall scripts from trying to download the Electron binary;
+    # we supply the pre-verified zip as a manifest source instead.
+    ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+
+modules:
+  - name: project-epoch-vtt
+    buildsystem: simple
+    sources:
+      # ── App source ────────────────────────────────────────────────────────
+      - type: git
+        url: https://github.com/entaiho77/project-epoch-vtt.git
+        # Pin to a release commit / tag before shipping to users.
+        branch: main
+
+      # ── Pre-verified Electron binary ──────────────────────────────────────
+      # SHA-256 from https://github.com/electron/electron/releases/tag/v33.0.0
+      - type: file
+        url: https://github.com/electron/electron/releases/download/v33.0.0/electron-v33.0.0-linux-x64.zip
+        sha256: 497ff71b2cacfc0a001fcfd3d852fd758e20604622ddfa2932dc32074c48af66
+        dest: flatpak-electron
+        dest-filename: electron-v33.0.0-linux-x64.zip
+
+      # ── Offline npm packages (generated; not committed) ───────────────────
+      # Generate with:
+      #   flatpak-node-generator --electron-node-headers npm package-lock.json
+      - generated-sources.json
+
+    build-commands:
+      # ── 1. Install npm dependencies (fully offline) ───────────────────────
+      - npm ci --offline --ignore-scripts
+
+      # ── 2. Rebuild better-sqlite3 for Electron 33 ABI ────────────────────
+      # flatpak-node-generator --electron-node-headers stages the Electron
+      # node-headers tarball so npm rebuild can find them without network access.
+      # The dist-url below is used as the cache-key prefix; the actual tarball
+      # comes from the pre-staged XDG_CACHE_HOME populated by generated-sources.
+      - >
+        npm rebuild better-sqlite3
+        --runtime=electron
+        --target=33.0.0
+        --dist-url=https://electronjs.org/headers
+        --build-from-source
+
+      # ── 3. Build JS bundles (electron-vite: main + preload + renderer) ────
+      - npm run build -w @epoch/desktop
+
+      # ── 4. Extract and install Electron binary ────────────────────────────
+      - mkdir -p /app/epoch-vtt
+      - unzip flatpak-electron/electron-v33.0.0-linux-x64.zip -d /app/epoch-vtt
+      - chmod +x /app/epoch-vtt/electron
+
+      # ── 5. Install app as a raw directory (not asar) ─────────────────────
+      # Raw directory required so Node.js can dlopen the native better_sqlite3.node
+      # binary at runtime; asar packaging would block that.
+      - mkdir -p /app/epoch-vtt/resources/app/node_modules
+      - cp -r apps/desktop/out     /app/epoch-vtt/resources/app/out
+      - cp apps/desktop/package.json /app/epoch-vtt/resources/app/package.json
+      # Only the native module needs to ship; all JS is bundled by electron-vite.
+      - cp -r node_modules/better-sqlite3 /app/epoch-vtt/resources/app/node_modules/
+
+      # ── 6. Desktop integration ────────────────────────────────────────────
+      - install -Dm755 build-aux/flatpak/run.sh /app/bin/run.sh
+      - install -Dm644 build-aux/flatpak/com.epoch.ProjectEpochVTT.desktop
+          /app/share/applications/com.epoch.ProjectEpochVTT.desktop
+
+      # App icon — place a 512×512 PNG at apps/desktop/assets/icon.png
+      # before submitting to Flathub.
+      - |
+        if [ -f apps/desktop/assets/icon.png ]; then
+          install -Dm644 apps/desktop/assets/icon.png \
+            /app/share/icons/hicolor/512x512/apps/com.epoch.ProjectEpochVTT.png
+        fi

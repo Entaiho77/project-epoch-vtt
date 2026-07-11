@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Project Epoch VTT
+GenericName=Virtual Tabletop
+Comment=Self-hosted virtual tabletop for tabletop RPGs. Buy once. Host free. Play forever.
+Exec=run.sh
+Icon=com.epoch.ProjectEpochVTT
+Categories=Game;BoardGame;
+Keywords=tabletop;rpg;vtt;dungeon;fantasy;dnd;
+StartupWMClass=project-epoch-vtt
