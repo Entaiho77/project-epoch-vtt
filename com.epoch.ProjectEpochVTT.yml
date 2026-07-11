@@ -7,9 +7,11 @@
 #     npm package-lock.json \
 #     -o generated-sources.json
 #
-# The --electron-node-headers flag downloads Electron 33's node headers into
-# generated-sources.json so that better-sqlite3 can be rebuilt offline inside
-# the Flatpak sandbox (no network access during build).
+# The --electron-node-headers flag fetches the Electron 33 node headers
+# (node-v33.0.0-headers.tar.gz, ABI 130) and caches them under
+# flatpak-node/ so node-gyp can rebuild better-sqlite3 offline.
+# Without this step the build needs internet access to reach
+# https://electronjs.org/headers/v33.0.0/ during the rebuild.
 #
 # BUILD:
 #   flatpak-builder --user --install --force-clean _build com.epoch.ProjectEpochVTT.yml
@@ -86,16 +88,23 @@ modules:
       - npm ci --offline --ignore-scripts
 
       # ── 2. Rebuild better-sqlite3 for Electron 33 ABI ────────────────────
-      # flatpak-node-generator --electron-node-headers stages the Electron
-      # node-headers tarball so npm rebuild can find them without network access.
-      # The dist-url below is used as the cache-key prefix; the actual tarball
-      # comes from the pre-staged XDG_CACHE_HOME populated by generated-sources.
-      - >
-        npm rebuild better-sqlite3
-        --runtime=electron
-        --target=33.0.0
-        --dist-url=https://electronjs.org/headers
-        --build-from-source
+      # Root cause of the ABI mismatch:
+      #   build-options.env sets npm_config_nodedir=/usr/lib/sdk/node22
+      #   → node-gyp uses Node 22 headers (module ABI 127)
+      #   → Electron 33 binary loads the .node and crashes (it needs ABI 130)
+      # Fix: unset npm_config_nodedir so node-gyp resolves headers via
+      # --dist-url instead. In an online build it fetches them from the net;
+      # in an offline build they come from the XDG cache staged by the
+      # generated-sources.json entry added by flatpak-node-generator.
+      # Note: better-sqlite3 is hoisted to root node_modules/ by npm workspaces,
+      # so no --prefix is needed — the rebuild runs at the workspace root.
+      - |
+        unset npm_config_nodedir
+        npm rebuild better-sqlite3 \
+          --runtime=electron \
+          --target=33.0.0 \
+          --dist-url=https://electronjs.org/headers \
+          --build-from-source
 
       # ── 3. Build JS bundles (electron-vite: main + preload + renderer) ────
       - npm run build -w @epoch/desktop
