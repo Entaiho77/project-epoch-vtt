@@ -56,7 +56,10 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
   const { library } = useLibrary(gmUid);
   // Campaign rules (crit threshold/formula, starting HP, feats toggle, house rules), resolved.
   const { rules } = useRules(gmUid);
-  const tokens: Token[] = Object.values(game.tokens ?? {});
+  const hasPlayers = Object.values(game.members ?? {}).some((m) => m.role === 'player');
+  const tokens: Token[] = Object.values(game.tokens ?? {}).filter(
+    (t) => t.kind !== 'party' || hasPlayers,
+  );
   const activeMap = game.activeMapId ? game.maps?.[game.activeMapId] : undefined;
 
   // Token art resolution (by id, at render). Bestiary + saved-creature art is the GM's

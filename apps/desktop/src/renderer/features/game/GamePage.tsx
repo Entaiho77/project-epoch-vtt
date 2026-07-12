@@ -1,9 +1,15 @@
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthProvider';
 import { useSession, useValue } from '../../data/realtime';
-import { createCharacter, setLevelUpPending, useGameCharacter } from '../../data/characters';
-import type { Game } from '@solryn/shared-types';
+import {
+  cloneCharacterToGame,
+  createCharacter,
+  setLevelUpPending,
+  useGameCharacter,
+  usePlayerCharacters,
+} from '../../data/characters';
+import type { Character, Game, Role } from '@solryn/shared-types';
 import { useLibrary, withHomebrewOptions } from '../../data/homebrew';
 import { roleOf } from '../../permissions';
 import { getSystem, isClassAndLevel } from '@solryn/systems/registry';
@@ -28,9 +34,11 @@ export function GamePage() {
     gameId ?? null,
     user?.uid ?? null,
   );
+  const otherChars = usePlayerCharacters(user?.uid ?? null);
   // The GM's account-wide library, read live for homebrew player options (races/classes/etc.).
   const { library } = useLibrary(game?.gmUid ?? game?.createdBy ?? null);
   const [showSettings, setShowSettings] = useState(false);
+  const [wantsNewChar, setWantsNewChar] = useState(false);
 
   if (loading) return <div className={styles.center}>Loading game…</div>;
   if (!game || !user) {
@@ -44,11 +52,16 @@ export function GamePage() {
     );
   }
 
-  const role = roleOf(game, user.uid);
+  // Session.role is the source of truth during a live session on this game;
+  // fall back to the persisted membership for offline browsing.
+  const role: Role | undefined =
+    (session.role === 'gm' || session.role === 'player') && session.gameId === gameId
+      ? session.role
+      : roleOf(game, user.uid);
   if (!role) {
     return (
       <div className={styles.center}>
-        <p>You’re not a member of this game.</p>
+        <p>You&apos;re not a member of this game.</p>
         <Button variant="secondary" onClick={() => navigate('/')}>
           Back to lobby
         </Button>
@@ -63,9 +76,14 @@ export function GamePage() {
     ? withHomebrewOptions(baseSystem, library?.playerOptions)
     : undefined;
 
-  // Player without a completed character → the builder. Otherwise → the board.
-  const building =
+  // Player without a completed character → prompt to create or select one.
+  const needsCharacter =
     role === 'player' && !charLoading && (!character || !character.buildComplete);
+  // Characters this player owns in OTHER games (available to import).
+  const importable = useMemo(
+    () => otherChars.filter((c) => c.gameId !== game.id),
+    [otherChars, game.id],
+  );
 
   let content: ReactNode;
   let isBoard = false;
@@ -76,8 +94,17 @@ export function GamePage() {
     isBoard = true;
   } else if (charLoading) {
     content = <p className={styles.muted}>Loading your character…</p>;
-  } else if (building) {
-    // Class-and-level systems (5e) use their own builder on the shared shell; Solryn keeps its.
+  } else if (needsCharacter && !wantsNewChar) {
+    content = (
+      <CharacterPrompt
+        importable={importable}
+        systemId={game.systemId}
+        gameId={game.id}
+        startingLevel={game.startingLevel}
+        onCreateNew={() => setWantsNewChar(true)}
+      />
+    );
+  } else if (needsCharacter && wantsNewChar) {
     const Builder = isClassAndLevel(system) ? Dnd5eCharacterBuilder : CharacterBuilder;
     content = (
       <Builder
@@ -86,9 +113,8 @@ export function GamePage() {
         ownerUserId={user.uid}
         onFinish={async (c) => {
           const created = await createCharacter(c);
-          // Start-above-1: flag a level-up so the sheet chains the level-up flow up to the
-          // game's starting level (the player just built at level 1). Owner-written.
           if ((game.startingLevel ?? 1) > 1) await setLevelUpPending(created.id, true);
+          setWantsNewChar(false);
         }}
       />
     );
@@ -136,7 +162,7 @@ export function GamePage() {
             <span className={styles.systemLabel}>Room {session.roomCode}</span>
           )}
           <RoleBadge role={role} />
-          {!building && (
+          {!needsCharacter && (
             <Button variant="secondary" size="sm" onClick={() => setShowSettings(true)}>
               Settings
             </Button>
@@ -159,5 +185,51 @@ export function GamePage() {
       />
     </div>
     </RollLogProvider>
+  );
+}
+
+function CharacterPrompt({
+  importable,
+  systemId,
+  gameId,
+  startingLevel,
+  onCreateNew,
+}: {
+  importable: Character[];
+  systemId: string;
+  gameId: string;
+  startingLevel?: number;
+  onCreateNew: () => void;
+}) {
+  const compatible = importable.filter((c) => c.systemId === systemId);
+  return (
+    <div className={styles.center}>
+      <div className={styles.placeholder}>
+        <h2 style={{ margin: 0 }}>Choose your character</h2>
+        <p className={styles.muted}>
+          Create a new character for this session, or bring one from a previous game.
+        </p>
+        <Button onClick={onCreateNew}>Create new character</Button>
+        {compatible.length > 0 && (
+          <>
+            <p className={styles.muted} style={{ marginTop: 'var(--space-4)' }}>
+              Or use an existing character:
+            </p>
+            {compatible.map((c) => (
+              <Button
+                key={c.id}
+                variant="secondary"
+                onClick={async () => {
+                  const cloned = await cloneCharacterToGame(c, gameId);
+                  if ((startingLevel ?? 1) > 1) await setLevelUpPending(cloned.id, true);
+                }}
+              >
+                {c.name} (Lv {c.play.level})
+              </Button>
+            ))}
+          </>
+        )}
+      </div>
+    </div>
   );
 }

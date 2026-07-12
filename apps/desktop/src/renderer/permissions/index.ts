@@ -55,7 +55,7 @@ export function canControlToken(
   uid: string,
   role: Role | undefined,
 ): boolean {
-  if (token.kind === 'party') return true; // shared travel token — any member may move it
+  if (token.kind === 'party') return role === 'player'; // only players move the party token
   if (token.kind === 'character') return token.ownerUserId === uid;
   return role === 'gm'; // creature / trap
 }

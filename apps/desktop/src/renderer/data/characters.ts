@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Character, CharacterPlayState, CharacterSkillState } from '@solryn/shared-types';
 import type { InventoryItem } from './homebrew';
 import {
@@ -6,6 +6,7 @@ import {
   newKey,
   subscribe,
   updateValue,
+  useValue,
   writeValue,
 } from './realtime';
 import { firebaseConfigured } from '../firebase/app';
@@ -352,4 +353,32 @@ export function useGameCharacters(gameId: string | null): Character[] {
   }, [idsKey]);
 
   return Object.values(chars);
+}
+
+/** All completed characters owned by a player (across every game). */
+export function usePlayerCharacters(uid: string | null): Character[] {
+  const { value: all } = useValue<Record<string, Character>>(uid ? 'characters' : null);
+  return useMemo(() => {
+    if (!all || !uid) return [];
+    return Object.values(all).filter((c) => c.ownerUserId === uid && c.buildComplete);
+  }, [all, uid]);
+}
+
+/** Clone an existing character into a different game (new id, new gameId). */
+export async function cloneCharacterToGame(
+  source: Character,
+  gameId: string,
+): Promise<Character> {
+  const id = newKey('characters');
+  const cloned: Character = {
+    ...source,
+    id,
+    gameId,
+    play: { ...source.play, levelUpPending: false },
+  };
+  await multiUpdate({
+    [`/characters/${id}`]: cloned,
+    [`/gameCharacters/${gameId}/${source.ownerUserId}`]: id,
+  });
+  return cloned;
 }
