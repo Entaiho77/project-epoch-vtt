@@ -1,4 +1,5 @@
-import { answerJoinRequest, restartHosting, useSession } from '../../data/realtime';
+import { useNavigate } from 'react-router-dom';
+import { answerJoinRequest, clearSessionError, restartHosting, useSession } from '../../data/realtime';
 import { Button } from '../../components/ui/Button';
 import styles from './SessionOverlay.module.css';
 
@@ -7,9 +8,11 @@ import styles from './SessionOverlay.module.css';
  *  - GM: "<name> wants to join" cards to allow or deny, and a notice if hosting dropped.
  *  - Player: "Offline — waiting to reconnect…" while the connection to the GM is down
  *    (it reconnects by itself).
+ *  - Anyone: why a session ended (GM left, you were removed), with a way back to the lobby.
  */
 export function SessionOverlay() {
   const session = useSession();
+  const navigate = useNavigate();
 
   const playerReconnecting =
     session.role === 'player' && session.wasOpen && session.status !== 'open';
@@ -22,6 +25,21 @@ export function SessionOverlay() {
         <div className={styles.banner} role="status">
           <span className={styles.dot} aria-hidden="true" />
           Offline — waiting to reconnect…
+        </div>
+      )}
+
+      {session.role === 'idle' && session.error && (
+        <div className={styles.banner} role="alert">
+          {session.error}
+          <Button
+            size="sm"
+            onClick={() => {
+              clearSessionError();
+              navigate('/');
+            }}
+          >
+            Back to lobby
+          </Button>
         </div>
       )}
 

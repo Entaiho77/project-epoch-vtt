@@ -738,6 +738,13 @@ export async function joinSession(roomCode: string, identity: SessionIdentity): 
   return gameId;
 }
 
+/** Dismiss the "session ended" notice. */
+export function clearSessionError(): void {
+  if (session.role !== 'idle') return;
+  session.error = null;
+  emitSession();
+}
+
 /** GM: start hosting again after the connection dropped. */
 export async function restartHosting(): Promise<void> {
   if (session.role !== 'gm' || !session.gameId || !hostIdentity) return;

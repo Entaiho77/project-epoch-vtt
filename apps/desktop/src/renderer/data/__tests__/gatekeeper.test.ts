@@ -25,7 +25,7 @@ function world(): Record<string, unknown> {
         tokens: {
           mine: { id: 'mine', kind: 'character', ownerUserId: ME, characterId: 'c-me', col: 1, row: 1, mapId: 'm1', name: 'Brannoc' },
           hers: { id: 'hers', kind: 'character', ownerUserId: OTHER, characterId: 'c-her', col: 2, row: 2, mapId: 'm1', name: 'Ila' },
-          wolf: { id: 'wolf', kind: 'creature', col: 5, row: 5, mapId: 'm1', name: 'Wolf', hp: { current: 9, max: 11 }, stats: { ac: 13 } },
+          wolf: { id: 'wolf', kind: 'creature', col: 5, row: 5, mapId: 'm1', name: 'Wolf', hp: { current: 9, max: 11 }, stats: { ac: 13, hp: 11, damage: '2d4+2', str: 12 } },
           lurker: { id: 'lurker', kind: 'creature', visible: false, col: 9, row: 9, mapId: 'm1', name: 'Lurker' },
           party: { id: 'party', kind: 'party', col: 3, row: 3, mapId: 'm1', name: 'Party' },
         },
@@ -251,7 +251,7 @@ describe('gatekeeper: what each player is sent', () => {
     const tokens = projectForPlayer(`games/${G}/tokens`, (world().games as any)[G].tokens, me, ctx) as any;
     expect(Object.keys(tokens).sort()).toEqual(['hers', 'mine', 'party', 'wolf']);
     expect(tokens.wolf.hp).toBeUndefined();
-    expect(tokens.wolf.stats.ac).toBe(13);
+    expect(tokens.wolf.stats).toEqual({ ac: 13 }); // only what attacks need
     expect(projectForPlayer(`games/${G}/tokens/lurker`, (world().games as any)[G].tokens.lurker, me, ctx)).toBeNull();
   });
 

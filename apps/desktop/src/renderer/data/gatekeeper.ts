@@ -22,8 +22,8 @@
  * GM's library) is GM-only.
  *
  * What players may SEE (this game only — never the GM's other games)
- *  - the game, minus: tokens hidden from them, monster HP, GM-hidden shapes, and
- *    whispers they're not part of
+ *  - the game, minus: tokens hidden from them, monster stat blocks (only AC/DR, which
+ *    attacks need), GM-hidden shapes, and whispers they're not part of
  *  - their own characters in full; other players' characters as name + art only
  *  - from the GM's library: player options, campaign rules, equipment, creature art
  *    (not monsters, saved creatures' stats, or notes)
@@ -444,11 +444,18 @@ function projectToken(value: unknown, viewer: Viewer): unknown {
   const own = value.kind === 'character' && value.ownerUserId === viewer.uid;
   if (!own && value.visible === false) return null; // hidden from this player
   if (value.kind === 'creature' || value.kind === 'trap') {
-    const { hp: _hp, lootGiven: _loot, ...rest } = value;
-    return rest; // monsters stay mysterious: no HP (stats stay; attacks need AC)
+    // Monsters stay mysterious. Players' attacks need the target's AC (5e) or DR
+    // (Solryn); the rest of the stat block, HP and loot stay with the GM.
+    const { hp: _hp, lootGiven: _loot, stats, ...rest } = value;
+    const shown: Obj = {};
+    if (isObj(stats)) for (const k of ATTACK_STATS) if (stats[k] !== undefined) shown[k] = stats[k];
+    return Object.keys(shown).length ? { ...rest, stats: shown } : rest;
   }
   return value;
 }
+
+/** The only monster stats players receive: what resolving an attack against it needs. */
+const ATTACK_STATS = ['ac', 'dr'];
 
 function projectChat(value: unknown, viewer: Viewer): unknown {
   if (!isObj(value)) return value === undefined ? NOTHING : null;
