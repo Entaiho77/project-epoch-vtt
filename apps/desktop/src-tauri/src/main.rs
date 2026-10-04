@@ -1,6 +1,7 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
 
+mod assets;
 mod relay;
 mod store;
 
@@ -10,6 +11,7 @@ use serde::Serialize;
 use serde_json::{Map, Value};
 use tauri::{AppHandle, Emitter, Manager, State};
 
+use assets::Assets;
 use relay::{RelayHandle, RelayIdentity};
 use store::KvStore;
 
@@ -110,6 +112,42 @@ fn relay_send(relay: State<Relay>, message: Value) -> CmdResult<()> {
     Ok(())
 }
 
+// --- Images -------------------------------------------------------------------
+
+/// Save an uploaded image to disk. The renderer sends the raw file bytes as the
+/// request body (no base64 round-trip) and its MIME type in an `x-mime` header.
+/// Returns the short reference to store in the save file.
+#[tauri::command]
+fn asset_put(assets: State<Assets>, request: tauri::ipc::Request<'_>) -> CmdResult<String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("expected raw image bytes".into());
+    };
+    let mime = request
+        .headers()
+        .get("x-mime")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    assets.put(bytes, mime)
+}
+
+/// Serves `epoch-asset://localhost/<name>` (on Windows:
+/// `http://epoch-asset.localhost/<name>`) from the assets folder.
+fn serve_asset(app: &AppHandle, request: &tauri::http::Request<Vec<u8>>) -> tauri::http::Response<Vec<u8>> {
+    let name = request.uri().path().trim_start_matches('/');
+    let found = app.try_state::<Assets>().and_then(|a| a.read(name));
+    let builder = tauri::http::Response::builder().header("Access-Control-Allow-Origin", "*");
+    match found {
+        Some(bytes) => builder
+            .status(200)
+            .header("Content-Type", assets::mime_for_name(name))
+            // Names are content hashes, so a given URL never changes: cache forever.
+            .header("Cache-Control", "public, max-age=31536000, immutable")
+            .body(bytes),
+        None => builder.status(404).body(Vec::new()),
+    }
+    .unwrap_or_else(|_| tauri::http::Response::new(Vec::new()))
+}
+
 // --- App ----------------------------------------------------------------------
 
 #[tauri::command]
@@ -119,6 +157,9 @@ fn app_get_version(app: AppHandle) -> String {
 
 fn main() {
     tauri::Builder::default()
+        .register_uri_scheme_protocol("epoch-asset", |ctx, request| {
+            serve_asset(ctx.app_handle(), &request)
+        })
         .setup(|app| {
             // e.g. C:\Users\<you>\AppData\Roaming\com.epoch.vtt\epoch.db
             let dir = app.path().app_data_dir()?;
@@ -138,6 +179,16 @@ fn main() {
                 }),
             )
             .map_err(|e| format!("could not open the save file: {e}"))?;
+            let mut kv = kv;
+            let images = Assets::open(&dir.join("assets"))
+                .map_err(|e| format!("could not open the images folder: {e}"))?;
+            // Move any images still stored inside the save file out to disk.
+            match kv.convert_inline_images(|data_url| images.put_data_url(data_url)) {
+                Ok(0) => {}
+                Ok(n) => println!("[epoch] moved {n} inline image(s) out of the save file"),
+                Err(e) => eprintln!("[epoch] image conversion skipped: {e}"),
+            }
+            app.manage(images);
             app.manage(Db(Mutex::new(kv)));
             app.manage(Relay(Mutex::new(None)));
             Ok(())
@@ -154,6 +205,7 @@ fn main() {
             relay_connect,
             relay_disconnect,
             relay_send,
+            asset_put,
             app_get_version,
         ])
         .run(tauri::generate_context!())

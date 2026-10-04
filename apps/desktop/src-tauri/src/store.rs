@@ -300,6 +300,47 @@ impl KvStore {
     pub fn unsubscribe(&mut self, id: &str) {
         self.subs.remove(id);
     }
+
+    /// One-time cleanup: find images still stored inline as `data:image/...`
+    /// text and replace each with whatever `convert` returns (a short file
+    /// reference). Values `convert` can't handle are left untouched. Returns
+    /// how many were converted.
+    pub fn convert_inline_images(
+        &mut self,
+        mut convert: impl FnMut(&str) -> Option<String>,
+    ) -> StoreResult<usize> {
+        let rows: Vec<(String, String)> = {
+            let mut stmt = self
+                .conn
+                .prepare("SELECT path, value FROM kv WHERE substr(value, 1, 12) = '\"data:image/'")
+                .map_err(err)?;
+            let rows = stmt
+                .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+                .map_err(err)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(err)?;
+            rows
+        };
+        let tx = self.conn.transaction().map_err(err)?;
+        let mut converted = 0;
+        for (path, raw) in rows {
+            let Ok(Value::String(data_url)) = serde_json::from_str::<Value>(&raw) else { continue };
+            if let Some(reference) = convert(&data_url) {
+                tx.execute(
+                    "UPDATE kv SET value = ?1, updated_at = ?2 WHERE path = ?3",
+                    params![Value::String(reference).to_string(), now_ms(), path],
+                )
+                .map_err(err)?;
+                converted += 1;
+            }
+        }
+        tx.commit().map_err(err)?;
+        if converted > 0 {
+            // Give the space back: inline maps can make the file very large.
+            let _ = self.conn.execute_batch("VACUUM;");
+        }
+        Ok(converted)
+    }
 }
 
 #[cfg(test)]
@@ -447,6 +488,21 @@ mod tests {
         let last = events.lock().unwrap().last().cloned().unwrap();
         assert_eq!(last.0, "s1");
         assert_eq!(last.2, json!({"name": "Now"}));
+    }
+
+    #[test]
+    fn converts_inline_images_only() {
+        let d = tmp();
+        let (mut kv, _) = open(&d);
+        kv.write("games/g1/maps/m1", json!({"imageUrl": "data:image/png;base64,AAAA", "name": "data:image/ in a name"})).unwrap();
+        kv.write("games/g1/tokens/t1/imageUrl", json!("https://example.com/a.png")).unwrap();
+        let n = kv
+            .convert_inline_images(|s| s.starts_with("data:image/png").then(|| "epoch-asset:abc.png".into()))
+            .unwrap();
+        assert_eq!(n, 1);
+        assert_eq!(kv.read("games/g1/maps/m1/imageUrl").unwrap(), json!("epoch-asset:abc.png"));
+        assert_eq!(kv.read("games/g1/maps/m1/name").unwrap(), json!("data:image/ in a name"));
+        assert_eq!(kv.read("games/g1/tokens/t1/imageUrl").unwrap(), json!("https://example.com/a.png"));
     }
 
     #[test]

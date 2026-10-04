@@ -1,12 +1,35 @@
 /**
- * Map/token image handling — desktop edition. There is no remote Storage bucket;
- * images are inlined as data URLs and live in the local database (and travel to
- * players inside normal sync writes). This was the web app's no-Storage fallback
- * path, now the only path. The cap is raised a little since SQLite handles
- * larger values than RTDB comfortably did.
+ * Map/token image handling — desktop edition.
+ *
+ * In the desktop app, images are saved as files on disk (src-tauri/src/assets.rs)
+ * and the database only stores a short reference like `epoch-asset:<hash>.png`.
+ * That keeps multi-megabyte maps out of every game read/sync. Use `imageSrc()`
+ * to turn whatever is stored into something an <img> or canvas can load.
+ *
+ * Without the desktop bridge (tests, plain browser) images fall back to inline
+ * data URLs, which `imageSrc()` passes through unchanged.
  */
 
-const INLINE_MAX = 50 * 1024 * 1024; // 50 MB inline cap (maps and token art)
+const INLINE_MAX = 50 * 1024 * 1024; // 50 MB cap (maps and token art)
+const ASSET_PREFIX = 'epoch-asset:';
+
+/** Stored image value (asset reference, data URL, or http URL) → loadable src. */
+export function imageSrc(stored?: string | null): string | undefined {
+  if (!stored) return undefined;
+  if (stored.startsWith(ASSET_PREFIX)) {
+    const name = stored.slice(ASSET_PREFIX.length);
+    return typeof window !== 'undefined' && window.epochAssets
+      ? window.epochAssets.url(name)
+      : undefined;
+  }
+  return stored;
+}
+
+/** Save a file to disk when running in the desktop app; otherwise inline it. */
+async function storeImage(file: File): Promise<string> {
+  if (typeof window !== 'undefined' && window.epochAssets) return window.epochAssets.put(file);
+  return readDataUrl(file);
+}
 
 export function loadImageSize(
   src: string,
@@ -29,16 +52,17 @@ function readDataUrl(file: File): Promise<string> {
 }
 
 export interface PreparedImage {
+  /** What to store: an `epoch-asset:` reference in the desktop app, else a data URL. */
   imageUrl: string;
   width: number;
   height: number;
-  /** Always false on desktop — images are inlined, never uploaded. */
+  /** True when the image was saved as a file rather than inlined. */
   stored: boolean;
 }
 
 /**
  * Token art — same contract as the web version (`scope` kept for signature
- * compatibility; there is no upload path to scope any more).
+ * compatibility). Returns the value to store; render it through `imageSrc()`.
  */
 export async function prepareTokenImage(_scope: string, file: File): Promise<string> {
   if (!file.type.startsWith('image/')) {
@@ -47,7 +71,7 @@ export async function prepareTokenImage(_scope: string, file: File): Promise<str
   if (file.size > INLINE_MAX) {
     throw new Error('Image too large (max 50 MB).');
   }
-  return readDataUrl(file);
+  return storeImage(file);
 }
 
 export async function prepareMapImage(
@@ -69,6 +93,6 @@ export async function prepareMapImage(
   if (file.size > INLINE_MAX) {
     throw new Error('Image too large (max 50 MB).');
   }
-  const dataUrl = await readDataUrl(file);
-  return { imageUrl: dataUrl, ...dims, stored: false };
+  const imageUrl = await storeImage(file);
+  return { imageUrl, ...dims, stored: imageUrl.startsWith(ASSET_PREFIX) };
 }

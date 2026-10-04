@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useRef, useState, type MouseEvent } from 'react';
 import type { BoardShape, MapDef, Role, ShapeKind, Token } from '@epoch/shared-types';
 import { squareKey } from '../../data/board';
+import { imageSrc } from '../../data/images';
 import { canControlToken, fogStyle, tokenVisibility } from '../../permissions';
 import {
   canLandOn,
@@ -287,7 +288,8 @@ export function BoardCanvas({
     return () => canvas.removeEventListener('wheel', onWheel);
   }, []);
 
-  function getImage(src?: string): HTMLImageElement | null {
+  function getImage(stored?: string): HTMLImageElement | null {
+    const src = imageSrc(stored);
     if (!src) return null;
     const cache = imgCache.current;
     const existing = cache.get(src);

@@ -26,6 +26,13 @@ interface RelayBridge {
   removeListeners(): void;
 }
 
+interface EpochAssetsBridge {
+  /** Save an image file to disk; resolves to a reference like `epoch-asset:<hash>.png`. */
+  put(file: File): Promise<string>;
+  /** URL the webview can load for a stored image name (`<hash>.png`). */
+  url(name: string): string;
+}
+
 interface EpochAppBridge {
   getVersion(): Promise<string>;
 }
@@ -34,4 +41,6 @@ interface Window {
   db: DbBridge;
   relay: RelayBridge;
   epochApp: EpochAppBridge;
+  /** Only present in the desktop app (absent in tests / plain browser). */
+  epochAssets?: EpochAssetsBridge;
 }

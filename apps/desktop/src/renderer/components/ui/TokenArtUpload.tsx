@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { prepareTokenImage } from '../../data/images';
+import { imageSrc, prepareTokenImage } from '../../data/images';
 
 /**
  * Reusable round token-art control: shows the current image (circular) and lets the user
@@ -62,7 +62,7 @@ export function TokenArtUpload({
       >
         {imageUrl ? (
           <img
-            src={imageUrl}
+            src={imageSrc(imageUrl)}
             alt={label}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           />

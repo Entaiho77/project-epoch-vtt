@@ -1,10 +1,10 @@
-import { invoke } from '@tauri-apps/api/core';
+import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 
 /**
- * Installs `window.db`, `window.relay` and `window.epochApp` on top of the Rust
- * commands in src-tauri/src/main.rs. The shapes match the old Electron preload
- * exactly, so data/realtime.ts and everything above it is unchanged.
+ * Installs `window.db`, `window.relay`, `window.epochAssets` and `window.epochApp`
+ * on top of the Rust commands in src-tauri/src/main.rs. db/relay match the old
+ * Electron preload exactly, so data/realtime.ts and everything above it is unchanged.
  *
  * Event listeners are registered once, up front, and every command waits for
  * them first: otherwise the immediate value Rust sends back on `subscribe` could
@@ -84,6 +84,15 @@ export function installTauriBridge(): void {
       messageCallbacks = [];
       statusCallbacks = [];
     },
+  };
+
+  window.epochAssets = {
+    // Raw bytes as the request body: no base64 round-trip for large maps.
+    put: async (file) =>
+      invoke<string>('asset_put', new Uint8Array(await file.arrayBuffer()), {
+        headers: { 'x-mime': file.type },
+      }),
+    url: (name) => convertFileSrc(name, 'epoch-asset'),
   };
 
   window.epochApp = {
