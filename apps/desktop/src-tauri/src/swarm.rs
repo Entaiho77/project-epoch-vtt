@@ -27,18 +27,29 @@ use tokio::sync::mpsc;
 struct HelperLog {
     path: PathBuf,
     recent: Arc<Mutex<std::collections::VecDeque<String>>>,
+    /// The first line that named an error; long dumps can push it out of `recent`.
+    first_error: Arc<Mutex<Option<String>>>,
 }
 
 impl HelperLog {
     fn open(path: &Path) -> Self {
         let _ = std::fs::write(path, "");
-        Self { path: path.to_path_buf(), recent: Arc::new(Mutex::new(Default::default())) }
+        Self {
+            path: path.to_path_buf(),
+            recent: Arc::new(Mutex::new(Default::default())),
+            first_error: Arc::new(Mutex::new(None)),
+        }
     }
 
     fn line(&self, text: &str) {
         use std::io::Write;
         if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&self.path) {
             let _ = writeln!(f, "{text}");
+        }
+        if text.contains("rror") && !text.trim_start().starts_with("at ") {
+            if let Ok(mut first) = self.first_error.lock() {
+                first.get_or_insert_with(|| text.to_string());
+            }
         }
         if let Ok(mut recent) = self.recent.lock() {
             recent.push_back(text.to_string());
@@ -56,11 +67,10 @@ impl HelperLog {
             !t.is_empty() && !t.starts_with("at ") && !l.starts_with("starting ")
         };
         // Prefer the line naming the error over the stack trace under it.
-        recent
-            .iter()
-            .rev()
-            .filter(useful)
-            .find(|l| l.contains("rror"))
+        let first = self.first_error.lock().ok().and_then(|f| f.clone());
+        first
+            .as_ref()
+            .or_else(|| recent.iter().rev().filter(useful).find(|l| l.contains("rror")))
             .or_else(|| recent.iter().rev().find(useful))
             .map(|l| format!(": {}", l.trim().chars().take(200).collect::<String>()))
             .unwrap_or_default()
@@ -112,6 +122,20 @@ pub fn load_or_create_seed(dir: &Path) -> std::io::Result<String> {
     Ok(seed)
 }
 
+/// Windows sometimes hands out paths in "extended" form (`\\?\C:\...`, or
+/// `\\?\UNC\server\share\...`). Bare can't load modules from those, so turn them
+/// back into ordinary paths. Other paths pass through unchanged.
+fn plain_path(p: PathBuf) -> PathBuf {
+    let s = p.to_string_lossy();
+    if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+        PathBuf::from(format!(r"\\{rest}"))
+    } else if let Some(rest) = s.strip_prefix(r"\\?\") {
+        PathBuf::from(rest)
+    } else {
+        p
+    }
+}
+
 /// Where the Bare runtime and the helper bundle live. Tauri puts the sidecar
 /// next to the app's own executable, and resources under the resource folder.
 fn helper_paths<R: Runtime>(app: &AppHandle<R>) -> Result<(PathBuf, PathBuf), String> {
@@ -133,6 +157,8 @@ fn helper_paths<R: Runtime>(app: &AppHandle<R>) -> Result<(PathBuf, PathBuf), St
             bundle = PathBuf::from(p);
         }
     }
+    let bare = plain_path(bare);
+    let bundle = plain_path(bundle);
     if !bare.is_file() {
         return Err(format!("peer-to-peer runtime missing at {}", bare.display()));
     }
@@ -330,6 +356,33 @@ mod tests {
     use super::*;
     use std::sync::mpsc as std_mpsc;
     use tauri::Listener;
+
+    #[test]
+    fn extended_windows_paths_become_plain() {
+        assert_eq!(
+            plain_path(PathBuf::from(r"\\?\C:\Users\me\Project Epoch VTT\swarm\helper.bundle")),
+            PathBuf::from(r"C:\Users\me\Project Epoch VTT\swarm\helper.bundle")
+        );
+        assert_eq!(
+            plain_path(PathBuf::from(r"\\?\UNC\server\share\x")),
+            PathBuf::from(r"\\server\share\x")
+        );
+        assert_eq!(plain_path(PathBuf::from("/opt/app/x")), PathBuf::from("/opt/app/x"));
+    }
+
+    #[test]
+    fn error_line_survives_a_long_dump() {
+        let dir = std::env::temp_dir().join(format!("epoch-log-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let log = HelperLog::open(&dir.join("swarm.log"));
+        log.line("starting bare helper.bundle");
+        log.line("Uncaught ModuleError: MODULE_NOT_FOUND: Cannot find module 'x'");
+        for _ in 0..100 {
+            log.line("    href: 'file:///index.js',");
+        }
+        log.line("}");
+        assert!(log.last_words().contains("MODULE_NOT_FOUND"), "{}", log.last_words());
+    }
 
     fn manifest() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
