@@ -1,10 +1,16 @@
 {
   "name": "project-epoch-vtt",
   "private": true,
-  "workspaces": ["packages/*", "apps/*"],
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
     "dev": "npm run dev --workspace=apps/desktop",
     "build": "npm run build --workspace=apps/desktop",
     "test": "npm run test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.2"
   }
 }
