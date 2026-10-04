@@ -191,8 +191,132 @@
   margin-bottom: 0;
 }
 
+/* Game Lobby */
+.game-lobby {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 500px;
+  padding: var(--spacing-xl);
+}
+
+.game-lobby-content {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-2xl);
+  max-width: 500px;
+  text-align: center;
+}
+
+.game-lobby-content h2 {
+  margin-bottom: var(--spacing-lg);
+}
+
+.character-summary-compact {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-lg);
+  margin-bottom: var(--spacing-xl);
+  padding: var(--spacing-lg);
+  background-color: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+}
+
+.summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.summary-label {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.summary-value {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.game-actions {
+  display: flex;
+  gap: var(--spacing-md);
+  justify-content: center;
+}
+
+.game-actions button {
+  min-width: 150px;
+}
+
+/* Game Board */
 .game-board {
   background: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  padding: var(--spacing-lg);
+  flex: 1;
+}
+
+.board-header {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.board-header h2 {
+  margin-bottom: 0;
+}
+
+.board-info {
+  display: flex;
+  gap: var(--spacing-lg);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.board-container {
+  flex: 1;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+  min-height: 400px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.game-grid {
+  width: 100%;
+  text-align: center;
+}
+
+.grid-note {
+  color: var(--text-muted);
+}
+
+.grid-note p {
+  margin-bottom: var(--spacing-sm);
+}
+
+.grid-note p:last-child {
+  margin-bottom: 0;
+}
+
+.board-footer {
+  display: flex;
+  gap: var(--spacing-md);
+  justify-content: flex-start;
+  padding-top: var(--spacing-lg);
 }
 
 /* Character Sheet Page */

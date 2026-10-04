@@ -144,7 +144,9 @@ export function CharacterSheetPage() {
             <button className="secondary" onClick={() => navigate('/')}>
               Back to Lobby
             </button>
-            <button className="primary">Start Game</button>
+            <button className="primary" onClick={() => navigate(`/game/${character.id}`)}>
+              Start Game
+            </button>
           </div>
         </div>
       </div>
