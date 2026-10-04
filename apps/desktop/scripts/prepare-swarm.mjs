@@ -3,7 +3,8 @@
 //
 //  1. Bundles swarm/helper.js and its dependencies into src-tauri/swarm-dist/
 //     (one .bundle file plus the few native pieces Hyperswarm needs).
-//  2. Copies the Bare runtime for this computer into src-tauri/binaries/, named
+//  2. Copies the Bare runtime for this computer into src-tauri/binaries/ as
+//     "epoch-network", named
 //     the way Tauri expects for a bundled helper program ("sidecar").
 //
 // Both folders are generated, so they're git-ignored.
@@ -45,11 +46,13 @@ execFileSync(
   { stdio: 'inherit', cwd: base },
 );
 
-// 2. The Bare runtime as a Tauri sidecar: binaries/bare-<triple>[.exe]
+// 2. The Bare runtime as a Tauri sidecar: binaries/epoch-network-<triple>[.exe]
+//    (named for what it does, since that's the name Windows Firewall shows).
 const bare = require('bare-runtime')();
 const binDir = join(tauriDir, 'binaries');
+rmSync(binDir, { recursive: true, force: true });
 mkdirSync(binDir, { recursive: true });
-const dest = join(binDir, `bare-${triple}${isWindows ? '.exe' : ''}`);
+const dest = join(binDir, `epoch-network-${triple}${isWindows ? '.exe' : ''}`);
 copyFileSync(bare, dest);
 if (!isWindows) chmodSync(dest, 0o755);
 

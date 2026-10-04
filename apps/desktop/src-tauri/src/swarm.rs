@@ -72,7 +72,8 @@ fn helper_paths<R: Runtime>(app: &AppHandle<R>) -> Result<(PathBuf, PathBuf), St
         .parent()
         .ok_or("no executable folder")?
         .to_path_buf();
-    let mut bare = exe_dir.join(if cfg!(windows) { "bare.exe" } else { "bare" });
+    // The Bare runtime ships as the "epoch-network" sidecar (see prepare-swarm.mjs).
+    let mut bare = exe_dir.join(if cfg!(windows) { "epoch-network.exe" } else { "epoch-network" });
     let resources = app.path().resource_dir().map_err(|e| e.to_string())?;
     let mut bundle = resources.join("swarm").join("helper.bundle");
     // Dev/test builds only: let tests point at the prepared files directly.
