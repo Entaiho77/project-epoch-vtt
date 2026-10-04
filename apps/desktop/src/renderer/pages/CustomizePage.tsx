@@ -1,21 +1,28 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { SolrynCharacterBuilder, type SolrynCharacter } from '../features/solryn/SolrynCharacterBuilder';
 import '../styles/pages.css';
 
 export function CustomizePage() {
   const navigate = useNavigate();
   const [characterName, setCharacterName] = useState('');
-  const [selectedSystem, setSelectedSystem] = useState<'solryn' | 'dnd5e'>('solryn');
-  const [currentStep, setCurrentStep] = useState<'system' | 'builder'>('system');
+  const [selectedSystem, setSelectedSystem] = useState<'solryn' | 'dnd5e' | null>(null);
 
   const handleSystemSelect = (system: 'solryn' | 'dnd5e') => {
     setSelectedSystem(system);
-    setCurrentStep('builder');
   };
 
-  const handleSaveCharacter = () => {
-    if (characterName.trim()) {
-      // TODO: Save character to database
+  const handleSaveCharacter = async (character: SolrynCharacter) => {
+    // Save character to database
+    await window.db.write(`characters/${character.id}`, character);
+    navigate('/');
+  };
+
+  const handleCancel = () => {
+    if (selectedSystem) {
+      setSelectedSystem(null);
+      setCharacterName('');
+    } else {
       navigate('/');
     }
   };
@@ -31,7 +38,7 @@ export function CustomizePage() {
       </header>
 
       <div className="page-content">
-        {currentStep === 'system' && (
+        {selectedSystem === null && (
           <section className="system-select">
             <h2>Choose Your System</h2>
             <div className="grid grid-2">
@@ -39,7 +46,7 @@ export function CustomizePage() {
                 <h3>Solryn</h3>
                 <p>The native Epoch system. Fast-paced tactical combat.</p>
               </div>
-              <div className="card system-card" onClick={() => handleSystemSelect('dnd5e')}>
+              <div className="card system-card">
                 <h3>D&D 5e</h3>
                 <p>Coming soon: Classic D&D 5th Edition support.</p>
               </div>
@@ -47,11 +54,20 @@ export function CustomizePage() {
           </section>
         )}
 
-        {currentStep === 'builder' && (
+        {selectedSystem === 'dnd5e' && (
           <section className="character-builder">
-            <h2>Character Builder</h2>
-            <div className="builder-form">
-              <div className="form-group">
+            <h2>D&D 5e Character Builder</h2>
+            <p className="text-muted">Coming soon...</p>
+            <button className="secondary" onClick={() => setSelectedSystem(null)}>
+              ← Choose Different System
+            </button>
+          </section>
+        )}
+
+        {selectedSystem === 'solryn' && (
+          <section className="character-builder">
+            <div className="builder-header">
+              <div className="name-input-group">
                 <label htmlFor="charName">Character Name</label>
                 <input
                   id="charName"
@@ -59,37 +75,24 @@ export function CustomizePage() {
                   placeholder="e.g., Aragorn the Ranger"
                   value={characterName}
                   onChange={(e) => setCharacterName(e.target.value)}
+                  autoFocus
                 />
               </div>
-
-              <div className="form-group">
-                <label>System: {selectedSystem.toUpperCase()}</label>
-                <p className="text-muted">
-                  {selectedSystem === 'solryn'
-                    ? 'Building with Solryn engine'
-                    : 'D&D 5e will be available soon'}
-                </p>
-              </div>
-
-              {selectedSystem === 'solryn' && (
-                <div className="solryn-builder">
-                  <p className="text-muted">Character builder coming soon...</p>
-                </div>
-              )}
-
-              <div className="builder-actions">
-                <button className="secondary" onClick={() => setCurrentStep('system')}>
-                  ← Change System
-                </button>
-                <button
-                  className="primary"
-                  onClick={handleSaveCharacter}
-                  disabled={!characterName.trim()}
-                >
-                  Save Character
-                </button>
-              </div>
             </div>
+
+            {characterName && (
+              <SolrynCharacterBuilder
+                characterName={characterName}
+                onSave={handleSaveCharacter}
+                onCancel={handleCancel}
+              />
+            )}
+
+            {!characterName && (
+              <p className="text-muted" style={{ textAlign: 'center', padding: 'var(--spacing-xl)' }}>
+                Enter a character name above to begin.
+              </p>
+            )}
           </section>
         )}
       </div>
