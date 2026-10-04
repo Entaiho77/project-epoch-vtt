@@ -16,7 +16,9 @@ import {
   tokensAtCell,
 } from './boardGeometry';
 import {
+  loadView,
   pan,
+  saveView,
   screenToWorld,
   worldToScreen,
   zoomAt,
@@ -247,6 +249,19 @@ export function BoardCanvas({
   // still applied on top.) Also the obstacle set for movement collision.
   const onMap = visibleOnMap(tokens, map.id, partyScale);
 
+  // Each map opens where this computer last left it (zoom + position).
+  const mapIdRef = useRef(map.id);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rememberView = () => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => saveView(mapIdRef.current, camera.current), 300);
+  };
+  useEffect(() => {
+    mapIdRef.current = map.id;
+    camera.current = loadView(map.id) ?? { zoom: 1, x: 0, y: 0 };
+    bump();
+  }, [map.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Leaving measure mode clears any drawn segment.
   useEffect(() => {
     if (tool !== 'measure') setMeasure(null);
@@ -295,6 +310,7 @@ export function BoardCanvas({
       if (next === camera.current) return;
       camera.current = next;
       bump();
+      rememberView();
     }
     canvas.addEventListener('wheel', onWheel, { passive: false });
     return () => canvas.removeEventListener('wheel', onWheel);
@@ -342,6 +358,12 @@ export function BoardCanvas({
     const blocked = ghost ? occupiedCells(onMap, ghost.id) : null;
 
     if (map.gridVisible) {
+      // Stop at the map's edge: a map that isn't a whole number of squares wide ends in a
+      // part-square, and the grid shouldn't run on past the picture.
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, map.width, map.height);
+      ctx.clip();
       ctx.strokeStyle = gridColor;
       ctx.lineWidth = 2 / cam.zoom; // keep grid lines ~2px on screen at any zoom
       ctx.beginPath();
@@ -354,6 +376,7 @@ export function BoardCanvas({
         ctx.lineTo(cols * g, r * g);
       }
       ctx.stroke();
+      ctx.restore();
     }
 
     // --- AoE/measurement shapes (under tokens) ----------------------------------
@@ -509,10 +532,15 @@ export function BoardCanvas({
     // Fog — GM semi-transparent, players opaque.
     const opaque = fogStyle(role) === 'opaque';
     ctx.fillStyle = opaque ? '#0c0e12' : 'rgba(10,12,16,0.55)';
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, map.width, map.height); // fog stops at the map's edge too
+    ctx.clip();
     for (const key of Object.keys(fog)) {
       const [c, r] = key.split(',').map(Number);
       ctx.fillRect(c * g, r * g, g, g);
     }
+    ctx.restore();
 
     // Measure overlay.
     if (measure && measureScale) {
@@ -730,6 +758,7 @@ export function BoardCanvas({
     tokenDrag.current = null;
     fogPaint.current = null;
     measuringRef.current = false;
+    if (panRef.current) rememberView();
     panRef.current = null;
     setPanning(false);
     setGhost(null);

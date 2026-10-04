@@ -41,3 +41,27 @@ export function zoomAt(
 export function pan(cam: Camera, dx: number, dy: number): Camera {
   return { zoom: cam.zoom, x: cam.x + dx, y: cam.y + dy };
 }
+
+/** Where each map's view was left, per computer (a convenience; fine if storage is unavailable). */
+const VIEW_KEY = (mapId: string) => `epoch.board.view.${mapId}`;
+
+export function loadView(mapId: string): Camera | null {
+  try {
+    const raw = localStorage.getItem(VIEW_KEY(mapId));
+    if (!raw) return null;
+    const v = JSON.parse(raw) as Partial<Camera>;
+    if (![v.zoom, v.x, v.y].every((n) => typeof n === 'number' && Number.isFinite(n))) return null;
+    if ((v.zoom as number) <= 0) return null;
+    return { zoom: v.zoom as number, x: v.x as number, y: v.y as number };
+  } catch {
+    return null;
+  }
+}
+
+export function saveView(mapId: string, cam: Camera): void {
+  try {
+    localStorage.setItem(VIEW_KEY(mapId), JSON.stringify({ zoom: cam.zoom, x: Math.round(cam.x), y: Math.round(cam.y) }));
+  } catch {
+    // Remembering the view is a nicety; ignore storage problems.
+  }
+}

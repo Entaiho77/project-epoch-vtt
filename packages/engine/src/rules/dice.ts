@@ -1,6 +1,33 @@
 /** Random source returning a float in [0, 1). Injectable for deterministic tests. */
 export type Rng = () => number;
-export const defaultRng: Rng = Math.random;
+
+/** Where dice get their randomness when no `rng` is passed. Swappable (see setDiceSource). */
+let diceSource: Rng = Math.random;
+/** Told about every die rolled, in order (see setDieObserver). */
+let dieObserver: ((sides: number, face: number) => void) | null = null;
+
+/** The default random source: whatever setDiceSource installed (Math.random otherwise). */
+export const defaultRng: Rng = () => diceSource();
+
+/**
+ * Replace the default random source, e.g. with numbers handed out by the GM's
+ * computer during a live session so rolls can be checked. Returns the previous one.
+ */
+export function setDiceSource(source: Rng): Rng {
+  const prev = diceSource;
+  diceSource = source;
+  return prev;
+}
+
+/** Watch every die rolled (sides and face), e.g. to record a roll for checking. */
+export function setDieObserver(fn: ((sides: number, face: number) => void) | null): void {
+  dieObserver = fn;
+}
+
+/** The face a die shows for a random value in [0, 1). Same formula as rollDie. */
+export function faceFor(sides: number, u: number): number {
+  return Math.floor(u * sides) + 1;
+}
 
 export interface ParsedDice {
   count: number;
@@ -21,7 +48,9 @@ export function parseDice(notation: string): ParsedDice | null {
 
 /** Roll a single die with the given number of sides. */
 export function rollDie(sides: number, rng: Rng = defaultRng): number {
-  return Math.floor(rng() * sides) + 1;
+  const face = faceFor(sides, rng());
+  dieObserver?.(sides, face);
+  return face;
 }
 
 export interface RollResult {

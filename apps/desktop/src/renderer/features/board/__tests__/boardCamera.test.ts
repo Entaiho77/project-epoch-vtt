@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pan, screenToWorld, worldToScreen, zoomAt } from '../boardCamera';
+import { loadView, pan, saveView, screenToWorld, worldToScreen, zoomAt } from '../boardCamera';
 
 describe('boardCamera', () => {
   it('screenToWorld inverts worldToScreen at any zoom/offset', () => {
@@ -31,5 +31,21 @@ describe('boardCamera', () => {
 
   it('pan shifts the offset by the drag delta and keeps zoom', () => {
     expect(pan({ zoom: 2, x: 10, y: 5 }, 4, -3)).toEqual({ zoom: 2, x: 14, y: 2 });
+  });
+});
+
+
+describe('remembering the view per map', () => {
+  it('a map reopens where it was left; other maps are separate', () => {
+    saveView('m1', { zoom: 1.5, x: -120.4, y: 40 });
+    expect(loadView('m1')).toEqual({ zoom: 1.5, x: -120, y: 40 });
+    expect(loadView('m2')).toBeNull();
+  });
+
+  it('ignores junk in storage', () => {
+    localStorage.setItem('epoch.board.view.bad', '{"zoom":0,"x":1,"y":1}');
+    expect(loadView('bad')).toBeNull();
+    localStorage.setItem('epoch.board.view.bad2', 'not json');
+    expect(loadView('bad2')).toBeNull();
   });
 });

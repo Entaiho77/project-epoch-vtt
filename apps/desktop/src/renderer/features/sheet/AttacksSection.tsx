@@ -6,6 +6,7 @@ import { setLoadedSpell, setPoolCurrent } from '../../data/characters';
 import { Button } from '../../components/ui/Button';
 import { useRollLog } from '../rolllog/rollLog';
 import styles from './AttacksSection.module.css';
+import { secureRoll } from '../../data/secureDice';
 
 const sign = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
 /** The Luck Points resource pool id (Solryn derived stat). */
@@ -77,6 +78,10 @@ export function AttacksSection({
   }
 
   function rollWeapon(w: WeaponItem, useCrit: boolean) {
+    void secureRoll(() => rollWeaponNow(w, useCrit));
+  }
+
+  function rollWeaponNow(w: WeaponItem, useCrit: boolean) {
     const lc = useCrit ? rollCrit() : null;
     const crit: CritState = forcedCrit ? 'success' : lc ? lc.crit : 'none';
     const suffix = (lc ? lc.suffix : '') + (forcedCrit ? ' · target condition: DR ignored (auto-crit)' : '');
@@ -93,6 +98,13 @@ export function AttacksSection({
   function cast(useCrit: boolean) {
     if (!loaded || !arcanaPoolId || arcanaCurrent < loaded.cost) return;
     if (useCrit && !canCrit) return;
+    // Only ask for dice when something will actually be rolled.
+    if (loaded.damageDice || useCrit) void secureRoll(() => castNow(useCrit));
+    else castNow(useCrit);
+  }
+
+  function castNow(useCrit: boolean) {
+    if (!loaded || !arcanaPoolId) return;
     void setPoolCurrent(character.id, arcanaPoolId, arcanaCurrent - loaded.cost);
     const lc = useCrit ? rollCrit() : null;
     const crit: CritState = forcedCrit ? 'success' : lc ? lc.crit : 'none';

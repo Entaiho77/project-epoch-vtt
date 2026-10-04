@@ -14,6 +14,7 @@ import { Button } from '../../components/ui/Button';
 import { ResourceTracker } from '../sheet/ResourceTracker';
 import { useRollLog } from '../rolllog/rollLog';
 import s from '../board/drawers/drawers.module.css';
+import { secureRoll } from '../../data/secureDice';
 
 const sign = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
 const row: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-2)' };
@@ -127,7 +128,9 @@ export function Dnd5eSheet({
 
   // Great Weapon Master / Sharpshooter: −5 to hit, +10 damage when the toggle is on.
   const pa = powerAttack && d.powerAttack ? d.powerAttack : undefined;
-  const rollAttack = (atk: (typeof d.attacks)[number]) => {
+  const rollAttack = (atk: (typeof d.attacks)[number]) =>
+    void secureRoll(() => rollAttackNow(atk));
+  const rollAttackNow = (atk: (typeof d.attacks)[number]) => {
     const line = resolver.resolveAttack({
       label: attackLabel(atk.name),
       dice: pa ? addFlatDamage(atk.dice, pa.damage) : atk.dice,
@@ -146,7 +149,8 @@ export function Dnd5eSheet({
 
   // Dragonborn breath weapon — plain damage roll + save note, via the same path as monster
   // abilities: never through the attack resolver, so it isn't a to-hit roll.
-  const rollBreath = () => {
+  const rollBreath = () => void secureRoll(rollBreathNow);
+  const rollBreathNow = () => {
     if (!d.breath) return;
     const r = rollDice(d.breath.dice);
     const shape = d.breath.shape === 'cone' ? `${d.breath.size} ft cone` : `${d.breath.size} ft line`;
@@ -169,6 +173,11 @@ export function Dnd5eSheet({
   const currentSlots = (level: number) => character.play.spellSlots?.[level] ?? d.spell?.maxSlots[level] ?? 0;
 
   const castSpell = (sp: Dnd5eSpell, slotLevel: number) => {
+    // Only ask for dice when the spell rolls something (an attack or damage).
+    if (damageAt(sp, slotLevel)) void secureRoll(() => castSpellNow(sp, slotLevel));
+    else castSpellNow(sp, slotLevel);
+  };
+  const castSpellNow = (sp: Dnd5eSpell, slotLevel: number) => {
     // Build the log line via the shared resolvers (attack / save / utility), then spend a slot.
     postRoll(
       spellCastLog(sp, {

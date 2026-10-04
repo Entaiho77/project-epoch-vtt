@@ -3,6 +3,8 @@ import type { SystemDefinition } from '@epoch/shared-types';
 import type { Character } from '@epoch/shared-types';
 import { computeDerived, dieForLevel, rollDice } from '@epoch/engine';
 import { applyLevelUp } from '../../data/characters';
+import { secureRoll } from '../../data/secureDice';
+import { useRollLog } from '../rolllog/rollLog';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import s from './LevelUpCeremony.module.css';
@@ -29,6 +31,21 @@ export function LevelUpCeremony({
   const [step, setStep] = useState(0);
   const [inc, setInc] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
+  const [rolling, setRolling] = useState(false);
+  const { postRoll } = useRollLog();
+
+  // Each increase is a real roll in the shared log (checked by the GM's computer in a session).
+  function rollIncrease(id: string, statName: string) {
+    if (rolling) return;
+    setRolling(true);
+    void secureRoll(() => {
+      const value = rollDice(die).total;
+      postRoll(`${character.name} — level ${newLevel} ${statName}: ${die} → +${value}`);
+      return value;
+    })
+      .then(({ result }) => setInc((p) => ({ ...p, [id]: result })))
+      .finally(() => setRolling(false));
+  }
 
   const oldScores = character.definition.coreScores;
   const newScores: Record<string, number> = Object.fromEntries(
@@ -80,7 +97,7 @@ export function LevelUpCeremony({
                       <span className={s.inc}>(+{inc[id]})</span>
                     </span>
                   ) : active ? (
-                    <Button size="sm" onClick={() => setInc((p) => ({ ...p, [id]: rollDice(die).total }))}>
+                    <Button size="sm" disabled={rolling} onClick={() => rollIncrease(id, st?.name ?? id)}>
                       Roll {die}
                     </Button>
                   ) : (

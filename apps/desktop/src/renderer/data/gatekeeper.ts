@@ -15,9 +15,14 @@
  *    for this game; the game's "which character is mine" index for themselves
  *  - their own character token: position, conditions, size; create it once
  *  - the shared party token: position and the drag lock
- *  - chat messages and dice-log entries they send (new entries only)
+ *  - chat messages and dice-log entries they send (new entries only). Dice results
+ *    must be the GM-issued numbers (diceLedger.ts) to count as rolled; a line with
+ *    no dice is allowed but isn't shown as a checked roll
+ *  - their own character's numbers only within the rules: levels the GM granted
+ *    (or XP / a pending level-up allows), stat increases within the level's dice,
+ *    HP and other pools no higher than their maximum, no XP of their own making
  *  - shapes they draw (not GM-hidden ones), and removing their own shapes
- *  - initiative: rolling themselves in, and ending their own turn
+ *  - initiative: rolling themselves in (with a checked d20), and ending their own turn
  * Everything else (maps, fog, monsters, settings, members, other characters, the
  * GM's library) is GM-only.
  *
@@ -28,6 +33,15 @@
  *  - from the GM's library: player options, campaign rules, equipment, creature art
  *    (not monsters, saved creatures' stats, or notes)
  */
+
+import { computeDerived, dieForLevel, parseDice } from '@epoch/engine';
+import type { Character, SystemDefinition } from '@epoch/shared-types';
+import { getSystem, isClassAndLevel } from '@epoch/systems/registry';
+import { pcDerived } from '@epoch/systems/dnd5e/character';
+import { levelForXp } from '@epoch/systems/dnd5e/xp';
+import type { ProofVerdict } from './diceLedger';
+import { withHomebrewOptions } from './homebrew';
+import { initiativeModifier } from './initiativeModifier';
 
 export type SyncWrite = { t: 'write'; path: string; value: unknown };
 export type SyncUpdate = { t: 'update'; path: string; partial: Record<string, unknown> };
@@ -41,9 +55,12 @@ export interface GateContext {
   gmUid: string;
   /** Read the GM's current data. */
   read(path: string): Promise<unknown>;
+  /** The GM's record of dice numbers handed to players (absent: dice aren't checked). */
+  dice?: { verify(uid: string, proof: unknown): ProofVerdict };
 }
 
-export type Verdict = { ok: true } | { ok: false; reason: string };
+/** `followUps`: extra changes the GM's copy makes after applying an allowed one. */
+export type Verdict = { ok: true; followUps?: Record<string, unknown> } | { ok: false; reason: string };
 
 /** Largest change a player may send in one go (images travel separately). */
 export const MAX_PLAYER_OP_BYTES = 256 * 1024;
@@ -102,6 +119,29 @@ function overlayReader(ctx: GateContext, assignments: Array<[string, unknown]>) 
   };
 }
 
+/** `base` (the value at `prefix`) with this op's assignments under `prefix` applied. */
+function withAssignments(base: unknown, prefix: string, assignments: Array<[string, unknown]>): unknown {
+  let root: unknown = base === null || base === undefined ? null : JSON.parse(JSON.stringify(base));
+  for (const [path, value] of assignments) {
+    if (path === prefix) {
+      root = value === null ? null : JSON.parse(JSON.stringify(value));
+      continue;
+    }
+    if (!path.startsWith(`${prefix}/`)) continue;
+    const segs = path.slice(prefix.length + 1).split('/');
+    if (!isObj(root)) root = {};
+    let node = root as Obj;
+    for (let i = 0; i < segs.length - 1; i++) {
+      if (!isObj(node[segs[i]])) node[segs[i]] = {};
+      node = node[segs[i]] as Obj;
+    }
+    const last = segs[segs.length - 1];
+    if (value === null) delete node[last];
+    else node[last] = JSON.parse(JSON.stringify(value));
+  }
+  return root;
+}
+
 export async function checkPlayerOp(op: WriteOp, uid: string, ctx: GateContext): Promise<Verdict> {
   if (!op || !['write', 'update', 'multi'].includes((op as { t?: string }).t ?? '')) {
     return deny('unknown change');
@@ -117,11 +157,24 @@ export async function checkPlayerOp(op: WriteOp, uid: string, ctx: GateContext):
   const assignments = assignmentsOf(op);
   if (assignments.length === 0 || assignments.length > 200) return deny('bad change size');
   const read = overlayReader(ctx, assignments);
+  const followUps: Record<string, unknown> = {};
+  const characters = new Set<string>();
   for (const [path, value] of assignments) {
-    const verdict = await checkAssignment(split(path), value, uid, ctx, read, assignments);
+    const seg = split(path);
+    if (seg[0] === 'characters' && seg[1]) characters.add(seg[1]);
+    const verdict = await checkAssignment(seg, value, uid, ctx, read, assignments);
     if (!verdict.ok) return { ok: false, reason: `${path}: ${verdict.reason}` };
+    Object.assign(followUps, verdict.followUps);
   }
-  return OK;
+  // Characters are judged as a whole: before vs after this change.
+  for (const id of characters) {
+    const before = await ctx.read(`characters/${id}`);
+    const after = withAssignments(before, `characters/${id}`, assignments);
+    if (!isObj(after)) continue;
+    const verdict = await checkCharacterNumbers(isObj(before) ? before : null, after, ctx);
+    if (!verdict.ok) return { ok: false, reason: `characters/${id}: ${verdict.reason}` };
+  }
+  return Object.keys(followUps).length ? { ok: true, followUps } : OK;
 }
 
 async function checkAssignment(
@@ -168,7 +221,7 @@ async function checkAssignment(
 }
 
 /** Fields a player can never change on their own character. */
-const CHARACTER_FIXED = new Set(['id', 'ownerUserId', 'gameId']);
+const CHARACTER_FIXED = new Set(['id', 'ownerUserId', 'gameId', 'systemId']);
 
 async function checkCharacter(seg: string[], value: unknown, uid: string, ctx: GateContext): Promise<Verdict> {
   const [, id, field] = seg;
@@ -191,6 +244,181 @@ async function checkCharacter(seg: string[], value: unknown, uid: string, ctx: G
   if (!isObj(existing) || existing.ownerUserId !== uid) return deny('not your character');
   if (existing.gameId !== ctx.gameId) return deny('character belongs to another game');
   if (CHARACTER_FIXED.has(field)) return deny(`${field} cannot be changed`);
+  return OK;
+}
+
+// ---------------------------------------------------------------------------
+// A player's own character: the numbers
+// ---------------------------------------------------------------------------
+
+const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+const playOf = (c: Obj | null): Obj => (c && isObj(c.play) ? c.play : {});
+const scoresOf = (c: Obj | null): Record<string, number> => {
+  const d = c && isObj(c.definition) ? c.definition : {};
+  const s = isObj(d.coreScores) ? d.coreScores : {};
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(s)) out[k] = typeof v === 'number' ? v : NaN;
+  return out;
+};
+/** Highest total a dice expression like "2d4" or "d6+1" can roll. */
+const diceMax = (notation: string | undefined): number | null => {
+  const p = notation ? parseDice(notation) : null;
+  return p ? p.count * p.sides + p.modifier : null;
+};
+const diceMin = (notation: string | undefined): number | null => {
+  const p = notation ? parseDice(notation) : null;
+  return p ? p.count + p.modifier : null;
+};
+
+/** The game's rules with the GM's homebrew folded in (as the sheet sees them). */
+async function systemFor(character: Obj, ctx: GateContext): Promise<SystemDefinition | undefined> {
+  const base = typeof character.systemId === 'string' ? getSystem(character.systemId) : undefined;
+  if (!base) return undefined;
+  const library = await ctx.read(`users/${ctx.gmUid}/library`);
+  const playerOptions = isObj(library) ? (library.playerOptions as Parameters<typeof withHomebrewOptions>[1]) : undefined;
+  return withHomebrewOptions(base, playerOptions);
+}
+
+/** Highest value each resource pool (HP, Arcana, Luck…) can hold for this character. */
+function poolMaxima(system: SystemDefinition, character: Obj): Record<string, number> {
+  try {
+    if (isClassAndLevel(system)) {
+      // pcDerived counts the average hit die per level; campaigns that use max or
+      // rolled HP can go higher, so allow up to a full hit die every level.
+      const d = pcDerived(system, character as unknown as Character);
+      const cls = system.classes?.find((c) => c.id === (character.definition as Obj | undefined)?.classId);
+      const size = Number(String(cls?.hitDie ?? '').replace(/^\D*/, '')) || 0;
+      const level = num(playOf(character).level) ?? 1;
+      const avg = Math.floor(size / 2) + 1;
+      return { hp: d.maxHp + Math.max(0, level - 1) * Math.max(0, size - avg) };
+    }
+    const play = playOf(character);
+    const armor = system.equipment.armor.find((a) => a.id === play.equippedArmorId);
+    const equip = armor ? { armor: { dr: armor.dr, speedPenalty: armor.speedPenalty } } : undefined;
+    const out: Record<string, number> = {};
+    for (const d of computeDerived(system, scoresOf(character), equip)) {
+      if (d.resourcePool && typeof d.value === 'number') out[d.id] = d.value;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * The numbers on a player's own character. Honest play is untouched; what's blocked
+ * is a modified app granting itself levels, stats, XP or HP. Lowering a pool
+ * (damage, spending) is always fine; raising it can't pass its maximum.
+ */
+async function checkCharacterNumbers(before: Obj | null, after: Obj, ctx: GateContext): Promise<Verdict> {
+  const system = await systemFor(after, ctx);
+  if (!system) return OK; // rules unknown here: nothing to measure against
+  const game = await ctx.read(`games/${ctx.gameId}`);
+  const g = isObj(game) ? game : {};
+  const levelGrant = num(g.levelGrant) ?? 1;
+  const startingLevel = num(g.startingLevel) ?? 1;
+  const fiveE = isClassAndLevel(system);
+  const pb = playOf(before);
+  const pa = playOf(after);
+
+  // --- Level ---
+  const levelA = pa.level;
+  if (typeof levelA !== 'number' || !Number.isInteger(levelA) || levelA < 1 || levelA > 20) return deny('bad level');
+  const building = !before || before.buildComplete !== true;
+  const levelB = num(pb.level) ?? 1;
+  const xpB = num(pb.xp) ?? 0;
+  const allowedLevel = Math.max(levelGrant, startingLevel, fiveE ? levelForXp(xpB) : 1);
+  let leveledUp = false;
+  if (!before) {
+    if (levelA > Math.max(levelGrant, startingLevel)) return deny('that level was not granted');
+  } else if (levelA !== levelB) {
+    if (levelA !== levelB + 1) return deny('levels go up one at a time');
+    if (levelA > allowedLevel && pb.levelUpPending !== true) return deny('that level was not granted');
+    leveledUp = true;
+  }
+
+  // --- XP: the GM's to award ---
+  if (before && (num(pa.xp) ?? 0) !== xpB) return deny('only the GM awards XP');
+  if (!before && (num(pa.xp) ?? 0) !== 0) return deny('only the GM awards XP');
+
+  // --- Pending level-up: the GM grants it; a player may only clear it, or re-arm it while
+  //     catching up to the game's starting level ---
+  if (pa.levelUpPending === true && pb.levelUpPending !== true && levelA >= startingLevel) {
+    return deny('only the GM grants a level-up');
+  }
+
+  // --- Core scores ---
+  const sa = scoresOf(after);
+  const sb = scoresOf(before);
+  const ids = new Set([...Object.keys(sa), ...Object.keys(sb)]);
+  if ([...ids].some((k) => !Number.isFinite(sa[k] ?? NaN) && k in sa)) return deny('bad scores');
+  if (building) {
+    // Stored scores already include the race's bonuses (fixed ones, plus any flexible
+    // bonus the player could have put on this stat).
+    const def = isObj(after.definition) ? after.definition : {};
+    const ancestry = system.ancestries.find((a) => a.id === def.ancestryId);
+    const raceRange = (statId: string): [number, number] => {
+      let lo = 0;
+      let hi = 0;
+      for (const b of ancestry?.bonuses ?? []) {
+        if (b.kind === 'fixed') {
+          if (b.stat === statId) {
+            lo += Math.min(0, b.amount);
+            hi += Math.max(0, b.amount);
+          }
+        } else {
+          hi += Math.max(0, b.amount);
+        }
+      }
+      return [lo, hi];
+    };
+    for (const stat of system.coreStats) {
+      const v = sa[stat.id];
+      if (v === undefined) continue;
+      if (fiveE) {
+        if (v < 1 || v > 20) return deny(`${stat.id} is out of range`);
+      } else {
+        const max = diceMax(stat.roll);
+        const min = diceMin(stat.roll);
+        const [lo, hi] = raceRange(stat.id);
+        if (max !== null && min !== null && (v < min + lo || v > max + hi)) return deny(`${stat.id} is out of range`);
+      }
+    }
+  } else if (leveledUp) {
+    let total = 0;
+    const stepMax = fiveE ? 2 : diceMax(dieForLevel(levelA, system.modes.progression)) ?? 0;
+    for (const k of ids) {
+      const inc = (sa[k] ?? 0) - (sb[k] ?? 0);
+      if (inc < 0) return deny('scores never go down');
+      if (inc > stepMax) return deny(`${k} rose more than a level allows`);
+      if (fiveE && (sa[k] ?? 0) > 20) return deny(`${k} is above 20`);
+      total += inc;
+    }
+    if (fiveE && total > 2) return deny('a level grants at most +2 to scores');
+  } else if (JSON.stringify(sa) !== JSON.stringify(sb)) {
+    return deny('scores are locked once the character is built');
+  }
+
+  // --- Skill points (Solryn): only a level-up hands out more ---
+  if (!fiveE && before) {
+    const ua = num(pa.unspentSkillPoints) ?? 0;
+    const ub = num(pb.unspentSkillPoints) ?? 0;
+    const perLevel = system.modes.progression.skillPointsPerLevel ?? 2;
+    if (ua > ub + (leveledUp ? perLevel : 0)) return deny('skill points come from levels');
+  }
+
+  // --- Pools (HP etc.): never above the maximum ---
+  const maxima = poolMaxima(system, after);
+  const poolsA = isObj(pa.pools) ? pa.pools : {};
+  const poolsB = isObj(pb.pools) ? pb.pools : {};
+  for (const [id, pool] of Object.entries(poolsA)) {
+    const cur = isObj(pool) ? pool.current : undefined;
+    if (cur === undefined || cur === null) continue;
+    if (typeof cur !== 'number' || !Number.isFinite(cur)) return deny(`bad ${id}`);
+    const was = isObj(poolsB[id]) ? num((poolsB[id] as Obj).current) : undefined;
+    const max = maxima[id];
+    if (max !== undefined && cur > max && (was === undefined || cur > was)) return deny(`${id} can't go above ${max}`);
+  }
   return OK;
 }
 
@@ -248,13 +476,23 @@ async function checkChat(id: string, value: unknown, uid: string, ctx: GateConte
   return OK;
 }
 
+const ROLL_FIELDS = new Set(['id', 'text', 'at', 'byUid', 'by', 'rngId', 'dice']);
+
 async function checkRoll(id: string, value: unknown, uid: string, ctx: GateContext): Promise<Verdict> {
   const existing = await ctx.read(`games/${ctx.gameId}/rollLog/${id}`);
   if (existing !== null && existing !== undefined) return deny('rolls cannot be changed');
   if (!isObj(value)) return deny('rolls cannot be removed by players');
   if (value.byUid !== uid) return deny('you can only roll as yourself');
   if (value.id !== id || !isStr(value.text, 1000) || !isStr(value.by, 64)) return deny('bad roll');
-  return OK;
+  if (Object.keys(value).some((k) => !ROLL_FIELDS.has(k))) return deny('bad roll');
+  if (value.dice === undefined && value.rngId === undefined) return OK; // a plain line, not a checked roll
+  // Claimed dice must be the numbers the GM handed out.
+  if (!ctx.dice) return deny('dice cannot be checked');
+  const verdict = ctx.dice.verify(uid, { rngId: value.rngId, dice: value.dice });
+  if (!verdict.ok) return deny(verdict.reason);
+  return verdict.skipped > 0
+    ? { ok: true, followUps: { [`/games/${ctx.gameId}/rollLog/${id}/skipped`]: verdict.skipped } }
+    : OK;
 }
 
 async function checkShape(id: string, value: unknown, uid: string, ctx: GateContext): Promise<Verdict> {
@@ -273,6 +511,9 @@ interface CombatantLike {
   kind?: string;
   ownerUserId?: string;
   initiative?: unknown;
+  tieBreak?: unknown;
+  /** The checked d20 behind a player's initiative. */
+  roll?: { rngId?: unknown; dice?: unknown };
 }
 interface InitiativeLike {
   active: boolean;
@@ -309,6 +550,24 @@ async function checkInitiative(value: unknown, uid: string, ctx: GateContext): P
     const me = added[0];
     if (me.kind !== 'character' || me.ownerUserId !== uid) return deny('you can only add yourself');
     if (typeof me.initiative !== 'number' || !Number.isFinite(me.initiative)) return deny('bad initiative');
+    if (ctx.dice) {
+      // initiative = a checked d20 + the character's modifier (a sane one).
+      const dice = me.roll?.dice;
+      const tie = me.tieBreak;
+      if (!Array.isArray(dice) || dice.length !== 1 || (dice[0] as { s?: unknown })?.s !== 20) {
+        return deny('initiative needs a d20 roll');
+      }
+      if (typeof tie !== 'number' || !Number.isInteger(tie)) return deny('bad initiative modifier');
+      const ch = await ctx.read(`characters/${(me as { characterId?: unknown }).characterId}`);
+      if (!isObj(ch) || ch.ownerUserId !== uid) return deny('that character is not yours');
+      const system = await systemFor(ch, ctx);
+      if (system && tie !== initiativeModifier(system, ch as unknown as Character)) {
+        return deny("that isn't your character's initiative modifier");
+      }
+      if (me.initiative !== (dice[0] as { f: number }).f + tie) return deny("initiative doesn't match the roll");
+      const verdict = ctx.dice.verify(uid, { rngId: me.roll?.rngId, dice });
+      if (!verdict.ok) return deny(verdict.reason);
+    }
     if (after.round !== before.round) return deny('joining combat does not change the round');
     const currentId = before.order[before.turnIndex]?.id;
     if (currentId !== undefined && after.order[after.turnIndex]?.id !== currentId) {

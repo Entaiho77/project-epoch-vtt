@@ -1,0 +1,18 @@
+.checked {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--text-xs);
+  color: var(--accent-teal);
+  font-variant-numeric: tabular-nums;
+}
+.skipped {
+  color: var(--accent-amber);
+  font-weight: 600;
+}
+.unchecked {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--accent-amber);
+}

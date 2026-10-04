@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useMemo, type ReactNode } from 'react';
 import { clearRollLog, postRollEntry, trimRollLog, type RollEntry } from '../../data/rollLog';
+import { takeProof } from '../../data/secureDice';
 import s from '../board/drawers/drawers.module.css';
+import r from './RollLog.module.css';
 
 // `describeRoll` now lives in the engine (so the combat resolver can produce it); re-exported
 // here for back-compat with existing importers.
@@ -54,7 +56,17 @@ export function RollLogProvider({
   const postRoll = useCallback(
     (text: string) => {
       // Only the GM trims old entries (players can't delete rolls during a session).
-      void postRollEntry(gameId, { text, at: Date.now(), byUid: uid, by: byName }).then(() =>
+      // Rolled inside secureRoll: attach the dice so the GM's computer can check them.
+      const proof = takeProof();
+      const entry = {
+        text,
+        at: Date.now(),
+        byUid: uid,
+        by: byName,
+        ...(proof ? { dice: proof.dice } : {}),
+        ...(proof?.rngId ? { rngId: proof.rngId } : {}),
+      };
+      void postRollEntry(gameId, entry).then(() =>
         canClear ? trimRollLog(gameId, log) : undefined,
       );
     },
@@ -102,6 +114,7 @@ export function RollLog() {
           >
             {e.by ? <strong>{e.by} — </strong> : null}
             {e.text}
+            <RollCheck entry={e} />
           </div>
         ))}
       </div>
@@ -112,4 +125,38 @@ export function RollLog() {
       )}
     </div>
   );
+}
+
+/** Entries from before checked dice existed aren't flagged. */
+const CHECKED_DICE_SINCE = Date.UTC(2026, 9, 4, 12, 0);
+/** Text that reads like a dice result ("2d6+3", "= 14", "d20 17"). */
+const LOOKS_LIKE_A_ROLL = /\b\d*d\d+\b|=\s*-?\d+/i;
+
+/** ✓ with the dice for rolls made by the app; a warning for roll-like text without dice. */
+function RollCheck({ entry }: { entry: RollEntry }) {
+  if (entry.dice?.length) {
+    const faces = entry.dice.map((d) => `d${d.s} ${d.f}`).join(' · ');
+    const title = entry.rngId
+      ? "Rolled with dice from the GM's computer and checked there"
+      : 'Rolled by the app';
+    return (
+      <span className={r.checked} title={title}>
+        <span aria-hidden>✓</span> {faces}
+        {entry.skipped ? (
+          <span className={r.skipped}>
+            {' '}
+            · {entry.skipped} earlier roll{entry.skipped === 1 ? '' : 's'} not shown
+          </span>
+        ) : null}
+      </span>
+    );
+  }
+  if (entry.at >= CHECKED_DICE_SINCE && LOOKS_LIKE_A_ROLL.test(entry.text)) {
+    return (
+      <span className={r.unchecked} title="This line has no dice behind it — it was typed, not rolled by the app">
+        not a checked roll
+      </span>
+    );
+  }
+  return null;
 }

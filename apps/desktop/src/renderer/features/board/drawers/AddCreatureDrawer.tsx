@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { SystemDefinition } from '@epoch/shared-types';
 import type { MapDef, Token } from '@epoch/shared-types';
@@ -10,7 +10,7 @@ import {
   useMyCreatures,
 } from '../../../data/creatures';
 import { homebrewToBestiaryEntry, type HomebrewMonster } from '../../../data/homebrew';
-import { firstFreeCell, gridDimensions, sizeToSquares } from '../boardGeometry';
+import { firstFreeCell, gridDimensions, sizeToSquares, takenSquares } from '../boardGeometry';
 import { Button } from '../../../components/ui/Button';
 import { TokenArtUpload } from '../../../components/ui/TokenArtUpload';
 import s from './drawers.module.css';
@@ -94,16 +94,24 @@ export function AddCreatureDrawer({
   const grid = activeMap ? gridDimensions(activeMap.width, activeMap.height, activeMap.gridSize) : null;
   const center = grid ? { col: Math.floor(grid.cols / 2), row: Math.floor(grid.rows / 2) } : null;
 
+  const recentlyPlaced = useRef(new Set<string>());
+
   function place(token: Omit<Token, 'id' | 'mapId' | 'col' | 'row'>) {
     if (!activeMap || !grid || !center) return;
     // Drop onto the nearest free cell to centre so multiple creatures don't pile up on
     // one square (which would hide all but the topmost). Click-cycling is the safety net
     // if a rapid burst places faster than tokens sync back.
-    const occupied = new Set(
-      tokens.filter((t) => t.mapId === activeMap!.id).map((t) => `${t.col},${t.row}`),
-    );
-    const cell = firstFreeCell(occupied, center.col, center.row, grid.cols, grid.rows);
-    void addToken(gameId, { ...token, mapId: activeMap!.id, col: cell.col, row: cell.row });
+    const occupied = takenSquares(tokens, activeMap.id);
+    // Squares just placed on, which may not have synced back into `tokens` yet.
+    for (const c of recentlyPlaced.current) occupied.add(c);
+    const size = token.size ?? 1;
+    const cell = firstFreeCell(occupied, center.col, center.row, grid.cols, grid.rows, size);
+    for (let dc = 0; dc < size; dc++) for (let dr = 0; dr < size; dr++) {
+      const key = `${cell.col + dc},${cell.row + dr}`;
+      recentlyPlaced.current.add(key);
+      setTimeout(() => recentlyPlaced.current.delete(key), 3000);
+    }
+    void addToken(gameId, { ...token, mapId: activeMap.id, col: cell.col, row: cell.row });
   }
 
   function placeStatBlock(

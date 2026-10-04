@@ -117,10 +117,11 @@ describe('Character Creation Integration', () => {
         });
       }
 
-      // Step plan should not include spells for non-caster
+      // The spell step is still there (so the count is stable), but needs no picks.
       const plan = buildStepPlan(system, draft);
-      const hasSpellStep = plan.some((s) => s.kind === 'spells');
-      expect(hasSpellStep).toBe(false);
+      const spellStep = plan.find((s) => s.kind === 'spells')!;
+      expect(spellStep).toBeDefined();
+      expect(canAdvanceStep(system, draft, spellStep, 0)).toBe(true);
     });
   });
 

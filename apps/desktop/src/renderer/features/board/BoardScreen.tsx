@@ -16,7 +16,7 @@ import {
 import { addShape } from '../../data/shapes';
 import { useCreatureArt, useMyCreatures } from '../../data/creatures';
 import { useGameCharacterArt } from '../../data/characters';
-import { gridDimensions } from './boardGeometry';
+import { firstFreeCell, gridDimensions, takenSquares } from './boardGeometry';
 import { isPartyScale } from './partyMode';
 import { BoardShell, type BarItem } from './BoardShell';
 import { BoardCanvas, type BoardTool, type ShapeDraft } from './BoardCanvas';
@@ -152,15 +152,15 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
     }
     if (attempted.current.has(key)) return;
     attempted.current.add(key);
-    const count = tokens.filter(
-      (t) => t.kind === 'character' && t.mapId === activeMap.id,
-    ).length;
+    // First free square along the top-left, skipping anything already standing there.
+    const { cols, rows } = gridDimensions(activeMap.width, activeMap.height, activeMap.gridSize);
+    const spot = firstFreeCell(takenSquares(tokens, activeMap.id), 0, 0, cols, rows);
     void addToken(gameId, {
       mapId: activeMap.id,
       kind: 'character',
       name: character.name,
-      col: count,
-      row: 0,
+      col: spot.col,
+      row: spot.row,
       color: '#5dcaa5',
       visible: true,
       ownerUserId: uid,
@@ -191,12 +191,14 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
     if (parties.length === 1 || partyAttempted.current.has(activeMap.id)) return;
     partyAttempted.current.add(activeMap.id);
     const { cols, rows } = gridDimensions(activeMap.width, activeMap.height, activeMap.gridSize);
+    const all = Object.values(game.tokens ?? {});
+    const spot = firstFreeCell(takenSquares(all, activeMap.id), Math.floor(cols / 2), Math.floor(rows / 2), cols, rows);
     void addToken(gameId, {
       mapId: activeMap.id,
       kind: 'party',
       name: 'Party',
-      col: Math.floor(cols / 2),
-      row: Math.floor(rows / 2),
+      col: spot.col,
+      row: spot.row,
       color: '#e9c46a',
       visible: true,
     });

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { rollDice } from '@epoch/engine';
+import { parseDice, rollDice } from '@epoch/engine';
+import { secureRoll } from '../../../data/secureDice';
 import { Button } from '../../../components/ui/Button';
 import { RollLog, useRollLog } from '../../rolllog/rollLog';
 import s from './drawers.module.css';
@@ -11,14 +12,17 @@ export function DiceDrawer() {
   const { postRoll } = useRollLog();
 
   function roll(notation: string) {
-    try {
+    const parsed = parseDice(notation);
+    if (!parsed || parsed.count > 100 || parsed.sides > 1000) {
+      postRoll(`"${notation}" is not valid dice notation`);
+      return;
+    }
+    setCustom('');
+    void secureRoll(() => {
       const r = rollDice(notation);
       const mod = r.modifier ? (r.modifier > 0 ? `+${r.modifier}` : `${r.modifier}`) : '';
       postRoll(`${notation}: ${r.rolls.join('+')}${mod} = ${r.total}`);
-      setCustom('');
-    } catch {
-      postRoll(`"${notation}" is not valid dice notation`);
-    }
+    });
   }
 
   return (

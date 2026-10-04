@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StepFrame } from '../StepFrame';
 import type { StepProps } from '../stepTypes';
 import { spellAccess } from '../builderModel';
@@ -9,6 +9,11 @@ export function SpellsStep({ system, draft, dispatch, nav }: StepProps) {
   const access = spellAccess(system, draft);
   const chosenCount = draft.knownSpellIds.length;
   const full = chosenCount >= access.knownCount;
+
+  // Went back and changed race so this character no longer casts: drop earlier picks.
+  useEffect(() => {
+    if (!access.isCaster) for (const id of draft.knownSpellIds) dispatch({ type: 'toggleSpell', spellId: id });
+  }, [access.isCaster]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const q = query.trim().toLowerCase();
   const list = system.spells.filter(
@@ -38,6 +43,28 @@ export function SpellsStep({ system, draft, dispatch, nav }: StepProps) {
       </p>
     </>
   );
+
+  if (!access.isCaster) {
+    const rule = system.creation.spellAccess;
+    const stat = system.coreStats.find((c) => c.id === rule.modStatId);
+    return (
+      <StepFrame
+        {...nav}
+        teaching={
+          <p className={s.teachText}>
+            Casting needs a {stat?.name ?? rule.modStatId} modifier of at least{' '}
+            <strong>{rule.casterThreshold}</strong>
+            {rule.grantedByAncestry.length > 0 ? ', or a race that grants magic' : ''}.
+          </p>
+        }
+      >
+        <p className={s.teachText}>
+          Your rolls don’t reach that, so this character starts without spells. Nothing to pick
+          here — carry on.
+        </p>
+      </StepFrame>
+    );
+  }
 
   return (
     <StepFrame {...nav} teaching={teaching}>

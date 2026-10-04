@@ -19,6 +19,12 @@ export interface RollEntry {
   /** Roller's uid + display name (attribution prefix in the shared log). */
   byUid: string;
   by: string;
+  /** The dice behind this entry, in order (sides + face). Present = rolled by the app. */
+  dice?: { s: number; f: number }[];
+  /** Set when a player's dice came from the GM's computer and were checked there. */
+  rngId?: string;
+  /** Added by the GM's computer: earlier rolls this player made but never showed. */
+  skipped?: number;
 }
 
 /** How per-level HP is granted on level-up (campaign rule). */
@@ -125,6 +131,8 @@ export interface Combatant {
   tokenId?: string;
   ownerUserId?: string;
   characterId?: string;
+  /** A player's initiative d20, rolled with the GM's numbers so the GM can check it. */
+  roll?: { rngId: string; dice: { s: number; f: number }[] };
 }
 
 export interface InitiativeState {

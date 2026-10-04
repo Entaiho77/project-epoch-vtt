@@ -235,11 +235,14 @@ export function buildStepPlan(
     });
   }
 
-  if (spellAccess(system, draft).isCaster) {
+  // Always present when the system has spells, so "Step N of M" doesn't jump when the
+  // rolls or race decide whether this character casts. Non-casters see why, then move on.
+  if (system.spells.length > 0) {
+    const caster = spellAccess(system, draft).isCaster;
     steps.push({
       kind: 'spells',
       title: 'Spells',
-      instruction: 'Choose the spells you know.',
+      instruction: caster ? 'Choose the spells you know.' : 'Your character doesn\u2019t cast spells yet.',
     });
   }
 

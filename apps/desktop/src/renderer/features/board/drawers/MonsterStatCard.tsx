@@ -12,6 +12,7 @@ import { ResourceTracker } from '../../sheet/ResourceTracker';
 import { LootDistributionModal } from './LootDistributionModal';
 import { useRollLog } from '../../rolllog/rollLog';
 import s from './drawers.module.css';
+import { secureRoll } from '../../../data/secureDice';
 
 const statRow: React.CSSProperties = {
   display: 'flex',
@@ -148,7 +149,10 @@ export function MonsterStatCard({
   // Resolve against the clicked target's AC when one is set (and it isn't this creature's own
   // token — a creature never attacks itself); otherwise fall back to the typed Target AC.
   const usingTarget = rollToHit && target != null && typeof target.ac === 'number' && target.id !== token?.id;
-  const post = (label: string, diceExpr: string, type?: string, attackBonus?: number) => {
+  // Monster rolls go through secureRoll too, so the log shows the dice behind them (✓).
+  const post = (label: string, diceExpr: string, type?: string, attackBonus?: number) =>
+    void secureRoll(() => postNow(label, diceExpr, type, attackBonus));
+  const postNow = (label: string, diceExpr: string, type?: string, attackBonus?: number) => {
     if (isSolryn) {
       // Auto-hit; subtract the target's DR. Stunned/Paralyzed/Unconscious targets → ignore DR + crit.
       const drTargeted = target != null && typeof target.dr === 'number' && target.id !== token?.id;
@@ -181,7 +185,9 @@ export function MonsterStatCard({
   // Abilities roll plain damage (never the attack resolver). If the ability forces a save,
   // annotate the line: half-on-success shows the halved number, so the GM applies the right
   // amount once the target rolls its save (in the save panel).
-  const postAbility = (label: string, diceExpr: string, sv?: CreatureSave) => {
+  const postAbility = (label: string, diceExpr: string, sv?: CreatureSave) =>
+    void secureRoll(() => postAbilityNow(label, diceExpr, sv));
+  const postAbilityNow = (label: string, diceExpr: string, sv?: CreatureSave) => {
     const r = rollDice(diceExpr);
     let line = describeRoll(`${entry.name} — ${label}`, r);
     if (sv) {
@@ -190,7 +196,8 @@ export function MonsterStatCard({
     }
     postRoll(line);
   };
-  const postCheck = () => {
+  const postCheck = () => void secureRoll(postCheckNow);
+  const postCheckNow = () => {
     const modifier = abilityMod(st, saveAbility, system.modifierRule, checkMode);
     const label = `${entry.name} — ${saveAbility.toUpperCase()} ${checkMode}`;
     postRoll(resolveCheck({ label, modifier, dc: saveDc, advantage }).logText);

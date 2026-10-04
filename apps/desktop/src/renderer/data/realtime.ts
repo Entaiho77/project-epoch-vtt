@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ensureAssets, handleAssetOp, initAssetSync, isAssetOp } from './assetSync';
+import { DiceLedger, decodeValues, encodeValues } from './diceLedger';
+import { setGmDiceSource } from './secureDice';
 import {
   checkPlayerOp,
   isPrivatePath,
@@ -278,7 +280,9 @@ type SyncOp =
   | WriteOp
   | { t: 'read'; path: string; reqId: string }
   | { t: 'readres'; path: string; reqId: string; value: unknown }
-  | { t: 'session'; gameId: string; snapshot: Record<string, unknown> };
+  | { t: 'session'; gameId: string; snapshot: Record<string, unknown> }
+  | { t: 'rng'; reqId: string }
+  | { t: 'rngres'; reqId: string; rngId: string; data: string };
 
 interface RelayServerMessage {
   type: string;
@@ -344,11 +348,15 @@ async function applyOp(op: WriteOp): Promise<void> {
 
 // --- GM side ------------------------------------------------------------------
 
+/** GM: the random numbers handed to players for dice, so their rolls can be checked. */
+const diceLedger = new DiceLedger();
+
 function gateContext(): GateContext {
   return {
     gameId: session.gameId ?? '',
     gmUid: hostUid ?? '',
     read: (path) => window.db.read(path),
+    dice: diceLedger,
   };
 }
 
@@ -432,6 +440,8 @@ async function handlePlayerChange(playerId: string, op: WriteOp): Promise<void> 
   }
   await applyOp(op);
   await fanOut(touchedPaths(op));
+  // Notes the GM's copy adds on top (e.g. "1 earlier roll not shown").
+  if (verdict.followUps && Object.keys(verdict.followUps).length) await multiUpdate(verdict.followUps);
   void ensureAssets(op); // e.g. a player's new character art
   if (touchedPaths(op).some((p) => p.startsWith(`games/${ctx.gameId}/rollLog/`))) {
     await trimRollLog(ctx.gameId);
@@ -542,6 +552,29 @@ function requestRead(path: string): Promise<unknown> {
   });
 }
 
+// Pending player→GM requests for dice numbers.
+const pendingRng = new Map<string, (r: { rngId: string; values: Uint32Array } | null) => void>();
+
+/**
+ * Player in a live session: dice numbers come from the GM's computer, so the GM can
+ * check the rolls. If the GM can't be reached, the roll happens here and is shown
+ * without the "checked" mark.
+ */
+setGmDiceSource(() => {
+  if (session.role !== 'player' || session.status !== 'open') return Promise.resolve(null);
+  const reqId = `d${++readSeq}-${Math.random().toString(36).slice(2, 8)}`;
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      if (pendingRng.delete(reqId)) resolve('unavailable');
+    }, 4000);
+    pendingRng.set(reqId, (r) => {
+      clearTimeout(timer);
+      resolve(r ?? 'unavailable');
+    });
+    sendToGm({ t: 'rng', reqId });
+  });
+});
+
 /** Player: store data from the GM. Objects merge, so data from other games stays. */
 async function storeFromGm(path: string, value: unknown): Promise<void> {
   if (value === null || value === undefined || isPrivatePath(path)) return;
@@ -604,6 +637,12 @@ async function handleRelayMessage(msg: RelayServerMessage): Promise<void> {
           if (!isPrivatePath(op.path)) await answerRead(from, op.path, op.reqId);
           return;
         }
+        if (op.t === 'rng') {
+          if (typeof op.reqId !== 'string' || !session.players.some((pl) => pl.playerId === from)) return;
+          const { rngId, values } = diceLedger.issue(from);
+          sendTo(from, { t: 'rngres', reqId: op.reqId.slice(0, 64), rngId, data: encodeValues(values) });
+          return;
+        }
         if (isWriteOp(op)) await handlePlayerChange(from, op);
         return;
       }
@@ -617,6 +656,12 @@ async function handleRelayMessage(msg: RelayServerMessage): Promise<void> {
           session.error = null;
           session.waitingForApproval = false;
           emitSession();
+          break;
+        }
+        case 'rngres': {
+          const values = decodeValues(op.data);
+          pendingRng.get(op.reqId)?.(values ? { rngId: op.rngId, values } : null);
+          pendingRng.delete(op.reqId);
           break;
         }
         case 'readres': {

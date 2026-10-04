@@ -1,6 +1,5 @@
 import type { SystemDefinition } from '@epoch/shared-types';
 import type { Character, InitiativeState, Role, Token } from '@epoch/shared-types';
-import { computeDerived } from '@epoch/engine';
 import {
   addCombatant,
   endCombat,
@@ -9,6 +8,8 @@ import {
   setTurn,
 } from '../../data/combat';
 import { Button } from '../../components/ui/Button';
+import { initiativeModifier } from '../../data/initiativeModifier';
+import { secureRoll } from '../../data/secureDice';
 import t from './InitiativeTracker.module.css';
 
 /** Width (px) of one combatant slot in the carousel — must match `.slot` in the CSS. */
@@ -54,16 +55,6 @@ function ConditionRing({ colors, size }: { colors: string[]; size: number }) {
   );
 }
 
-function initiativeModifier(system: SystemDefinition, character: Character): number {
-  const armor = system.equipment.armor.find(
-    (a) => a.id === character.play.equippedArmorId,
-  );
-  const equip = armor ? { armor: { dr: armor.dr, speedPenalty: armor.speedPenalty } } : undefined;
-  const roll = computeDerived(system, character.definition.coreScores, equip).find(
-    (d) => d.isRoll,
-  );
-  return roll?.value ?? 0;
-}
 
 export function InitiativeTracker({
   state,
@@ -100,15 +91,20 @@ export function InitiativeTracker({
     const token = Object.values(tokens).find(
       (tk) => tk.characterId === character.id && tk.mapId === activeMapId,
     );
-    void addCombatant(gameId, state, {
-      id: `char:${character.id}`,
-      name: character.name,
-      kind: 'character',
-      characterId: character.id,
-      ownerUserId: uid,
-      ...(token ? { tokenId: token.id } : {}),
-      ...rollInitiative(initiativeModifier(system, character)),
-    });
+    const modifier = initiativeModifier(system, character);
+    // The d20 comes from the GM's computer during a session, so the GM can check it.
+    void secureRoll(() => rollInitiative(modifier)).then(({ result, proof }) =>
+      addCombatant(gameId, state, {
+        id: `char:${character.id}`,
+        name: character.name,
+        kind: 'character',
+        characterId: character.id,
+        ownerUserId: uid,
+        ...(token ? { tokenId: token.id } : {}),
+        ...result,
+        ...(proof.rngId ? { roll: { rngId: proof.rngId, dice: proof.dice } } : {}),
+      }),
+    );
   }
 
   const advance = () => void nextTurn(gameId, state, tokens);

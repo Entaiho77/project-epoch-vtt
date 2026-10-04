@@ -24,11 +24,11 @@ function rolledDraft(arc: number): BuilderDraft {
 }
 
 describe('buildStepPlan (data-driven step count)', () => {
-  it('non-caster gets no spell step', () => {
+  it('non-caster still gets the spell step, so the step count never changes mid-build', () => {
     const plan = buildStepPlan(solrynSystem, rolledDraft(2)); // ARC mod 0
-    expect(plan.some((s) => s.kind === 'spells')).toBe(false);
-    // roll + race + name + 2 info pages + skills + gear = 7
-    expect(plan).toHaveLength(7);
+    expect(plan.some((s) => s.kind === 'spells')).toBe(true);
+    // roll + race + name + 2 info pages + skills + spells + gear = 8, same as a caster
+    expect(plan).toHaveLength(buildStepPlan(solrynSystem, rolledDraft(6)).length);
   });
 
   it('caster gets the spell step (8 total)', () => {

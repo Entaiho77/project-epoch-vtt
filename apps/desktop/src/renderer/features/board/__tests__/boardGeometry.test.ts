@@ -8,6 +8,7 @@ import {
   clampCell,
   cycleSelection,
   firstFreeCell,
+  takenSquares,
   footprintAt,
   gridDimensions,
   gridDistanceSquares,
@@ -222,5 +223,38 @@ describe('clampCell', () => {
   it('keeps a cell within bounds', () => {
     expect(clampCell(-1, 5, 4, 4)).toEqual({ col: 0, row: 3 });
     expect(clampCell(2, 2, 4, 4)).toEqual({ col: 2, row: 2 });
+  });
+});
+
+describe('placing new tokens on free squares', () => {
+  const tok = (id: string, col: number, row: number, size?: number) =>
+    ({ id, mapId: 'm', kind: 'creature', name: id, col, row, ...(size ? { size } : {}) }) as never;
+
+  it('counts every square a big token covers, and only on that map', () => {
+    const occ = takenSquares([tok('ogre', 2, 2, 2), { ...(tok('elsewhere', 0, 0) as object), mapId: 'x' } as never], 'm');
+    expect([...occ].sort()).toEqual(['2,2', '2,3', '3,2', '3,3']);
+  });
+
+  it("doesn't drop a token on any square of a Large creature", () => {
+    const occ = takenSquares([tok('ogre', 2, 2, 2)], 'm');
+    const cell = firstFreeCell(occ, 3, 3, 8, 8);
+    expect(occ.has(`${cell.col},${cell.row}`)).toBe(false);
+  });
+
+  it('a new Large token needs a whole 2×2 block that is empty and on the board', () => {
+    const occ = takenSquares([tok('a', 1, 1)], 'm');
+    const cell = firstFreeCell(occ, 0, 0, 4, 4, 2);
+    for (let dc = 0; dc < 2; dc++) for (let dr = 0; dr < 2; dr++) {
+      expect(occ.has(`${cell.col + dc},${cell.row + dr}`)).toBe(false);
+    }
+    expect(cell.col + 2).toBeLessThanOrEqual(4);
+    expect(cell.row + 2).toBeLessThanOrEqual(4);
+  });
+
+  it('player tokens line up from the top-left, skipping taken squares', () => {
+    const occ = takenSquares([tok('wolf', 0, 0), tok('p1', 1, 0)], 'm');
+    const cell = firstFreeCell(occ, 0, 0, 10, 10);
+    expect(occ.has(`${cell.col},${cell.row}`)).toBe(false);
+    expect(Math.max(cell.col, cell.row)).toBe(1); // the next ring out
   });
 });

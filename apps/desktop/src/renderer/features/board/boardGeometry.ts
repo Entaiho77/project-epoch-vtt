@@ -86,10 +86,25 @@ export function cycleSelection(
 }
 
 /**
- * Nearest unoccupied cell to a start cell, searched in growing Chebyshev rings and
- * clamped to the board. Used when dropping a new creature so several placements don't
- * pile onto one square. Falls back to the start cell if the whole board is full.
- * `occupied` keys are `"col,row"`.
+ * Every square covered by any token on one map (multi-square footprints, traps and all),
+ * as `"col,row"`. For placing NEW tokens so nothing stacks; dragging uses occupiedCells.
+ */
+export function takenSquares(tokens: Token[], mapId: string): Set<string> {
+  const out = new Set<string>();
+  for (const t of tokens) {
+    if (t.mapId !== mapId) continue;
+    const n = t.size ?? 1;
+    for (let dc = 0; dc < n; dc++) for (let dr = 0; dr < n; dr++) out.add(`${t.col + dc},${t.row + dr}`);
+  }
+  return out;
+}
+
+/**
+ * Nearest spot to a start cell where a new token fits on empty squares, searched in
+ * growing Chebyshev rings and kept on the board. `size` is the new token's footprint
+ * (2 = a 2×2 Large creature). Used for every new token so placements don't pile onto
+ * one square. Falls back to the start cell if the whole board is full.
+ * `occupied` keys are `"col,row"` (see takenSquares).
  */
 export function firstFreeCell(
   occupied: Set<string>,
@@ -97,18 +112,21 @@ export function firstFreeCell(
   startRow: number,
   cols: number,
   rows: number,
+  size = 1,
 ): Cell {
-  const key = (c: number, r: number) => `${c},${r}`;
-  if (!occupied.has(key(startCol, startRow))) return { col: startCol, row: startRow };
+  const n = Math.max(1, Math.floor(size));
+  const fits = (c: number, r: number): boolean => {
+    if (c < 0 || r < 0 || c + n > cols || r + n > rows) return false;
+    for (let dc = 0; dc < n; dc++) for (let dr = 0; dr < n; dr++) if (occupied.has(`${c + dc},${r + dr}`)) return false;
+    return true;
+  };
+  if (fits(startCol, startRow)) return { col: startCol, row: startRow };
   const maxRadius = Math.max(cols, rows);
   for (let radius = 1; radius <= maxRadius; radius++) {
     for (let dr = -radius; dr <= radius; dr++) {
       for (let dc = -radius; dc <= radius; dc++) {
         if (Math.max(Math.abs(dc), Math.abs(dr)) !== radius) continue; // ring perimeter only
-        const c = startCol + dc;
-        const r = startRow + dr;
-        if (c < 0 || r < 0 || c >= cols || r >= rows) continue;
-        if (!occupied.has(key(c, r))) return { col: c, row: r };
+        if (fits(startCol + dc, startRow + dr)) return { col: startCol + dc, row: startRow + dr };
       }
     }
   }

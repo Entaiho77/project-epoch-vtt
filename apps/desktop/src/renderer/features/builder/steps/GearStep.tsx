@@ -60,6 +60,7 @@ export function GearStep({ system, draft, dispatch, nav }: StepProps) {
                   key={a.id}
                   role="button"
                   tabIndex={0}
+                  aria-pressed={on}
                   className={`${s.optionCard} ${on ? s.selected : ''}`}
                   onClick={select}
                   onKeyDown={activate(select)}
@@ -92,6 +93,7 @@ export function GearStep({ system, draft, dispatch, nav }: StepProps) {
                   key={w.id}
                   role="button"
                   tabIndex={0}
+                  aria-pressed={on}
                   className={`${s.optionCard} ${on ? s.selected : ''}`}
                   onClick={select}
                   onKeyDown={activate(select)}

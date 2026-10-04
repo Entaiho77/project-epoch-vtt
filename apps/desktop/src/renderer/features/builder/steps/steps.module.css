@@ -553,3 +553,11 @@
 .welcomeHeads strong {
   color: var(--text-primary);
 }
+
+/* Keyboard focus on cards: draw the ring inside the card, since the scrolling lists
+   (overflow: auto) would clip a ring drawn outside it. */
+.raceCard:focus-visible,
+.optionCard:focus-visible {
+  outline: 2px solid var(--accent-teal);
+  outline-offset: -2px;
+}
