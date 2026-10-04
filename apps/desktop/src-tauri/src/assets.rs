@@ -88,6 +88,10 @@ impl Assets {
         Ok(format!("{REF_PREFIX}{name}"))
     }
 
+    pub fn has(&self, name: &str) -> bool {
+        is_valid_name(name) && self.dir.join(name).is_file()
+    }
+
     /// Read a stored image by name, for the protocol handler.
     pub fn read(&self, name: &str) -> Option<Vec<u8>> {
         if !is_valid_name(name) {

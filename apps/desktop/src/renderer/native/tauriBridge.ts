@@ -86,12 +86,15 @@ export function installTauriBridge(): void {
     },
   };
 
+  // Raw bytes as the request body: no base64 round-trip for large maps.
+  const putBytes = (bytes: Uint8Array, mime: string): Promise<string> =>
+    invoke<string>('asset_put', bytes, { headers: { 'x-mime': mime } });
+
   window.epochAssets = {
-    // Raw bytes as the request body: no base64 round-trip for large maps.
-    put: async (file) =>
-      invoke<string>('asset_put', new Uint8Array(await file.arrayBuffer()), {
-        headers: { 'x-mime': file.type },
-      }),
+    put: async (file) => putBytes(new Uint8Array(await file.arrayBuffer()), file.type),
+    putBytes,
+    has: (name) => invoke<boolean>('asset_has', { name }),
+    get: (name) => invoke<ArrayBuffer>('asset_get', { name }),
     url: (name) => convertFileSrc(name, 'epoch-asset'),
   };
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ensureAssets, handleAssetOp, initAssetSync, isAssetOp } from './assetSync';
 
 /**
  * The ONE sync mechanism, re-homed from Firebase RTDB to the desktop stack:
@@ -178,6 +179,12 @@ const session: SessionState = {
   error: null,
 };
 
+initAssetSync({
+  send: (op) => void window.relay.send({ type: 'game-message', payload: { data: op } }),
+  isOpen: () => session.role !== 'idle' && session.status === 'open',
+  isGm: () => session.role === 'gm',
+});
+
 const sessionListeners = new Set<() => void>();
 function emitSession(): void {
   sessionListeners.forEach((l) => l());
@@ -320,6 +327,12 @@ async function handleRelayMessage(msg: RelayServerMessage): Promise<void> {
       const op = msg.payload?.data as SyncOp | undefined;
       if (!op || typeof op !== 'object' || !('t' in op)) return;
 
+      // Image file transfers have their own handler and are never re-broadcast.
+      if (isAssetOp(op)) {
+        await handleAssetOp(op);
+        return;
+      }
+
       if (session.role === 'gm') {
         // Player-originated op: apply, then re-broadcast so all players converge.
         if (op.t === 'read') {
@@ -337,6 +350,7 @@ async function handleRelayMessage(msg: RelayServerMessage): Promise<void> {
           if (opTouchesPrivate(op)) return;
           await applyOp(op);
           void window.relay.send({ type: 'game-message', payload: { data: op } });
+          void ensureAssets(op); // e.g. a player's new character art
         }
         return;
       }
@@ -345,6 +359,7 @@ async function handleRelayMessage(msg: RelayServerMessage): Promise<void> {
       switch (op.t) {
         case 'session': {
           await window.db.multiUpdate(op.snapshot);
+          void ensureAssets(op.snapshot);
           session.gameId = op.gameId;
           session.error = null;
           emitSession();
@@ -353,6 +368,7 @@ async function handleRelayMessage(msg: RelayServerMessage): Promise<void> {
         case 'readres': {
           if (op.value !== null && !isPrivate(op.path)) {
             await window.db.write(op.path, op.value);
+            void ensureAssets(op.value);
           }
           pendingReads.get(op.reqId)?.(op.value);
           pendingReads.delete(op.reqId);
@@ -361,7 +377,10 @@ async function handleRelayMessage(msg: RelayServerMessage): Promise<void> {
         case 'write':
         case 'update':
         case 'multi':
-          if (!opTouchesPrivate(op)) await applyOp(op);
+          if (!opTouchesPrivate(op)) {
+            await applyOp(op);
+            void ensureAssets(op);
+          }
           break;
         default:
           break;

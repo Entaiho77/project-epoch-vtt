@@ -130,6 +130,20 @@ fn asset_put(assets: State<Assets>, request: tauri::ipc::Request<'_>) -> CmdResu
     assets.put(bytes, mime)
 }
 
+#[tauri::command]
+fn asset_has(assets: State<Assets>, name: String) -> bool {
+    assets.has(&name)
+}
+
+/// Raw bytes of a stored image (sent to other players who don't have it yet).
+#[tauri::command]
+fn asset_get(assets: State<Assets>, name: String) -> CmdResult<tauri::ipc::Response> {
+    assets
+        .read(&name)
+        .map(tauri::ipc::Response::new)
+        .ok_or_else(|| format!("image not found: {name}"))
+}
+
 /// Serves `epoch-asset://localhost/<name>` (on Windows:
 /// `http://epoch-asset.localhost/<name>`) from the assets folder.
 fn serve_asset(app: &AppHandle, request: &tauri::http::Request<Vec<u8>>) -> tauri::http::Response<Vec<u8>> {
@@ -143,7 +157,8 @@ fn serve_asset(app: &AppHandle, request: &tauri::http::Request<Vec<u8>>) -> taur
             // Names are content hashes, so a given URL never changes: cache forever.
             .header("Cache-Control", "public, max-age=31536000, immutable")
             .body(bytes),
-        None => builder.status(404).body(Vec::new()),
+        // Not here (yet): it may be on its way from another player, so never cache the miss.
+        None => builder.status(404).header("Cache-Control", "no-store").body(Vec::new()),
     }
     .unwrap_or_else(|_| tauri::http::Response::new(Vec::new()))
 }
@@ -155,6 +170,19 @@ fn app_get_version(app: AppHandle) -> String {
     app.package_info().version.to_string()
 }
 
+/// Profile from the EPOCH_PROFILE environment variable, limited to letters,
+/// digits, '-' and '_' so it can only ever name a folder inside the app's own.
+fn profile_name() -> Option<String> {
+    let raw = std::env::var("EPOCH_PROFILE").ok()?;
+    let clean: String = raw
+        .trim()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+        .take(32)
+        .collect();
+    (!clean.is_empty()).then_some(clean)
+}
+
 fn main() {
     tauri::Builder::default()
         .register_uri_scheme_protocol("epoch-asset", |ctx, request| {
@@ -162,7 +190,15 @@ fn main() {
         })
         .setup(|app| {
             // e.g. C:\Users\<you>\AppData\Roaming\com.epoch.vtt\epoch.db
-            let dir = app.path().app_data_dir()?;
+            let mut dir = app.path().app_data_dir()?;
+            // EPOCH_PROFILE=<name> runs a separate copy with its own save and
+            // images (profiles\<name>\), e.g. to play GM and player on one PC.
+            if let Some(profile) = profile_name() {
+                dir = dir.join("profiles").join(&profile);
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.set_title(&format!("Project Epoch VTT ({profile})"));
+                }
+            }
             std::fs::create_dir_all(&dir)?;
             let handle = app.handle().clone();
             let kv = KvStore::open(
@@ -206,6 +242,8 @@ fn main() {
             relay_disconnect,
             relay_send,
             asset_put,
+            asset_has,
+            asset_get,
             app_get_version,
         ])
         .run(tauri::generate_context!())

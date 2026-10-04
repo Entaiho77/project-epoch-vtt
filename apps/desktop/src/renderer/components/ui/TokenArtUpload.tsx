@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
+import { onAssetStored } from '../../data/assetSync';
 import { imageSrc, prepareTokenImage } from '../../data/images';
 
 /**
@@ -25,6 +26,10 @@ export function TokenArtUpload({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Re-mount the <img> when an image arrives from another player, so a failed
+  // load retries instead of staying broken.
+  const [assetVersion, bumpAssetVersion] = useReducer((v: number) => v + 1, 0);
+  useEffect(() => onAssetStored(() => bumpAssetVersion()), []);
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -62,6 +67,7 @@ export function TokenArtUpload({
       >
         {imageUrl ? (
           <img
+            key={assetVersion}
             src={imageSrc(imageUrl)}
             alt={label}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}

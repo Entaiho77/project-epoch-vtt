@@ -7,6 +7,8 @@
   ],
   "scripts": {
     "dev": "npm run dev --workspace=apps/desktop",
+    "player": "node apps/desktop/scripts/run-profile.mjs",
+    "relay": "npm run build --workspace=apps/relay && npm run start --workspace=apps/relay",
     "build": "npm run build --workspace=apps/desktop",
     "test": "npm run test --workspaces --if-present"
   },

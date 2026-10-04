@@ -2,6 +2,7 @@ import { useEffect, useReducer, useRef, useState, type MouseEvent } from 'react'
 import type { BoardShape, MapDef, Role, ShapeKind, Token } from '@epoch/shared-types';
 import { squareKey } from '../../data/board';
 import { imageSrc } from '../../data/images';
+import { onAssetStored } from '../../data/assetSync';
 import { canControlToken, fogStyle, tokenVisibility } from '../../permissions';
 import {
   canLandOn,
@@ -207,6 +208,17 @@ export function BoardCanvas({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const imgCache = useRef<Map<string, HTMLImageElement>>(new Map());
   const [version, bump] = useReducer((v) => v + 1, 0);
+  // When a missing image arrives from another player, drop its failed load and redraw.
+  useEffect(
+    () =>
+      onAssetStored((name) => {
+        for (const key of [...imgCache.current.keys()]) {
+          if (key.includes(name)) imgCache.current.delete(key);
+        }
+        bump();
+      }),
+    [],
+  );
 
   // Camera: screen = world * zoom + (x, y). Kept in a ref so pan/zoom don't re-render React.
   const camera = useRef<Camera>({ zoom: 1, x: 0, y: 0 });

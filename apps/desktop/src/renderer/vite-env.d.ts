@@ -29,6 +29,12 @@ interface RelayBridge {
 interface EpochAssetsBridge {
   /** Save an image file to disk; resolves to a reference like `epoch-asset:<hash>.png`. */
   put(file: File): Promise<string>;
+  /** Same as put(), for bytes received from another player. */
+  putBytes(bytes: Uint8Array, mime: string): Promise<string>;
+  /** Whether an image (`<hash>.png`) is stored on this machine. */
+  has(name: string): Promise<boolean>;
+  /** Raw bytes of a stored image. */
+  get(name: string): Promise<ArrayBuffer>;
   /** URL the webview can load for a stored image name (`<hash>.png`). */
   url(name: string): string;
 }
