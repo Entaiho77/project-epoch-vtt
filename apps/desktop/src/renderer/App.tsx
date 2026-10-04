@@ -4,6 +4,7 @@ import { AuthPage } from './pages/AuthPage';
 import { LobbyPage } from './pages/LobbyPage';
 import { GamePage } from './pages/GamePage';
 import { CustomizePage } from './pages/CustomizePage';
+import { CharacterSheetPage } from './pages/CharacterSheetPage';
 
 function FullScreenMessage({ children }: { children: string }) {
   return (
@@ -35,6 +36,10 @@ function AppRoutes() {
       <Route
         path="/library"
         element={user ? <CustomizePage /> : <Navigate to="/" replace />}
+      />
+      <Route
+        path="/character/:characterId"
+        element={user ? <CharacterSheetPage /> : <Navigate to="/" replace />}
       />
       <Route
         path="/game/:gameId/customize"

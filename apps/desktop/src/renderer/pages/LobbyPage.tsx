@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
 import '../styles/pages.css';
@@ -13,10 +13,34 @@ interface Character {
 export function LobbyPage() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [characters] = useState<Character[]>([]);
+  const [characters, setCharacters] = useState<Character[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const loadCharacters = async () => {
+      try {
+        // Query all characters from the database
+        const allChars = await window.db.read('characters');
+        if (allChars && typeof allChars === 'object') {
+          const charList = Object.values(allChars) as Character[];
+          setCharacters(charList);
+        }
+      } catch (error) {
+        console.error('Failed to load characters:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadCharacters();
+  }, []);
 
   const handleNewCharacter = () => {
     navigate('/library');
+  };
+
+  const handleUseCharacter = (characterId: string) => {
+    navigate(`/character/${characterId}`);
   };
 
   const handleLogout = () => {
@@ -41,7 +65,11 @@ export function LobbyPage() {
             </button>
           </div>
 
-          {characters.length === 0 ? (
+          {isLoading ? (
+            <div className="empty-state">
+              <p>Loading characters...</p>
+            </div>
+          ) : characters.length === 0 ? (
             <div className="empty-state">
               <p>You haven't created any characters yet.</p>
               <button className="primary" onClick={handleNewCharacter}>
@@ -54,7 +82,9 @@ export function LobbyPage() {
                 <div key={char.id} className="card character-card">
                   <h3>{char.name}</h3>
                   <p className="text-secondary">{char.system} · Level {char.level}</p>
-                  <button className="primary">Use Character</button>
+                  <button className="primary" onClick={() => handleUseCharacter(char.id)}>
+                    View Character
+                  </button>
                 </div>
               ))}
             </div>

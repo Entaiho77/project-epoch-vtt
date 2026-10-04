@@ -13,8 +13,12 @@ export function CustomizePage() {
   };
 
   const handleSaveCharacter = async (character: SolrynCharacter) => {
-    // Save character to database
-    await window.db.write(`characters/${character.id}`, character);
+    // Save character to database with system info
+    const characterWithSystem = {
+      ...character,
+      system: 'solryn',
+    };
+    await window.db.write(`characters/${character.id}`, characterWithSystem);
     navigate('/');
   };
 
