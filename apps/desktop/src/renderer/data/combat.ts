@@ -1,5 +1,5 @@
-import type { Combatant, InitiativeState, Token } from '@solryn/shared-types';
-import { rollDice } from '@solryn/engine';
+import type { Combatant, InitiativeState, Token } from '@epoch/shared-types';
+import { rollDice } from '@epoch/engine';
 import { writeValue } from './realtime';
 
 /** Initiative tracker state lives at game.initiative (§4.13). */

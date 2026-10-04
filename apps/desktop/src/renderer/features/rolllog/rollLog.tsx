@@ -4,7 +4,7 @@ import s from '../board/drawers/drawers.module.css';
 
 // `describeRoll` now lives in the engine (so the combat resolver can produce it); re-exported
 // here for back-compat with existing importers.
-export { describeRoll } from '@solryn/engine';
+export { describeRoll } from '@epoch/engine';
 
 // Shared roll log: every roll source (character attacks, the free-form dice drawer, the
 // monster card) posts here, and it syncs table-wide via Firebase (games/{id}/rollLog).

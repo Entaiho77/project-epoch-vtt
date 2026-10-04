@@ -1,4 +1,4 @@
-import type { Game, Role } from '@solryn/shared-types';
+import type { Game, Role } from '@epoch/shared-types';
 
 /**
  * Permission / ownership model (Design Doc §4.11–§4.12). Control follows ownership;

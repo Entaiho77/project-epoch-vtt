@@ -1,4 +1,4 @@
-import type { Game } from '@solryn/shared-types';
+import type { Game } from '@epoch/shared-types';
 import { RoleBadge } from '../../components/ui/Badge';
 import { roleOf } from '../../permissions';
 import styles from './GameRow.module.css';

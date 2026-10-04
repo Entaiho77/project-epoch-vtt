@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { SystemDefinition } from '@solryn/shared-types';
-import type { Role } from '@solryn/shared-types';
+import type { SystemDefinition } from '@epoch/shared-types';
+import type { Role } from '@epoch/shared-types';
 import { resolveRules, type CampaignRules, type CritFormula } from '../../../data/homebrew';
 import s from './drawers.module.css';
 

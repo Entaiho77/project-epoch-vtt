@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { SystemDefinition } from '@solryn/shared-types';
-import type { MapDef, Token } from '@solryn/shared-types';
+import type { SystemDefinition } from '@epoch/shared-types';
+import type { MapDef, Token } from '@epoch/shared-types';
 import { addToken } from '../../../data/board';
 import {
   deleteCreature,

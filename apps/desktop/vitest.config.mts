@@ -7,20 +7,20 @@ const pkg = (name: string) =>
   fileURLToPath(new URL(`../../packages/${name}/src`, import.meta.url));
 
 // Same source-alias scheme as the web app: bare package + subpaths → package src.
-const solrynAlias = [
-  { find: /^@solryn\/shared-types$/, replacement: `${pkg('shared-types')}/index.ts` },
-  { find: /^@solryn\/shared-types\//, replacement: `${pkg('shared-types')}/` },
-  { find: /^@solryn\/engine$/, replacement: `${pkg('engine')}/index.ts` },
-  { find: /^@solryn\/engine\//, replacement: `${pkg('engine')}/` },
-  { find: /^@solryn\/systems$/, replacement: `${pkg('systems')}/index.ts` },
-  { find: /^@solryn\/systems\//, replacement: `${pkg('systems')}/` },
-  { find: /^@solryn\/protocol$/, replacement: `${pkg('protocol')}/index.ts` },
-  { find: /^@solryn\/protocol\//, replacement: `${pkg('protocol')}/` },
+const epochAlias = [
+  { find: /^@epoch\/shared-types$/, replacement: `${pkg('shared-types')}/index.ts` },
+  { find: /^@epoch\/shared-types\//, replacement: `${pkg('shared-types')}/` },
+  { find: /^@epoch\/engine$/, replacement: `${pkg('engine')}/index.ts` },
+  { find: /^@epoch\/engine\//, replacement: `${pkg('engine')}/` },
+  { find: /^@epoch\/systems$/, replacement: `${pkg('systems')}/index.ts` },
+  { find: /^@epoch\/systems\//, replacement: `${pkg('systems')}/` },
+  { find: /^@epoch\/protocol$/, replacement: `${pkg('protocol')}/index.ts` },
+  { find: /^@epoch\/protocol\//, replacement: `${pkg('protocol')}/` },
 ];
 
 export default defineConfig({
   plugins: [react()],
-  resolve: { alias: solrynAlias },
+  resolve: { alias: epochAlias },
   test: {
     globals: true,
     environment: 'jsdom',

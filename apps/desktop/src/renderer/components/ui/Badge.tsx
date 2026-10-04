@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { Role } from '@solryn/shared-types';
+import type { Role } from '@epoch/shared-types';
 import styles from './Badge.module.css';
 
 type Tone = 'teal' | 'gray' | 'amber' | 'purple';

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { StepFrame } from '../StepFrame';
 import type { StepProps } from '../stepTypes';
-import { computeDerived } from '@solryn/engine';
+import { computeDerived } from '@epoch/engine';
 import { effectiveScores, equipmentContext, type InfoCard } from '../builderModel';
 import s from './steps.module.css';
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import type { SystemDefinition } from '@solryn/shared-types';
-import type { Character, Role, Token } from '@solryn/shared-types';
+import type { SystemDefinition } from '@epoch/shared-types';
+import type { Character, Role, Token } from '@epoch/shared-types';
 import { removeToken, updateToken } from '../../data/board';
 import { canSeeMonsterStats, tokenVisibility } from '../../permissions';
 import { ResourceTracker } from '../sheet/ResourceTracker';

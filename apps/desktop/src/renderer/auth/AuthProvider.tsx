@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react';
 import { readValue, updateValue, writeValue } from '../data/realtime';
-import type { UserProfile } from '@solryn/shared-types';
+import type { UserProfile } from '@epoch/shared-types';
 
 /**
  * Local identity — the desktop replacement for Firebase Auth. A permanent uid is

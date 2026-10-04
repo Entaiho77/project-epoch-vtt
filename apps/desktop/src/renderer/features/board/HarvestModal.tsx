@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import type { SystemDefinition } from '@solryn/shared-types';
-import type { Character } from '@solryn/shared-types';
+import type { SystemDefinition } from '@epoch/shared-types';
+import type { Character } from '@epoch/shared-types';
 import {
   computeSkillState,
   rollHarvestQuality,
   type HarvestRollResult,
-} from '@solryn/engine';
+} from '@epoch/engine';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import s from './HarvestModal.module.css';

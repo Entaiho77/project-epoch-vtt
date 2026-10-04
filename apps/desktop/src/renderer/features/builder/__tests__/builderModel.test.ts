@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { solrynSystem } from '@solryn/systems/solryn';
+import { solrynSystem } from '@epoch/systems/solryn';
 import {
   ancestryChoicesComplete,
   buildStepPlan,

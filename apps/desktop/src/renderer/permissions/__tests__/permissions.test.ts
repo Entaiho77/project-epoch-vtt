@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { Game } from '@solryn/shared-types';
+import type { Game } from '@epoch/shared-types';
 import {
   canControlToken,
   canEditCharacter,

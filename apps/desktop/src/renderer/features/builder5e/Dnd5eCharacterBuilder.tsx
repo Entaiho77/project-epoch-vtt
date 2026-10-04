@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import type { SystemDefinition } from '@solryn/shared-types';
-import type { Character } from '@solryn/shared-types';
-import { computeModifier } from '@solryn/engine';
+import type { SystemDefinition } from '@epoch/shared-types';
+import type { Character } from '@epoch/shared-types';
+import { computeModifier } from '@epoch/engine';
 import { StepFrame } from '../builder/StepFrame';
 import { TextField } from '../../components/ui/TextField';
 import {
@@ -10,8 +10,8 @@ import {
   effectiveScores,
   pcDerived,
   type AbilityId,
-} from '@solryn/systems/dnd5e/character';
-import { getSpellsForClass, spells as spellList } from '@solryn/systems/dnd5e/spells';
+} from '@epoch/systems/dnd5e/character';
+import { getSpellsForClass, spells as spellList } from '@epoch/systems/dnd5e/spells';
 import {
   POINT_BUY_BUDGET,
   POINT_BUY_MAX,
@@ -20,7 +20,7 @@ import {
   pointBuyRemaining,
   rollAbilityScores,
   type AbilityScoreMethod,
-} from '@solryn/systems/dnd5e/abilityScores';
+} from '@epoch/systems/dnd5e/abilityScores';
 import s from '../builder/steps/steps.module.css';
 
 /**

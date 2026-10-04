@@ -1,4 +1,4 @@
-import type { Token, TokenKind } from '@solryn/shared-types';
+import type { Token, TokenKind } from '@epoch/shared-types';
 
 /** Pure board geometry: grid-cell ↔ pixel math, snapping, and hit-testing. No I/O. */
 

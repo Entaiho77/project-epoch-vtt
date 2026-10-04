@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import type { SystemDefinition } from '@solryn/shared-types';
-import type { Character } from '@solryn/shared-types';
-import { computeDerived, dieForLevel, rollDice } from '@solryn/engine';
+import type { SystemDefinition } from '@epoch/shared-types';
+import type { Character } from '@epoch/shared-types';
+import { computeDerived, dieForLevel, rollDice } from '@epoch/engine';
 import { applyLevelUp } from '../../data/characters';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';

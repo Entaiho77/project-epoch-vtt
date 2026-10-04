@@ -11,10 +11,10 @@ import {
   type HomebrewPlayerOptions,
   type HomebrewRace,
 } from '../homebrew';
-import { dnd5eSystem } from '@solryn/systems/dnd5e/index';
-import { effectiveScores, pcDerived } from '@solryn/systems/dnd5e/character';
-import { spellSlots } from '@solryn/engine';
-import type { Character } from '@solryn/shared-types';
+import { dnd5eSystem } from '@epoch/systems/dnd5e/index';
+import { effectiveScores, pcDerived } from '@epoch/systems/dnd5e/character';
+import { spellSlots } from '@epoch/engine';
+import type { Character } from '@epoch/shared-types';
 
 const race: HomebrewRace = {
   id: 'stoneborn',

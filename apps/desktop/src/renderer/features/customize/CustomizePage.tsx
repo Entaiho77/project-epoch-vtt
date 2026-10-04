@@ -22,7 +22,7 @@ import {
   type HomebrewMonster,
   type HomebrewRace,
 } from '../../data/homebrew';
-import { dnd5eSystem } from '@solryn/systems/dnd5e/index';
+import { dnd5eSystem } from '@epoch/systems/dnd5e/index';
 import { Button } from '../../components/ui/Button';
 import { HomebrewMonsterForm } from '../board/drawers/HomebrewMonsterForm';
 import { HomebrewEquipmentForm } from '../board/drawers/HomebrewEquipmentForm';

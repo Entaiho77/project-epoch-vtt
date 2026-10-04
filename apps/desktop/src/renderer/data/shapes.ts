@@ -1,4 +1,4 @@
-import type { BoardShape } from '@solryn/shared-types';
+import type { BoardShape } from '@epoch/shared-types';
 import { newKey, writeValue } from './realtime';
 
 /**

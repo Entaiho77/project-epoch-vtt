@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { GameMember } from '@solryn/shared-types';
+import type { GameMember } from '@epoch/shared-types';
 import { canSeeMessage, sendMessage, useChat } from '../../../data/chat';
 import { Button } from '../../../components/ui/Button';
 import s from './drawers.module.css';

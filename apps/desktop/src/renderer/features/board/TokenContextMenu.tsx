@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import type { TokenCondition } from '@solryn/shared-types';
-import type { Token } from '@solryn/shared-types';
+import type { TokenCondition } from '@epoch/shared-types';
+import type { Token } from '@epoch/shared-types';
 import { removeToken, setExclusiveCondition, setTokenCondition, updateToken } from '../../data/board';
 import styles from './TokenContextMenu.module.css';
 

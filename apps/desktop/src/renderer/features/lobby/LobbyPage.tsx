@@ -9,7 +9,7 @@ import {
   setRelayUrl,
   useSession,
 } from '../../data/realtime';
-import type { Game } from '@solryn/shared-types';
+import type { Game } from '@epoch/shared-types';
 import { roleOf } from '../../permissions';
 import { Avatar } from '../../components/ui/Avatar';
 import { Button } from '../../components/ui/Button';

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Game, Role } from '@solryn/shared-types';
-import type { SystemDefinition } from '@solryn/shared-types';
+import type { Game, Role } from '@epoch/shared-types';
+import type { SystemDefinition } from '@epoch/shared-types';
 import {
   deleteGame,
   grantLevelUp,
@@ -11,7 +11,7 @@ import {
   updateGameName,
 } from '../../data/games';
 import { setLevelUpPending, setXp, useGameCharacters } from '../../data/characters';
-import { monsterXp } from '@solryn/systems/dnd5e/xp';
+import { monsterXp } from '@epoch/systems/dnd5e/xp';
 import { Modal } from '../../components/ui/Modal';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { Button } from '../../components/ui/Button';

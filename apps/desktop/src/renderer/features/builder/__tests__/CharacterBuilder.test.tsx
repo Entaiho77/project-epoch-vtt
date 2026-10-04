@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { CharacterBuilder } from '../CharacterBuilder';
-import { solrynSystem } from '@solryn/systems/solryn';
+import { solrynSystem } from '@epoch/systems/solryn';
 
 function renderBuilder() {
   render(

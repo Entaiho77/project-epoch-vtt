@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef, useState, type MouseEvent } from 'react';
-import type { BoardShape, MapDef, Role, ShapeKind, Token } from '@solryn/shared-types';
+import type { BoardShape, MapDef, Role, ShapeKind, Token } from '@epoch/shared-types';
 import { squareKey } from '../../data/board';
 import { canControlToken, fogStyle, tokenVisibility } from '../../permissions';
 import {

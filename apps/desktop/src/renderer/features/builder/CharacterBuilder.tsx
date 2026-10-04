@@ -1,6 +1,6 @@
 import { useReducer, useState } from 'react';
-import type { SystemDefinition } from '@solryn/shared-types';
-import type { Character } from '@solryn/shared-types';
+import type { SystemDefinition } from '@epoch/shared-types';
+import type { Character } from '@epoch/shared-types';
 import {
   buildStepPlan,
   canAdvanceStep,

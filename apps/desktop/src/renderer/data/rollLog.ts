@@ -1,5 +1,5 @@
 import { multiUpdate, newKey, writeValue } from './realtime';
-import type { RollEntry } from '@solryn/shared-types';
+import type { RollEntry } from '@epoch/shared-types';
 
 /**
  * Table-wide roll log. Stored as an OBJECT MAP at games/{gameId}/rollLog/{pushId} — never an

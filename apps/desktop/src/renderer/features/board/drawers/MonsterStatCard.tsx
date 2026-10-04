@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import type { BestiaryEntry, CreatureSave, SystemDefinition } from '@solryn/shared-types';
-import type { Token } from '@solryn/shared-types';
+import type { BestiaryEntry, CreatureSave, SystemDefinition } from '@epoch/shared-types';
+import type { Token } from '@epoch/shared-types';
 import type { CampaignRules, HomebrewEquipment } from '../../../data/homebrew';
-import { attackAdvantage, autoCritAgainst, combineAdvantage, computeModifier, describeRoll, effectsFor, getCombatResolver, resolveCheck, rollDice } from '@solryn/engine';
-import { resolveSolrynAttack } from '@solryn/systems/solryn/combat';
+import { attackAdvantage, autoCritAgainst, combineAdvantage, computeModifier, describeRoll, effectsFor, getCombatResolver, resolveCheck, rollDice } from '@epoch/engine';
+import { resolveSolrynAttack } from '@epoch/systems/solryn/combat';
 import { removeToken, updateToken } from '../../../data/board';
 import { setCreatureArt, useCreatureArt } from '../../../data/creatures';
 import { Button } from '../../../components/ui/Button';

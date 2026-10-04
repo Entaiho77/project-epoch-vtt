@@ -1,4 +1,4 @@
-import type { SystemDefinition } from '@solryn/shared-types';
+import type { SystemDefinition } from '@epoch/shared-types';
 import { buildStepPlan, type BuilderDraft } from '../builderModel';
 import { Button } from '../../../components/ui/Button';
 import s from './steps.module.css';

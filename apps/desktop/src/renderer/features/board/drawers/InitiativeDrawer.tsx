@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import type { Combatant, Game, MapDef } from '@solryn/shared-types';
-import type { SystemDefinition } from '@solryn/shared-types';
+import type { Combatant, Game, MapDef } from '@epoch/shared-types';
+import type { SystemDefinition } from '@epoch/shared-types';
 import { endCombat, removeCombatantsByToken, rollInitiative, startCombat } from '../../../data/combat';
 import { removeToken } from '../../../data/board';
-import type { BestiaryEntry } from '@solryn/shared-types';
+import type { BestiaryEntry } from '@epoch/shared-types';
 import type { CampaignRules } from '../../../data/homebrew';
 import { Button } from '../../../components/ui/Button';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
@@ -55,7 +55,7 @@ export function InitiativeDrawer({
   // --- bulk token clearing (GM, manual; never tied to End Combat) -----------
   // Scoped to the active map. Loops the single-token removeToken, then prunes
   // initiative so removed tokens don't linger as ghost combatants.
-  function bulkRemove(label: string, predicate: (t: import('@solryn/shared-types').Token) => boolean) {
+  function bulkRemove(label: string, predicate: (t: import('@epoch/shared-types').Token) => boolean) {
     if (!activeMap) return;
     const targets = Object.values(game.tokens ?? {}).filter(
       (t) => t.mapId === activeMap.id && predicate(t),

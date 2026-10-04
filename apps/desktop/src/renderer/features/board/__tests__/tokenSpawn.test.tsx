@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import type { Character, Game } from '@solryn/shared-types';
-import { dnd5eSystem } from '@solryn/systems/dnd5e/index';
+import type { Character, Game } from '@epoch/shared-types';
+import { dnd5eSystem } from '@epoch/systems/dnd5e/index';
 
 // Spy on the token writer; stub heavy children so BoardScreen commits and its effects run.
 const addToken = vi.fn().mockResolvedValue('tok');

@@ -1,5 +1,5 @@
-import type { MapType } from '@solryn/shared-types';
-import type { Token } from '@solryn/shared-types';
+import type { MapType } from '@epoch/shared-types';
+import type { Token } from '@epoch/shared-types';
 
 /**
  * Party-scale (travel) maps: the party moves as one shared "party token" any player can drag,

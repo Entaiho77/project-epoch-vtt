@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import type { SemanticColor, SystemDefinition } from '@solryn/shared-types';
-import type { Character } from '@solryn/shared-types';
-import { computeDerived } from '@solryn/engine';
+import type { SemanticColor, SystemDefinition } from '@epoch/shared-types';
+import type { Character } from '@epoch/shared-types';
+import { computeDerived } from '@epoch/engine';
 import { setCharacterImage, setPoolCurrent } from '../../../data/characters';
 import { Modal } from '../../../components/ui/Modal';
 import { Button } from '../../../components/ui/Button';

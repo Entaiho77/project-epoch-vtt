@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { BoardShape, MapDef, Role, ShapeKind } from '@solryn/shared-types';
+import type { BoardShape, MapDef, Role, ShapeKind } from '@epoch/shared-types';
 import type { ShapeDraft } from '../BoardCanvas';
 import { clearShapes, removeShape } from '../../../data/shapes';
 import { Button } from '../../../components/ui/Button';

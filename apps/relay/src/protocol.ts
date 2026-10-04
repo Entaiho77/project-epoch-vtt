@@ -2,7 +2,7 @@
  * Relay wire protocol — a VERBATIM MIRROR of packages/protocol/src/index.ts.
  *
  * The relay is built as a standalone container (its Dockerfile copies only apps/relay), so it
- * cannot import the shared @solryn/protocol package at build time. Keep this file in sync with
+ * cannot import the shared @epoch/protocol package at build time. Keep this file in sync with
  * packages/protocol when the protocol changes.
  */
 

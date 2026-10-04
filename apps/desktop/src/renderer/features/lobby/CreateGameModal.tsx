@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useAuth } from '../../auth/AuthProvider';
 import { createGame } from '../../data/games';
-import type { Game } from '@solryn/shared-types';
-import { DEFAULT_SYSTEM_ID, listSystems } from '@solryn/systems/registry';
+import type { Game } from '@epoch/shared-types';
+import { DEFAULT_SYSTEM_ID, listSystems } from '@epoch/systems/registry';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import { TextField } from '../../components/ui/TextField';

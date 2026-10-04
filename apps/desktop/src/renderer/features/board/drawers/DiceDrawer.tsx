@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { rollDice } from '@solryn/engine';
+import { rollDice } from '@epoch/engine';
 import { Button } from '../../../components/ui/Button';
 import { RollLog, useRollLog } from '../../rolllog/rollLog';
 import s from './drawers.module.css';

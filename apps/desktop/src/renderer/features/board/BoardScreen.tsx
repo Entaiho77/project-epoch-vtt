@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { SystemDefinition } from '@solryn/shared-types';
-import type { Character, Game, Role, Token } from '@solryn/shared-types';
+import type { SystemDefinition } from '@epoch/shared-types';
+import type { Character, Game, Role, Token } from '@epoch/shared-types';
 import { homebrewList, homebrewToBestiaryEntry, useLibrary, useRules } from '../../data/homebrew';
 import {
   addToken,
@@ -36,8 +36,8 @@ import { Dnd5eSheet } from '../sheet5e/Dnd5eSheet';
 import { MonsterStatCard } from './drawers/MonsterStatCard';
 import { RollLog } from '../rolllog/rollLog';
 import { canSeeMonsterStats } from '../../permissions';
-import { isClassAndLevel } from '@solryn/systems/registry';
-import { pcTokenStats } from '@solryn/systems/dnd5e/character';
+import { isClassAndLevel } from '@epoch/systems/registry';
+import { pcTokenStats } from '@epoch/systems/dnd5e/character';
 import styles from './BoardScreen.module.css';
 
 interface BoardScreenProps {

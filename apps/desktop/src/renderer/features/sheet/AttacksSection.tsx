@@ -1,7 +1,7 @@
-import type { Spell, SystemDefinition, WeaponItem } from '@solryn/shared-types';
-import type { Character } from '@solryn/shared-types';
-import { computeModifier, computeSkillState, effectsFor } from '@solryn/engine';
-import { attemptLuckCrit, resolveSolrynAttack, type CritState } from '@solryn/systems/solryn/combat';
+import type { Spell, SystemDefinition, WeaponItem } from '@epoch/shared-types';
+import type { Character } from '@epoch/shared-types';
+import { computeModifier, computeSkillState, effectsFor } from '@epoch/engine';
+import { attemptLuckCrit, resolveSolrynAttack, type CritState } from '@epoch/systems/solryn/combat';
 import { setLoadedSpell, setPoolCurrent } from '../../data/characters';
 import { Button } from '../../components/ui/Button';
 import { useRollLog } from '../rolllog/rollLog';

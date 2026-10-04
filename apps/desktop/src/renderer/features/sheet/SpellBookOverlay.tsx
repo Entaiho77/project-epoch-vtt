@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import type { Spell, SystemDefinition } from '@solryn/shared-types';
-import type { Character } from '@solryn/shared-types';
+import type { Spell, SystemDefinition } from '@epoch/shared-types';
+import type { Character } from '@epoch/shared-types';
 import { Modal } from '../../components/ui/Modal';
 import styles from './SpellBookOverlay.module.css';
 

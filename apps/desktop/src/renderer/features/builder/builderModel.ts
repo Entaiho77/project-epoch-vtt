@@ -2,14 +2,14 @@ import type {
   Ancestry,
   SystemDefinition,
   WeaponItem,
-} from '@solryn/shared-types';
+} from '@epoch/shared-types';
 import {
   castingAccess,
   computeDerived,
   computeModifiers,
   type CastingAccess,
-} from '@solryn/engine';
-import type { Character, CharacterSkillState } from '@solryn/shared-types';
+} from '@epoch/engine';
+import type { Character, CharacterSkillState } from '@epoch/shared-types';
 
 /**
  * Builder model — pure logic for the guided character creator (§4.5).

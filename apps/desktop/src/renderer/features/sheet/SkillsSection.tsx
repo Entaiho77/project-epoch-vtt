@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import type { SystemDefinition } from '@solryn/shared-types';
-import type { Character, CharacterSkillState } from '@solryn/shared-types';
-import { computeSkillState } from '@solryn/engine';
+import type { SystemDefinition } from '@epoch/shared-types';
+import type { Character, CharacterSkillState } from '@epoch/shared-types';
+import { computeSkillState } from '@epoch/engine';
 import {
   setSkillState,
   setUnspentSkillPoints,

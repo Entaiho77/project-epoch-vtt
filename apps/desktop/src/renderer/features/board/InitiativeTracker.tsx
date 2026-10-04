@@ -1,6 +1,6 @@
-import type { SystemDefinition } from '@solryn/shared-types';
-import type { Character, InitiativeState, Role, Token } from '@solryn/shared-types';
-import { computeDerived } from '@solryn/engine';
+import type { SystemDefinition } from '@epoch/shared-types';
+import type { Character, InitiativeState, Role, Token } from '@epoch/shared-types';
+import { computeDerived } from '@epoch/engine';
 import {
   addCombatant,
   endCombat,

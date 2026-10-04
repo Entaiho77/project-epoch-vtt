@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { Combatant, InitiativeState } from '@solryn/shared-types';
+import type { Combatant, InitiativeState } from '@epoch/shared-types';
 import { setTurn, sortOrder } from '../combat';
 
 // setTurn writes through realtime; mock it so we can assert the guard logic without Firebase.

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { Token } from '@solryn/shared-types';
+import type { Token } from '@epoch/shared-types';
 import {
   blocksMovement,
   canLandOn,

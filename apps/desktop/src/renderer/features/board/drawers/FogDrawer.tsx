@@ -1,4 +1,4 @@
-import type { MapDef } from '@solryn/shared-types';
+import type { MapDef } from '@epoch/shared-types';
 import { clearFog, coverAllFog } from '../../../data/board';
 import { Button } from '../../../components/ui/Button';
 import s from './drawers.module.css';

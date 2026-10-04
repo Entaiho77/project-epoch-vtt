@@ -1,6 +1,6 @@
 import { useState, type ChangeEvent } from 'react';
-import type { SystemDefinition } from '@solryn/shared-types';
-import type { Game } from '@solryn/shared-types';
+import type { SystemDefinition } from '@epoch/shared-types';
+import type { Game } from '@epoch/shared-types';
 import { addMap, setActiveMap, setGridSize, setGridVisible } from '../../../data/board';
 import { prepareMapImage } from '../../../data/images';
 import { Button } from '../../../components/ui/Button';

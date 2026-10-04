@@ -7,7 +7,7 @@ import {
   type HouseRule,
   type StartingHp,
 } from '../../data/homebrew';
-import { evalFormula } from '@solryn/engine';
+import { evalFormula } from '@epoch/engine';
 import d from '../board/drawers/drawers.module.css';
 import s from './CustomizePage.module.css';
 

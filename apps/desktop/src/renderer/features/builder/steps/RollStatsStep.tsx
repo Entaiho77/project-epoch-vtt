@@ -1,7 +1,7 @@
 import { StepFrame } from '../StepFrame';
 import type { StepProps } from '../stepTypes';
 import { Button } from '../../../components/ui/Button';
-import { computeModifier, modifierChart, rollDice } from '@solryn/engine';
+import { computeModifier, modifierChart, rollDice } from '@epoch/engine';
 import s from './steps.module.css';
 
 const sign = (n: number) => (n >= 0 ? `+${n}` : `${n}`);

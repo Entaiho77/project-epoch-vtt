@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import type { SemanticColor, SystemDefinition } from '@solryn/shared-types';
-import type { Character } from '@solryn/shared-types';
-import { computeDerived, computeModifiers } from '@solryn/engine';
+import type { SemanticColor, SystemDefinition } from '@epoch/shared-types';
+import type { Character } from '@epoch/shared-types';
+import { computeDerived, computeModifiers } from '@epoch/engine';
 import { setPoolCurrent } from '../../data/characters';
 import { Avatar } from '../../components/ui/Avatar';
 import { Button } from '../../components/ui/Button';

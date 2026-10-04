@@ -1,7 +1,7 @@
 import type { KeyboardEvent } from 'react';
 import { StepFrame } from '../StepFrame';
 import type { StepProps } from '../stepTypes';
-import { computeDerived } from '@solryn/engine';
+import { computeDerived } from '@epoch/engine';
 import { allowedWeapons, effectiveScores, equipmentContext } from '../builderModel';
 import s from './steps.module.css';
 

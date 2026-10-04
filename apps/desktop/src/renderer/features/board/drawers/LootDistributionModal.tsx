@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Token } from '@solryn/shared-types';
+import type { Token } from '@epoch/shared-types';
 import type { HomebrewEquipment } from '../../../data/homebrew';
 import { equipmentToInventoryItem } from '../../../data/homebrew';
 import { giveInventoryItem, useGameCharacters } from '../../../data/characters';

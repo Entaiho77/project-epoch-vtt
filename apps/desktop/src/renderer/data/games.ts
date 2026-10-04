@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Game, GameMember } from '@solryn/shared-types';
+import type { Game, GameMember } from '@epoch/shared-types';
 import { generateInviteCode, normalizeInviteCode } from './ids';
 import {
   multiUpdate,
@@ -9,7 +9,7 @@ import {
   writeValue,
 } from './realtime';
 import { firebaseConfigured } from '../firebase/app';
-import { requireSystem } from '@solryn/systems/registry';
+import { requireSystem } from '@epoch/systems/registry';
 
 /**
  * Game operations. Multi-path atomic writes keep the denormalized indexes consistent:

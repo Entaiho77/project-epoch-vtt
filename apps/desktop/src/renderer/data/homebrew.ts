@@ -7,8 +7,8 @@ import type {
   FeatDefinition,
   StatBonus,
   SystemDefinition,
-} from '@solryn/shared-types';
-import type { CritFormula } from '@solryn/engine';
+} from '@epoch/shared-types';
+import type { CritFormula } from '@epoch/engine';
 import type {
   ArmorType,
   EquipmentCategory,
@@ -16,7 +16,7 @@ import type {
   InventoryItem,
   StartingHp,
   WeaponRange,
-} from '@solryn/shared-types';
+} from '@epoch/shared-types';
 import { newKey, useValue, writeValue } from './realtime';
 
 export type { CritFormula };

@@ -9,10 +9,10 @@ import {
   useGameCharacter,
   usePlayerCharacters,
 } from '../../data/characters';
-import type { Character, Game, Role } from '@solryn/shared-types';
+import type { Character, Game, Role } from '@epoch/shared-types';
 import { useLibrary, withHomebrewOptions } from '../../data/homebrew';
 import { roleOf } from '../../permissions';
-import { getSystem, isClassAndLevel } from '@solryn/systems/registry';
+import { getSystem, isClassAndLevel } from '@epoch/systems/registry';
 import { Button } from '../../components/ui/Button';
 import { RoleBadge } from '../../components/ui/Badge';
 import { GameSettingsModal } from './GameSettingsModal';

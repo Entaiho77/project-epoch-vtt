@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
-import type { SystemDefinition } from '@solryn/shared-types';
-import type { Character } from '@solryn/shared-types';
+import type { SystemDefinition } from '@epoch/shared-types';
+import type { Character } from '@epoch/shared-types';
 import { applyLevelUp5e } from '../../data/characters';
-import { ABILITY_IDS, pcDerived } from '@solryn/systems/dnd5e/character';
-import { meetsFeatPrerequisite } from '@solryn/systems/dnd5e/feats';
-import { spells as allSpells, getSpellsForClass } from '@solryn/systems/dnd5e/spells';
-import { computeLevelUp, levelUpSummary, type LevelUpChoices } from '@solryn/systems/dnd5e/levelUp';
+import { ABILITY_IDS, pcDerived } from '@epoch/systems/dnd5e/character';
+import { meetsFeatPrerequisite } from '@epoch/systems/dnd5e/feats';
+import { spells as allSpells, getSpellsForClass } from '@epoch/systems/dnd5e/spells';
+import { computeLevelUp, levelUpSummary, type LevelUpChoices } from '@epoch/systems/dnd5e/levelUp';
 import type { CampaignRules } from '../../data/homebrew';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';

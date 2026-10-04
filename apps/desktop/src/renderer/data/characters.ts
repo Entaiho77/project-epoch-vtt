@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Character, CharacterPlayState, CharacterSkillState } from '@solryn/shared-types';
+import type { Character, CharacterPlayState, CharacterSkillState } from '@epoch/shared-types';
 import type { InventoryItem } from './homebrew';
 import {
   multiUpdate,

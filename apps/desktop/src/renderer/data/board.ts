@@ -1,4 +1,4 @@
-import type { MapDef, Token } from '@solryn/shared-types';
+import type { MapDef, Token } from '@epoch/shared-types';
 import {
   multiUpdate,
   newKey,

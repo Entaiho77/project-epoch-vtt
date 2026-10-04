@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import type { SystemDefinition } from '@solryn/shared-types';
-import { getCombatResolver, type Rng } from '@solryn/engine';
+import type { SystemDefinition } from '@epoch/shared-types';
+import { getCombatResolver, type Rng } from '@epoch/engine';
 import {
   crToNumber,
   equipmentList,
