@@ -9,6 +9,7 @@ import {
   moveToken,
   releasePartyToken,
   setGridVisible,
+  removeToken,
   toggleFogSquare,
   updateToken,
 } from '../../data/board';
@@ -173,11 +174,21 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
 
   // On a travel-scale map the party shares one token. The GM's client seeds it (single
   // authority → no duplicate race); any player can then drag it. Once per such map.
+  //
+  // Must look at ALL tokens: `tokens` above hides the party token until a player joins, so
+  // checking that list made a new party token every time the GM opened the game alone.
   const partyAttempted = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (role !== 'gm' || !activeMap || !partyScale) return;
-    const exists = tokens.some((t) => t.kind === 'party' && t.mapId === activeMap.id);
-    if (exists || partyAttempted.current.has(activeMap.id)) return;
+    const parties = Object.values(game.tokens ?? {})
+      .filter((t) => t.kind === 'party' && t.mapId === activeMap.id)
+      .sort((a, b) => (a.id < b.id ? -1 : 1)); // push keys sort oldest-first
+    if (parties.length > 1) {
+      // Clean up duplicates left by the old bug: keep the oldest, remove the rest.
+      for (const extra of parties.slice(1)) void removeToken(gameId, extra.id);
+      return;
+    }
+    if (parties.length === 1 || partyAttempted.current.has(activeMap.id)) return;
     partyAttempted.current.add(activeMap.id);
     const { cols, rows } = gridDimensions(activeMap.width, activeMap.height, activeMap.gridSize);
     void addToken(gameId, {
@@ -189,7 +200,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
       color: '#e9c46a',
       visible: true,
     });
-  }, [role, activeMap, partyScale, tokens, gameId]);
+  }, [role, activeMap, partyScale, game.tokens, gameId]);
 
   function toggle(side: 'left' | 'right', id: string) {
     setMeasuring(false); // opening a drawer exits measure mode
