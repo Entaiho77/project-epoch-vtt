@@ -15,10 +15,13 @@
     "@solryn/shared-types": "*",
     "@solryn/protocol": "*",
     "better-sqlite3": "^11.0.0",
-    "ws": "^8.18.0",
+    "hypercore": "^11.37.0",
+    "hyperswarm": "^4.8.0",
+    "hyperdrive": "^10.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^7.18.0"
+    "react-router-dom": "^7.18.0",
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
     "electron": "^33.0.0",

@@ -1,9 +1,9 @@
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from './auth/AuthProvider';
-import { AuthPage } from './features/auth/AuthPage';
-import { LobbyPage } from './features/lobby/LobbyPage';
-import { GamePage } from './features/game/GamePage';
-import { CustomizePage } from './features/customize/CustomizePage';
+import { AuthPage } from './pages/AuthPage';
+import { LobbyPage } from './pages/LobbyPage';
+import { GamePage } from './pages/GamePage';
+import { CustomizePage } from './pages/CustomizePage';
 
 function FullScreenMessage({ children }: { children: string }) {
   return (
@@ -28,7 +28,7 @@ function AppRoutes() {
     return <FullScreenMessage>Loading…</FullScreenMessage>;
   }
 
-  // Everyone enters the same way; role determines what they see inside a game (§1).
+  // Everyone enters via auth; role determines what they see inside a game (§1).
   return (
     <Routes>
       <Route path="/" element={user ? <LobbyPage /> : <AuthPage />} />
@@ -40,10 +40,7 @@ function AppRoutes() {
         path="/game/:gameId/customize"
         element={user ? <CustomizePage /> : <Navigate to="/" replace />}
       />
-      <Route
-        path="/game/:gameId"
-        element={user ? <GamePage /> : <Navigate to="/" replace />}
-      />
+      <Route path="/game/:gameId" element={user ? <GamePage /> : <Navigate to="/" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

@@ -1,13 +1,17 @@
 /// <reference types="vite/client" />
 
 /**
- * The preload bridges (apps/desktop/electron/preload.ts). These are the
- * renderer's only native capabilities: the SQLite path-store and the relay.
+ * Electron preload API bridges (apps/desktop/electron/preload.ts).
+ * These are the renderer's only native capabilities:
+ * - db: SQLite key-value store with Firebase-RTDB semantics
+ * - relay: WebSocket multiplayer connection
+ * - epochApp: Application metadata and utilities
  */
+
 interface DbBridge {
   read(path: string): Promise<unknown>;
   write(path: string, value: unknown): Promise<void>;
-  update(path: string, value: Record<string, unknown>): Promise<void>;
+  update(path: string, partial: Record<string, unknown>): Promise<void>;
   multiUpdate(updates: Record<string, unknown>): Promise<void>;
   delete(path: string): Promise<void>;
   newKey(): Promise<string>;
@@ -29,8 +33,12 @@ interface EpochAppBridge {
   getVersion(): Promise<string>;
 }
 
-interface Window {
-  db: DbBridge;
-  relay: RelayBridge;
-  epochApp: EpochAppBridge;
+declare global {
+  interface Window {
+    db: DbBridge;
+    relay: RelayBridge;
+    epochApp: EpochAppBridge;
+  }
 }
+
+export {};

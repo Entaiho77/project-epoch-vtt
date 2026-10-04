@@ -1,0 +1,245 @@
+/* Auth Page */
+.auth-page {
+  justify-content: center;
+  align-items: center;
+}
+
+.auth-container {
+  width: 100%;
+  max-width: 400px;
+}
+
+.auth-card {
+  text-align: center;
+}
+
+.auth-card h1 {
+  margin-bottom: var(--spacing-xs);
+  background: linear-gradient(135deg, #60a5fa, #a78bfa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.auth-card > p {
+  margin-bottom: var(--spacing-xl);
+  color: var(--text-secondary);
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  margin-bottom: var(--spacing-lg);
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.form-group label {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.auth-form button[type='submit'] {
+  width: 100%;
+  padding: var(--spacing-md) var(--spacing-lg);
+  font-weight: 600;
+}
+
+.auth-form button[type='submit']:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.auth-footer {
+  font-size: var(--font-size-sm);
+}
+
+/* Lobby Page */
+.lobby-page {
+  flex-direction: column;
+}
+
+.lobby-header {
+  background-color: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  padding: var(--spacing-lg);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.lobby-header h1 {
+  margin-bottom: 0;
+}
+
+.section {
+  margin-bottom: var(--spacing-2xl);
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-lg);
+}
+
+.empty-state {
+  text-align: center;
+  padding: var(--spacing-xl);
+  background-color: var(--bg-secondary);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-lg);
+}
+
+.empty-state p {
+  margin-bottom: var(--spacing-md);
+}
+
+.empty-state button {
+  margin-top: var(--spacing-md);
+}
+
+.character-card {
+  cursor: pointer;
+}
+
+.character-card button {
+  width: 100%;
+  margin-top: var(--spacing-md);
+}
+
+/* Customize Page */
+.customize-page {
+  flex-direction: column;
+}
+
+.customize-header {
+  background-color: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  padding: var(--spacing-lg);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.customize-header h1 {
+  margin-bottom: 0;
+}
+
+.system-select {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.system-card {
+  cursor: pointer;
+  text-align: center;
+  transition: transform 0.2s;
+}
+
+.system-card:hover {
+  transform: translateY(-4px);
+}
+
+.character-builder {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.builder-form {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+}
+
+.builder-form .form-group {
+  margin-bottom: var(--spacing-lg);
+}
+
+.builder-form label {
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-sm);
+  display: block;
+}
+
+.solryn-builder {
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-lg);
+  margin-bottom: var(--spacing-lg);
+  min-height: 200px;
+}
+
+.builder-actions {
+  display: flex;
+  gap: var(--spacing-md);
+  justify-content: flex-end;
+  margin-top: var(--spacing-lg);
+  padding-top: var(--spacing-lg);
+  border-top: 1px solid var(--border-color);
+}
+
+.builder-actions button {
+  flex: 1;
+}
+
+/* Game Page */
+.game-page {
+  flex-direction: column;
+}
+
+.game-header {
+  background-color: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  padding: var(--spacing-lg);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.game-header h1 {
+  margin-bottom: 0;
+}
+
+.game-board {
+  background: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-md);
+  }
+
+  .section-header h2 {
+    margin-bottom: 0;
+  }
+
+  .section-header button {
+    width: 100%;
+  }
+
+  .builder-actions {
+    flex-direction: column;
+  }
+
+  .customize-header,
+  .lobby-header,
+  .game-header {
+    flex-wrap: wrap;
+  }
+}
