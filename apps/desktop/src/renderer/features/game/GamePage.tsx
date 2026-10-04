@@ -39,6 +39,12 @@ export function GamePage() {
   const { library } = useLibrary(game?.gmUid ?? game?.createdBy ?? null);
   const [showSettings, setShowSettings] = useState(false);
   const [wantsNewChar, setWantsNewChar] = useState(false);
+  // Characters this player owns in OTHER games (available to import).
+  // Must stay above the early returns below: hooks have to run on every render.
+  const importable = useMemo(
+    () => otherChars.filter((c) => c.gameId !== game?.id),
+    [otherChars, game?.id],
+  );
 
   if (loading) return <div className={styles.center}>Loading game…</div>;
   if (!game || !user) {
@@ -79,11 +85,6 @@ export function GamePage() {
   // Player without a completed character → prompt to create or select one.
   const needsCharacter =
     role === 'player' && !charLoading && (!character || !character.buildComplete);
-  // Characters this player owns in OTHER games (available to import).
-  const importable = useMemo(
-    () => otherChars.filter((c) => c.gameId !== game.id),
-    [otherChars, game.id],
-  );
 
   let content: ReactNode;
   let isBoard = false;
