@@ -2,3 +2,4 @@
 /gen/schemas
 /binaries/
 /swarm-dist/
+/tauri.version.json

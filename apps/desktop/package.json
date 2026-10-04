@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "node scripts/prepare-swarm.mjs && tauri dev",
-    "build": "node scripts/prepare-swarm.mjs && tauri build",
+    "build": "node scripts/build.mjs",
     "dev:web": "vite",
     "build:web": "vite build",
     "typecheck": "tsc --noEmit",

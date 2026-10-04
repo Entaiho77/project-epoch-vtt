@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthProvider';
 import { useUserGames } from '../../data/games';
@@ -23,6 +23,14 @@ export function LobbyPage() {
   const [code, setCode] = useState('');
   const [joinError, setJoinError] = useState('');
   const [joining, setJoining] = useState(false);
+  const [version, setVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    window.epochApp
+      ?.getVersion()
+      .then(setVersion)
+      .catch(() => {});
+  }, []);
 
   function openGame(game: Game) {
     navigate(`/game/${game.id}`);
@@ -75,6 +83,7 @@ export function LobbyPage() {
             ✶
           </span>
           Project Epoch VTT
+          {version && <span className={styles.version}>v{version}</span>}
         </div>
         <div className={styles.user}>
           {session.roomCode && (
