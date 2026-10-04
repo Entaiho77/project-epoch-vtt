@@ -254,7 +254,7 @@ fn main() {
             app.manage(Db(Mutex::new(kv)));
             let seed = swarm::load_or_create_seed(&dir)
                 .map_err(|e| format!("could not create this computer's session key: {e}"))?;
-            app.manage(Swarm::new(seed));
+            app.manage(Swarm::new(seed, dir.join("swarm.log")));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

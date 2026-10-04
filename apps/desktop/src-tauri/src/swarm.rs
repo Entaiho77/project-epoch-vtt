@@ -21,6 +21,52 @@ use tokio::net::TcpListener;
 use tokio::process::{Child, Command};
 use tokio::sync::mpsc;
 
+/// The helper's messages, kept in swarm.log (overwritten each time it starts)
+/// plus the last few lines in memory for error messages.
+#[derive(Clone)]
+struct HelperLog {
+    path: PathBuf,
+    recent: Arc<Mutex<std::collections::VecDeque<String>>>,
+}
+
+impl HelperLog {
+    fn open(path: &Path) -> Self {
+        let _ = std::fs::write(path, "");
+        Self { path: path.to_path_buf(), recent: Arc::new(Mutex::new(Default::default())) }
+    }
+
+    fn line(&self, text: &str) {
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&self.path) {
+            let _ = writeln!(f, "{text}");
+        }
+        if let Ok(mut recent) = self.recent.lock() {
+            recent.push_back(text.to_string());
+            while recent.len() > 30 {
+                recent.pop_front();
+            }
+        }
+    }
+
+    /// ": <last thing the helper said>" for error messages, or "" if nothing.
+    fn last_words(&self) -> String {
+        let recent: Vec<String> = self.recent.lock().map(|r| r.iter().cloned().collect()).unwrap_or_default();
+        let useful = |l: &&String| {
+            let t = l.trim();
+            !t.is_empty() && !t.starts_with("at ") && !l.starts_with("starting ")
+        };
+        // Prefer the line naming the error over the stack trace under it.
+        recent
+            .iter()
+            .rev()
+            .filter(useful)
+            .find(|l| l.contains("rror"))
+            .or_else(|| recent.iter().rev().find(useful))
+            .map(|l| format!(": {}", l.trim().chars().take(200).collect::<String>()))
+            .unwrap_or_default()
+    }
+}
+
 /// A running helper: send commands through `tx`.
 struct Running {
     tx: mpsc::UnboundedSender<String>,
@@ -29,6 +75,8 @@ struct Running {
 
 pub struct Swarm {
     running: Arc<Mutex<Option<Running>>>,
+    /// The helper's own messages are written here (swarm.log in the app data folder).
+    log_path: PathBuf,
     /// Held while starting, so two quick commands can't launch two helpers.
     starting: tokio::sync::Mutex<()>,
     /// 32-byte seed (hex) for this install's key pair; players are recognised by it.
@@ -95,8 +143,13 @@ fn helper_paths<R: Runtime>(app: &AppHandle<R>) -> Result<(PathBuf, PathBuf), St
 }
 
 impl Swarm {
-    pub fn new(seed_hex: String) -> Self {
-        Self { running: Arc::new(Mutex::new(None)), starting: tokio::sync::Mutex::new(()), seed_hex }
+    pub fn new(seed_hex: String, log_path: PathBuf) -> Self {
+        Self {
+            running: Arc::new(Mutex::new(None)),
+            log_path,
+            starting: tokio::sync::Mutex::new(()),
+            seed_hex,
+        }
     }
 
     /// Send one command to the helper, starting it first if needed.
@@ -131,9 +184,11 @@ impl Swarm {
         command
             .arg(&bundle)
             .args(["--port", &port.to_string(), "--token", &token, "--seed", &self.seed_hex])
+            // Every handle must be real: an installed app has no console, and the
+            // helper's runtime can fail to start if handed one that doesn't exist.
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::inherit())
+            .stderr(Stdio::piped())
             .kill_on_drop(true);
         // Tests and local experiments can point the helper at a private network.
         if let Ok(bootstrap) = std::env::var("EPOCH_SWARM_BOOTSTRAP") {
@@ -145,15 +200,48 @@ impl Swarm {
             const CREATE_NO_WINDOW: u32 = 0x0800_0000;
             command.creation_flags(CREATE_NO_WINDOW);
         }
-        let child = command
-            .spawn()
-            .map_err(|e| format!("could not start the peer-to-peer helper: {e}"))?;
+        let log = HelperLog::open(&self.log_path);
+        log.line(&format!("starting {} {}", bare.display(), bundle.display()));
+        let mut child = match command.spawn() {
+            Ok(c) => c,
+            Err(e) => {
+                let msg = format!("could not start the peer-to-peer helper: {e}");
+                log.line(&msg);
+                return Err(msg);
+            }
+        };
+        if let Some(stderr) = child.stderr.take() {
+            let log = log.clone();
+            tauri::async_runtime::spawn(async move {
+                let mut lines = BufReader::new(stderr).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    log.line(&line);
+                }
+            });
+        }
 
-        // The helper connects back and proves it's ours with the token.
-        let (socket, _) = tokio::time::timeout(Duration::from_secs(15), listener.accept())
-            .await
-            .map_err(|_| "the peer-to-peer helper didn't start in time".to_string())?
-            .map_err(|e| e.to_string())?;
+        // The helper connects back and proves it's ours with the token. If it quits
+        // first, say so right away (with its last words) instead of waiting it out.
+        let accepted = tokio::select! {
+            r = tokio::time::timeout(Duration::from_secs(20), listener.accept()) => r,
+            exit = child.wait() => {
+                tokio::time::sleep(Duration::from_millis(200)).await; // let its last output land
+                let code = exit.map(|s| s.to_string()).unwrap_or_else(|e| e.to_string());
+                let msg = format!("the peer-to-peer helper stopped right away ({code}){}", log.last_words());
+                log.line(&msg);
+                return Err(msg);
+            }
+        };
+        let (socket, _) = match accepted {
+            Ok(Ok(pair)) => pair,
+            Ok(Err(e)) => return Err(e.to_string()),
+            Err(_) => {
+                let msg = format!("the peer-to-peer helper didn't start in time{}", log.last_words());
+                log.line(&msg);
+                return Err(msg);
+            }
+        };
+        log.line("helper connected");
         drop(listener);
         let (read_half, mut write_half) = socket.into_split();
         let mut lines = BufReader::new(read_half).lines();
@@ -293,8 +381,37 @@ mod tests {
         move |n, v| n == "relay:message" && v["type"] == t
     }
 
+    /// Tests that point the helper elsewhere through env vars must not overlap.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn a_helper_that_crashes_is_reported_quickly_with_its_error() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(bare) = std::fs::read_dir(manifest().join("binaries")).ok().and_then(|mut d| d.next()).and_then(|e| e.ok()).map(|e| e.path()) else {
+            eprintln!("skipped: run `node scripts/prepare-swarm.mjs` first");
+            return;
+        };
+        let dir = std::env::temp_dir().join(format!("epoch-crash-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let broken = dir.join("broken.js");
+        std::fs::write(&broken, "throw new Error('boom from the helper')").unwrap();
+        std::env::set_var("EPOCH_SWARM_BARE", &bare);
+        std::env::set_var("EPOCH_SWARM_BUNDLE", &broken);
+        let (app, _rx) = app_with_events();
+        let log = dir.join("swarm.log");
+        let swarm = Swarm::new("33".repeat(32), log.clone());
+        let started = std::time::Instant::now();
+        let cmd = connect_command(&json!({"mode":"host","uid":"gm","displayName":"GM","roomCode":"CRASH"})).unwrap();
+        let err = tauri::async_runtime::block_on(swarm.command(app.handle(), cmd)).unwrap_err();
+        assert!(started.elapsed() < Duration::from_secs(10), "took {:?}", started.elapsed());
+        assert!(err.contains("stopped right away"), "{err}");
+        assert!(err.contains("boom from the helper"), "{err}");
+        assert!(std::fs::read_to_string(&log).unwrap().contains("boom from the helper"));
+    }
+
     #[test]
     fn host_and_join_through_the_real_helper() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let triple_bin = std::fs::read_dir(manifest().join("binaries"))
             .ok()
             .and_then(|mut d| d.next())
@@ -315,8 +432,9 @@ mod tests {
 
         let (gm_app, gm_rx) = app_with_events();
         let (pl_app, pl_rx) = app_with_events();
-        let gm = Swarm::new("11".repeat(32));
-        let pl = Swarm::new("22".repeat(32));
+        let tmp = std::env::temp_dir();
+        let gm = Swarm::new("11".repeat(32), tmp.join(format!("gm-{}.log", uuid::Uuid::new_v4())));
+        let pl = Swarm::new("22".repeat(32), tmp.join(format!("pl-{}.log", uuid::Uuid::new_v4())));
         let host = connect_command(&json!({"mode":"host","uid":"gm","displayName":"GM","roomCode":"RUST-TEST"})).unwrap();
         let join = connect_command(&json!({"mode":"join","uid":"p1","displayName":"Thomas","roomCode":"rust-test"})).unwrap();
 
