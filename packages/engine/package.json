@@ -1,5 +1,5 @@
 {
-  "name": "@solryn/engine",
+  "name": "@epoch/engine",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,6 +10,6 @@
     "./*": "./src/*"
   },
   "dependencies": {
-    "@solryn/shared-types": "*"
+    "@epoch/shared-types": "*"
   }
 }
