@@ -1,8 +1,9 @@
 /// <reference types="vite/client" />
 
 /**
- * The preload bridges (apps/desktop/electron/preload.ts). These are the
- * renderer's only native capabilities: the SQLite path-store and the relay.
+ * Native bridges installed by native/tauriBridge.ts on top of the Rust commands
+ * in src-tauri. These are the renderer's only native capabilities: the SQLite
+ * path-store and the relay.
  */
 interface DbBridge {
   read(path: string): Promise<unknown>;

@@ -7,16 +7,13 @@ const pkg = (name: string) =>
   fileURLToPath(new URL(`../../packages/${name}/src`, import.meta.url));
 
 // Same source-alias scheme as the web app: bare package + subpaths → package src.
-const epochAlias = [
-  { find: /^@epoch\/shared-types$/, replacement: `${pkg('shared-types')}/index.ts` },
-  { find: /^@epoch\/shared-types\//, replacement: `${pkg('shared-types')}/` },
-  { find: /^@epoch\/engine$/, replacement: `${pkg('engine')}/index.ts` },
-  { find: /^@epoch\/engine\//, replacement: `${pkg('engine')}/` },
-  { find: /^@epoch\/systems$/, replacement: `${pkg('systems')}/index.ts` },
-  { find: /^@epoch\/systems\//, replacement: `${pkg('systems')}/` },
-  { find: /^@epoch\/protocol$/, replacement: `${pkg('protocol')}/index.ts` },
-  { find: /^@epoch\/protocol\//, replacement: `${pkg('protocol')}/` },
-];
+// Both the current @epoch/* and older @solryn/* import names map to the same source.
+const epochAlias = ['shared-types', 'engine', 'systems', 'protocol'].flatMap((name) =>
+  ['epoch', 'solryn'].flatMap((scope) => [
+    { find: new RegExp(`^@${scope}/${name}$`), replacement: `${pkg(name)}/index.ts` },
+    { find: new RegExp(`^@${scope}/${name}/`), replacement: `${pkg(name)}/` },
+  ]),
+);
 
 export default defineConfig({
   plugins: [react()],
@@ -28,7 +25,6 @@ export default defineConfig({
     css: false,
     // Renderer tests AND the shared-package tests (engine/systems) run here.
     include: [
-      'electron/**/*.{test,spec}.ts',
       'src/**/*.{test,spec}.{ts,tsx}',
       '../../packages/*/src/**/*.{test,spec}.{ts,tsx}',
     ],
