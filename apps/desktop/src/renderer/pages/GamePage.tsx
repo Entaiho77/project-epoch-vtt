@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import type { SolrynCharacter } from '../features/solryn/SolrynCharacterBuilder';
+import { SolrynGameBoard } from '../features/solryn/SolrynGameBoard';
 import '../styles/pages.css';
 
 export function GamePage() {
@@ -102,28 +103,10 @@ export function GamePage() {
           </div>
         ) : (
           <div className="game-board">
-            <div className="board-header">
-              <h2>Game in Progress</h2>
-              <div className="board-info">
-                <span>{character.name}</span>
-                <span>Level {character.level}</span>
-              </div>
-            </div>
-
-            <div className="board-container">
-              <div className="game-grid">
-                <div className="grid-note">
-                  <p>Game board and combat mechanics coming soon</p>
-                  <p className="text-muted">This is a placeholder for the interactive board</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="board-footer">
-              <button className="secondary" onClick={() => setGameStarted(false)}>
-                Back to Lobby
-              </button>
-            </div>
+            <SolrynGameBoard
+              character={character}
+              onExit={() => setGameStarted(false)}
+            />
           </div>
         )}
       </div>

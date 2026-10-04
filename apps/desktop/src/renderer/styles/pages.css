@@ -319,6 +319,99 @@
   padding-top: var(--spacing-lg);
 }
 
+/* Game Room Pages */
+.room-container {
+  max-width: 600px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.room-section {
+  margin-bottom: var(--spacing-2xl);
+}
+
+.room-card {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-xl);
+  text-align: center;
+}
+
+.room-card h2 {
+  margin-bottom: var(--spacing-sm);
+  color: var(--text-primary);
+}
+
+.room-card > p {
+  margin-bottom: var(--spacing-lg);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.room-card button {
+  width: 100%;
+}
+
+.room-divider {
+  text-align: center;
+  margin: var(--spacing-2xl) 0;
+  position: relative;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.room-divider::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background-color: var(--border-color);
+  z-index: 0;
+}
+
+.room-divider span {
+  position: relative;
+  background-color: var(--bg-primary);
+  padding: 0 var(--spacing-md);
+  z-index: 1;
+}
+
+.room-input-group {
+  margin-bottom: var(--spacing-lg);
+}
+
+.room-input-group input {
+  width: 100%;
+  font-size: var(--font-size-lg);
+  padding: var(--spacing-md);
+  text-align: center;
+  margin-bottom: var(--spacing-sm);
+}
+
+.error-message {
+  color: var(--error);
+  font-size: var(--font-size-sm);
+  margin-bottom: var(--spacing-md);
+}
+
+.room-info {
+  background-color: var(--bg-secondary);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-lg);
+  margin-top: var(--spacing-xl);
+}
+
+.room-info p {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
 /* Character Sheet Page */
 .character-sheet {
   max-width: 1000px;
