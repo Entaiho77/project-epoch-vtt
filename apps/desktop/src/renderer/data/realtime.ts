@@ -236,6 +236,20 @@ export function getSession(): SessionState {
   return { ...session, joinRequests: [...session.joinRequests], players: [...session.players] };
 }
 
+/** Non-React listener for session changes (voice uses it to follow the session). */
+export function onSessionChange(cb: () => void): Unsubscribe {
+  sessionListeners.add(cb);
+  return () => {
+    sessionListeners.delete(cb);
+  };
+}
+
+/** Voice registers here to hear "the GM muted / unmuted you". */
+let voiceMutedHandler: ((muted: boolean) => void) | null = null;
+export function setVoiceMutedHandler(fn: ((muted: boolean) => void) | null): void {
+  voiceMutedHandler = fn;
+}
+
 /** React hook: live session state (role, room code, status). */
 export function useSession(): SessionState {
   const [, force] = useState(0);
@@ -276,6 +290,7 @@ interface RelayServerMessage {
     from?: string;
     data?: unknown;
     message?: string;
+    muted?: boolean;
   };
 }
 
@@ -623,6 +638,10 @@ async function handleRelayMessage(msg: RelayServerMessage): Promise<void> {
       }
       break;
     }
+
+    case 'voice-muted':
+      voiceMutedHandler?.(Boolean(p.muted));
+      break;
 
     case 'gm-disconnected':
       endSession('The GM ended the session.');

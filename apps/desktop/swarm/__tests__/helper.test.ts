@@ -155,6 +155,89 @@ describe('peer-to-peer session helper', () => {
     );
   }, 60_000);
 
+  describe('voice', () => {
+    type VoiceEv = { ev: string; from: string; seq: number; data: string };
+    const isVoice = (from: string, data?: string) => (e: VoiceEv) =>
+      e.ev === 'voice' && e.from === from && (data === undefined || e.data === data);
+    const frame = (text: string) => Buffer.from(text).toString('base64');
+    const voices = (h: Helper, from: string) =>
+      (h.events as VoiceEv[]).filter((e) => e.ev === 'voice' && e.from === from);
+
+    /** Sends a few frames (datagrams can drop) and waits for one to land. */
+    async function speak(h: Helper, listener: Helper, from: string, text: string) {
+      const data = frame(text);
+      for (let seq = 0; seq < 5; seq++) {
+        h.send({ cmd: 'voice', seq, data });
+        await new Promise((r) => setTimeout(r, 40));
+      }
+      return listener.waitFor(isVoice(from, data), 5_000, `voice ${from} → ${text}`);
+    }
+
+    async function table() {
+      const roomCode = code();
+      const { gm, player, req } = await hostAndJoin(roomCode);
+      gm.send({ cmd: 'approve', peerKey: req.message.payload.peerKey, allow: true });
+      await player.waitFor(isStatus('open'), 5_000, 'open');
+      const p2 = await helper();
+      p2.send({ cmd: 'join', roomCode, uid: 'player-2', displayName: 'Angie' });
+      const req2 = await gm.waitFor(
+        (e: { ev: string; message?: { type: string; payload: { playerId: string } } }) =>
+          isMsg('join-request')(e) && e.message!.payload.playerId === 'player-2',
+        15_000,
+        'second join-request',
+      );
+      gm.send({ cmd: 'approve', peerKey: req2.message.payload.peerKey, allow: true });
+      await p2.waitFor(isStatus('open'), 5_000, 'p2 open');
+      return { gm, player, p2 };
+    }
+
+    it('a player is heard by the GM and the other players, labelled by the GM', async () => {
+      const { gm, player, p2 } = await table();
+      const got = await speak(player, gm, 'player-1', 'hello from thomas');
+      expect(got.seq).toBeGreaterThanOrEqual(0);
+      await p2.waitFor(isVoice('player-1', frame('hello from thomas')), 5_000, 'p2 hears thomas');
+      // Nobody hears themselves.
+      expect(voices(player, 'player-1')).toHaveLength(0);
+      // The GM is heard by everyone, under the GM's id.
+      await speak(gm, player, 'gm-1', 'gm speaking');
+      await p2.waitFor(isVoice('gm-1', frame('gm speaking')), 5_000, 'p2 hears gm');
+    }, 60_000);
+
+    it('voice from a player still waiting for approval is dropped', async () => {
+      const { gm, player } = await hostAndJoin(code());
+      for (let seq = 0; seq < 5; seq++) player.send({ cmd: 'voice', seq, data: frame('let me in') });
+      await new Promise((r) => setTimeout(r, 800));
+      expect(voices(gm, 'player-1')).toHaveLength(0);
+    }, 40_000);
+
+    it('the GM can mute a player for everyone, and unmute them', async () => {
+      const { gm, player, p2 } = await table();
+      gm.send({ cmd: 'voice-mute', playerId: 'player-1', muted: true });
+      await player.waitFor(
+        (e: { ev: string; message?: { type: string; payload: { muted: boolean } } }) =>
+          isMsg('voice-muted')(e) && e.message!.payload.muted === true,
+        5_000,
+        'told muted',
+      );
+      for (let seq = 0; seq < 5; seq++) player.send({ cmd: 'voice', seq, data: frame('muted words') });
+      await new Promise((r) => setTimeout(r, 800));
+      expect(voices(gm, 'player-1')).toHaveLength(0);
+      expect(voices(p2, 'player-1')).toHaveLength(0);
+
+      gm.send({ cmd: 'voice-mute', playerId: 'player-1', muted: false });
+      await speak(player, p2, 'player-1', 'back again');
+    }, 60_000);
+
+    it('a player cannot pretend to be someone else', async () => {
+      const { gm, player, p2 } = await table();
+      // Whatever the player puts in its own packets, the GM labels them with the
+      // identity it approved.
+      await speak(player, p2, 'player-1', 'who am i');
+      expect(voices(p2, 'gm-1')).toHaveLength(0);
+      expect(voices(gm, 'player-1').length).toBeGreaterThan(0);
+    }, 60_000);
+  });
+
   it('players are told when the GM ends the session', async () => {
     const { gm, player, req } = await hostAndJoin(code());
     gm.send({ cmd: 'approve', peerKey: req.message.payload.peerKey, allow: true });

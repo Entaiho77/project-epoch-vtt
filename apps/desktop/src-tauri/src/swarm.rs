@@ -310,6 +310,13 @@ impl Swarm {
                             let _ = app_for_reader.emit("relay:message", m.clone());
                         }
                     }
+                    Some("voice") => {
+                        // {from, seq, data(base64 Opus)} — passed straight to the screen.
+                        let _ = app_for_reader.emit(
+                            "relay:voice",
+                            json!({ "from": ev["from"], "seq": ev["seq"], "data": ev["data"] }),
+                        );
+                    }
                     _ => {}
                 }
             }
@@ -408,7 +415,7 @@ mod tests {
             .build(tauri::test::mock_context(tauri::test::noop_assets()))
             .unwrap();
         let (tx, rx) = std_mpsc::channel();
-        for name in ["relay:status", "relay:message"] {
+        for name in ["relay:status", "relay:message", "relay:voice"] {
             let tx = tx.clone();
             app.listen_any(name, move |e| {
                 let v: Value = serde_json::from_str(e.payload()).unwrap_or(Value::Null);
@@ -508,6 +515,15 @@ mod tests {
         gm.command_if_running(json!({"cmd":"send","to":"p1","data":{"hello":"player"}}));
         let m = wait(&pl_rx, "gm message", is_msg("game-message"));
         assert_eq!(m["payload"]["data"]["hello"], "player");
+
+        // Voice: datagrams can drop, so send a few.
+        for seq in 0..5 {
+            pl.command_if_running(json!({"cmd":"voice","seq":seq,"data":"AQID"}));
+            std::thread::sleep(Duration::from_millis(30));
+        }
+        let v = wait(&gm_rx, "voice", |n, _| n == "relay:voice");
+        assert_eq!(v["from"], "p1");
+        assert_eq!(v["data"], "AQID");
 
         gm.command_if_running(json!({"cmd":"leave"}));
         wait(&pl_rx, "gm-disconnected", is_msg("gm-disconnected"));

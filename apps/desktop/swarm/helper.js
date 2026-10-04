@@ -12,11 +12,17 @@
  *  - Player: joins the topic as a client, introduces itself, and waits for the GM to
  *            approve. Only approved players exchange game messages.
  *
+ * Voice travels as encrypted datagrams on the same connections (NoiseSecretStream
+ * send/trySend): a lost packet is skipped rather than resent, which is what live audio
+ * wants. Players send their voice to the GM; the GM stamps who it came from and passes
+ * it to everyone else. Unapproved or GM-muted players' voice is dropped.
+ *
  * Every connection is encrypted (Noise). Each install has a fixed key pair, so the GM
  * can recognise a returning player's device.
  *
- * App → helper commands  {cmd: 'host' | 'join' | 'send' | 'approve' | 'kick' | 'retopic' | 'leave', …}
- * Helper → app events    {ev: 'status', status} | {ev: 'message', message}
+ * App → helper commands  {cmd: 'host' | 'join' | 'send' | 'approve' | 'kick' | 'retopic' | 'leave'
+ *                               | 'voice' | 'voice-mute', …}
+ * Helper → app events    {ev: 'status', status} | {ev: 'message', message} | {ev: 'voice', from, seq, data}
  * `message` uses the same shapes the relay server sent (hosted, player-joined,
  * player-left, gm-disconnected, game-message, error), plus join-request / waiting /
  * kicked, so the app's session code barely changes.
@@ -31,6 +37,13 @@ const tcp = require('bare-tcp')
 const PROTOCOL = 1
 const HELLO_TIMEOUT_MS = 10_000
 const MAX_LINE = 8 * 1024 * 1024 // generous: image chunks are ~350 KB
+
+// Voice datagrams (inside the encrypted message):
+//   player → GM   [VOICE_UP][seq u16][opus frame]
+//   GM → player   [VOICE_DOWN][seq u16][id length u8][speaker id][opus frame]
+const VOICE_UP = 1
+const VOICE_DOWN = 2
+const MAX_VOICE_FRAME = 1000 // an Opus frame is ~100 bytes; keep well under the path MTU
 
 // --- Arguments ------------------------------------------------------------------
 
@@ -106,6 +119,8 @@ const players = new Map()
 const pending = new Map()
 /** GM: device keys kicked this session (can't come back until a new code). */
 const banned = new Set()
+/** GM: players whose voice the GM has muted. */
+const voiceMuted = new Set()
 
 /** Player: the GM connection once approved. */
 let gmConn = null
@@ -157,6 +172,16 @@ function onGmConnection (conn) {
   if (banned.has(key)) return conn.destroy()
 
   let playerId = null
+  conn.on('message', (buf) => {
+    if (!playerId || buf.byteLength < 4 || buf[0] !== VOICE_UP) return
+    const p = players.get(playerId)
+    if (!p || p.conn !== conn || voiceMuted.has(playerId)) return
+    const seq = (buf[1] << 8) | buf[2]
+    const frame = buf.subarray(3)
+    if (frame.byteLength > MAX_VOICE_FRAME) return
+    emit({ ev: 'voice', from: playerId, seq, data: b4a.toString(frame, 'base64') })
+    relayVoice(playerId, seq, frame, conn)
+  })
   const helloTimer = setTimeout(() => { if (!playerId) conn.destroy() }, HELLO_TIMEOUT_MS)
 
   lineReader(conn, (msg) => {
@@ -205,6 +230,7 @@ function approve (cmd) {
   if (old && old.conn !== req.conn) old.conn.destroy()
   players.set(req.playerId, { conn: req.conn, displayName: req.displayName, key: cmd.peerKey })
   writeLine(req.conn, { t: 'welcome' })
+  if (voiceMuted.has(req.playerId)) writeLine(req.conn, { t: 'voice-muted', muted: true })
   message({
     type: 'player-joined',
     payload: { playerId: req.playerId, displayName: req.displayName, peerKey: cmd.peerKey }
@@ -225,6 +251,48 @@ async function retopic (cmd) {
   } catch (e) {
     errorMsg('Could not switch to the new code: ' + (e?.message || e))
   }
+}
+
+/** GM: pass a voice frame to every approved player except `skip`. */
+function relayVoice (speakerId, seq, frame, skip) {
+  const id = b4a.from(String(speakerId).slice(0, 128))
+  const packet = b4a.alloc(4 + id.byteLength + frame.byteLength)
+  packet[0] = VOICE_DOWN
+  packet[1] = (seq >> 8) & 0xff
+  packet[2] = seq & 0xff
+  packet[3] = id.byteLength
+  packet.set(id, 4)
+  packet.set(frame, 4 + id.byteLength)
+  for (const p of players.values()) {
+    if (p.conn !== skip) p.conn.trySend(packet)
+  }
+}
+
+/** The app's own voice: GM → all players; player → GM. */
+function sendVoice (cmd) {
+  if (typeof cmd.data !== 'string') return
+  const frame = b4a.from(cmd.data, 'base64')
+  if (!frame.byteLength || frame.byteLength > MAX_VOICE_FRAME) return
+  const seq = (cmd.seq >>> 0) & 0xffff
+  if (mode === 'host') {
+    relayVoice(identity.uid, seq, frame, null)
+  } else if (mode === 'join' && gmConn) {
+    const packet = b4a.alloc(3 + frame.byteLength)
+    packet[0] = VOICE_UP
+    packet[1] = (seq >> 8) & 0xff
+    packet[2] = seq & 0xff
+    packet.set(frame, 3)
+    gmConn.trySend(packet)
+  }
+}
+
+/** GM: mute or unmute a player's voice for everyone, and tell them. */
+function voiceMute (cmd) {
+  if (mode !== 'host' || typeof cmd.playerId !== 'string') return
+  if (cmd.muted) voiceMuted.add(cmd.playerId)
+  else voiceMuted.delete(cmd.playerId)
+  const p = players.get(cmd.playerId)
+  if (p) writeLine(p.conn, { t: 'voice-muted', muted: !!cmd.muted })
 }
 
 function kick (cmd) {
@@ -249,6 +317,15 @@ async function startJoin (cmd) {
 
 function onPlayerConnection (conn) {
   conn.on('error', () => {})
+  conn.on('message', (buf) => {
+    if (conn !== gmConn || buf.byteLength < 5 || buf[0] !== VOICE_DOWN) return
+    const seq = (buf[1] << 8) | buf[2]
+    const idLen = buf[3]
+    if (buf.byteLength < 4 + idLen + 1) return
+    const from = b4a.toString(buf.subarray(4, 4 + idLen))
+    if (from === identity?.uid) return
+    emit({ ev: 'voice', from, seq, data: b4a.toString(buf.subarray(4 + idLen), 'base64') })
+  })
   writeLine(conn, {
     t: 'hello',
     v: PROTOCOL,
@@ -276,6 +353,9 @@ function onPlayerConnection (conn) {
       case 'bye':
         message({ type: 'gm-disconnected' })
         stop().then(() => status('closed'))
+        break
+      case 'voice-muted':
+        if (conn === gmConn) message({ type: 'voice-muted', payload: { muted: !!msg.muted } })
         break
       case 'game':
         if (conn === gmConn) message({ type: 'game-message', payload: { from: 'gm', data: msg.data } })
@@ -315,6 +395,7 @@ async function stop () {
   gmConn = null
   players.clear()
   pending.clear()
+  voiceMuted.clear()
   if (s) {
     await new Promise((resolve) => setTimeout(resolve, 100)) // let 'bye' flush
     try { await s.destroy() } catch {}
@@ -335,6 +416,8 @@ lineReader(app, (cmd) => {
     case 'approve': return approve(cmd)
     case 'kick': return kick(cmd)
     case 'retopic': return retopic(cmd)
+    case 'voice': return sendVoice(cmd)
+    case 'voice-mute': return voiceMute(cmd)
     case 'leave': return stop().then(() => status('closed'))
   }
 })

@@ -18,6 +18,14 @@ interface DbBridge {
 }
 
 /** Live-session transport (peer-to-peer via the Hyperswarm helper). */
+interface VoicePacket {
+  /** Who is speaking (user id), as stamped by the GM's copy. */
+  from: string;
+  seq: number;
+  /** base64 Opus frame */
+  data: string;
+}
+
 interface RelayBridge {
   connect(url: string, identity: unknown): Promise<void>;
   /** GM: let a waiting player in, or turn them away. */
@@ -28,6 +36,12 @@ interface RelayBridge {
   setCode(roomCode: string): Promise<void>;
   disconnect(): Promise<void>;
   send(message: unknown): Promise<void>;
+  /** Send one encoded voice frame (base64 Opus). */
+  sendVoice(seq: number, data: string): void;
+  /** GM: mute or unmute a player's voice for everyone. */
+  muteVoice(playerId: string, muted: boolean): Promise<void>;
+  /** Voice frames from others; returns a function that stops listening. */
+  onVoice(callback: (packet: VoicePacket) => void): () => void;
   onMessage(callback: (message: unknown) => void): void;
   onStatus(callback: (status: string) => void): void;
   removeListeners(): void;

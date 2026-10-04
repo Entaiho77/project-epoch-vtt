@@ -1,0 +1,62 @@
+import { useEffect, useRef, useState } from 'react';
+import type { GameMember } from '@epoch/shared-types';
+import v from './Voice.module.css';
+import { VoicePanel } from './VoicePanel';
+import { VoiceStatus } from './VoiceStatus';
+import { useVoice } from './voiceStore';
+
+/**
+ * Voice in the game's top bar, so it's there on every game screen (choosing a
+ * character, the builder, the board). The button opens the voice panel; while in
+ * voice, a small pill stays on screen for mute and push-to-talk.
+ */
+export function VoiceButton({ uid, members }: { uid: string; members: Record<string, GameMember> }) {
+  const voice = useVoice();
+  const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (anchor.current && !anchor.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const muted = voice.micMuted || voice.mutedByGm;
+  const talking = voice.joined && voice.speaking.includes(uid);
+  const cls = [
+    v.trigger,
+    voice.joined ? (muted ? v.triggerMuted : v.triggerOn) : '',
+    talking ? v.triggerTalking : '',
+  ].join(' ');
+
+  return (
+    <div className={v.anchor} ref={anchor}>
+      <button
+        type="button"
+        className={cls}
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+      >
+        <span aria-hidden>{voice.joined && muted ? '🔇' : '🎙'}</span>
+        Voice
+      </button>
+      {open && (
+        <div className={v.panel} role="dialog" aria-label="Voice">
+          <VoicePanel uid={uid} members={members} />
+        </div>
+      )}
+      <VoiceStatus uid={uid} />
+    </div>
+  );
+}

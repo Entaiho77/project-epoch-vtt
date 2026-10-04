@@ -20,6 +20,7 @@ import { CharacterBuilder } from '../builder/CharacterBuilder';
 import { Dnd5eCharacterBuilder } from '../builder5e/Dnd5eCharacterBuilder';
 import { BoardScreen } from '../board/BoardScreen';
 import { RollLogProvider } from '../rolllog/rollLog';
+import { VoiceButton } from '../voice/VoiceButton';
 import styles from './GamePage.module.css';
 
 export function GamePage() {
@@ -161,6 +162,9 @@ export function GamePage() {
         <div className={styles.headerRight}>
           {session.roomCode && session.gameId === game.id && (
             <span className={styles.systemLabel}>Room {session.roomCode}</span>
+          )}
+          {session.role !== 'idle' && session.gameId === game.id && (
+            <VoiceButton uid={user.uid} members={game.members} />
           )}
           <RoleBadge role={role} />
           {!needsCharacter && (

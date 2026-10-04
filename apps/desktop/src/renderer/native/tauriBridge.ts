@@ -17,6 +17,7 @@ import { listen } from '@tauri-apps/api/event';
 type DbUpdateCb = (path: string, value: unknown, subId: string) => void;
 type MessageCb = (message: unknown) => void;
 type StatusCb = (status: string) => void;
+type VoiceCb = (packet: VoicePacket) => void;
 
 interface DbUpdatePayload {
   path: string;
@@ -34,6 +35,7 @@ export function installTauriBridge(): void {
   const dbCallbacks: DbUpdateCb[] = [];
   let messageCallbacks: MessageCb[] = [];
   let statusCallbacks: StatusCb[] = [];
+  const voiceCallbacks = new Set<VoiceCb>();
 
   const ready = Promise.all([
     listen<DbUpdatePayload>('db:update', ({ payload }) => {
@@ -44,6 +46,9 @@ export function installTauriBridge(): void {
     }),
     listen<string>('relay:status', ({ payload }) => {
       for (const cb of statusCallbacks) cb(payload);
+    }),
+    listen<VoicePacket>('relay:voice', ({ payload }) => {
+      for (const cb of voiceCallbacks) cb(payload);
     }),
   ]);
   ready.catch((error: unknown) => {
@@ -77,6 +82,15 @@ export function installTauriBridge(): void {
     kick: (playerId) => call('relay_kick', { playerId }),
     setCode: (roomCode) => call('relay_set_code', { roomCode }),
     send: (message) => call('relay_send', { message }),
+    // Voice frames are fire-and-forget; no need to wait on each one.
+    sendVoice: (seq, data) => {
+      void invoke('relay_voice', { seq, data }).catch(() => {});
+    },
+    muteVoice: (playerId, muted) => call('relay_voice_mute', { playerId, muted }),
+    onVoice: (cb) => {
+      voiceCallbacks.add(cb);
+      return () => voiceCallbacks.delete(cb);
+    },
     onMessage: (cb) => {
       messageCallbacks.push(cb);
     },

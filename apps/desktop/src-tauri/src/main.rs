@@ -138,6 +138,23 @@ fn relay_set_code(swarm: State<'_, Swarm>, room_code: String) -> CmdResult<()> {
     Ok(())
 }
 
+/// Send one encoded voice frame (base64 Opus). Players' frames go to the GM, the
+/// GM's to every player. Dropped quietly if not in a session.
+#[tauri::command]
+fn relay_voice(swarm: State<'_, Swarm>, seq: u32, data: String) -> CmdResult<()> {
+    if data.len() <= 2048 {
+        swarm.command_if_running(serde_json::json!({ "cmd": "voice", "seq": seq & 0xffff, "data": data }));
+    }
+    Ok(())
+}
+
+/// GM: mute or unmute a player's voice for everyone.
+#[tauri::command]
+fn relay_voice_mute(swarm: State<'_, Swarm>, player_id: String, muted: bool) -> CmdResult<()> {
+    swarm.command_if_running(serde_json::json!({ "cmd": "voice-mute", "playerId": player_id, "muted": muted }));
+    Ok(())
+}
+
 // --- Images -------------------------------------------------------------------
 
 /// Save an uploaded image to disk. The renderer sends the raw file bytes as the
@@ -272,6 +289,8 @@ fn main() {
             relay_approve,
             relay_kick,
             relay_set_code,
+            relay_voice,
+            relay_voice_mute,
             asset_put,
             asset_has,
             asset_get,
