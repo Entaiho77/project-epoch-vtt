@@ -2,8 +2,8 @@
 #![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
 
 mod assets;
-mod relay;
 mod store;
+mod swarm;
 
 use std::sync::Mutex;
 
@@ -12,15 +12,14 @@ use serde_json::{Map, Value};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use assets::Assets;
-use relay::{RelayHandle, RelayIdentity};
 use store::KvStore;
+use swarm::Swarm;
 
 /// Native capabilities exposed to the renderer. The frontend bridge
 /// (src/renderer/native/tauriBridge.ts) wraps these as `window.db`,
-/// `window.relay` and `window.epochApp`, the same shape the Electron
-/// preload exposed, so the data layer above it is unchanged.
+/// `window.relay` and `window.epochApp`. `window.relay` keeps the shape the
+/// old WebSocket relay had, but is now backed by the peer-to-peer helper.
 struct Db(Mutex<KvStore>);
-struct Relay(Mutex<Option<RelayHandle>>);
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -79,36 +78,63 @@ fn db_unsubscribe(db: State<Db>, id: String) -> CmdResult<()> {
     Ok(())
 }
 
-// --- Relay --------------------------------------------------------------------
+// --- Sessions (peer-to-peer) -------------------------------------------------------
 
+/// Host or join. `identity` is {mode: 'host'|'join', uid, displayName, roomCode}.
+/// (`_url` is left over from the relay server days and ignored.)
 #[tauri::command]
-fn relay_connect(
+async fn relay_connect(
     app: AppHandle,
-    relay: State<Relay>,
-    url: String,
-    identity: RelayIdentity,
+    swarm: State<'_, Swarm>,
+    _url: Option<String>,
+    identity: Value,
 ) -> CmdResult<()> {
-    let mut slot = lock(&relay.0)?;
-    if let Some(old) = slot.take() {
-        old.disconnect();
-    }
-    *slot = Some(relay::start(app, url, identity));
-    Ok(())
-}
-
-#[tauri::command]
-fn relay_disconnect(relay: State<Relay>) -> CmdResult<()> {
-    if let Some(old) = lock(&relay.0)?.take() {
-        old.disconnect();
+    let cmd = swarm::connect_command(&identity)?;
+    if let Err(e) = swarm.command(&app, cmd).await {
+        swarm::report_error(&app, &e);
+        return Err(e);
     }
     Ok(())
 }
 
 #[tauri::command]
-fn relay_send(relay: State<Relay>, message: Value) -> CmdResult<()> {
-    if let Some(handle) = lock(&relay.0)?.as_ref() {
-        handle.send(&message);
+fn relay_disconnect(swarm: State<'_, Swarm>) -> CmdResult<()> {
+    swarm.command_if_running(serde_json::json!({ "cmd": "leave" }));
+    Ok(())
+}
+
+/// `message` is {type: 'game-message', payload: {data, to?}}; `to` (GM only)
+/// sends to one player instead of everyone.
+#[tauri::command]
+fn relay_send(swarm: State<'_, Swarm>, message: Value) -> CmdResult<()> {
+    let payload = message.get("payload").cloned().unwrap_or(Value::Null);
+    let mut cmd = serde_json::json!({ "cmd": "send", "data": payload.get("data").cloned().unwrap_or(Value::Null) });
+    if let Some(to) = payload.get("to").and_then(Value::as_str) {
+        cmd["to"] = Value::String(to.to_string());
     }
+    swarm.command_if_running(cmd);
+    Ok(())
+}
+
+/// GM: let a waiting player in (or turn them away).
+#[tauri::command]
+fn relay_approve(swarm: State<'_, Swarm>, peer_key: String, allow: bool) -> CmdResult<()> {
+    swarm.command_if_running(serde_json::json!({ "cmd": "approve", "peerKey": peer_key, "allow": allow }));
+    Ok(())
+}
+
+/// GM: remove a player from this session; their device can't rejoin on this code.
+#[tauri::command]
+fn relay_kick(swarm: State<'_, Swarm>, player_id: String) -> CmdResult<()> {
+    swarm.command_if_running(serde_json::json!({ "cmd": "kick", "playerId": player_id }));
+    Ok(())
+}
+
+/// GM: switch the hosted game to a new room code (after regenerating it).
+/// Players already connected stay connected.
+#[tauri::command]
+fn relay_set_code(swarm: State<'_, Swarm>, room_code: String) -> CmdResult<()> {
+    swarm.command_if_running(serde_json::json!({ "cmd": "retopic", "roomCode": room_code }));
     Ok(())
 }
 
@@ -226,7 +252,9 @@ fn main() {
             }
             app.manage(images);
             app.manage(Db(Mutex::new(kv)));
-            app.manage(Relay(Mutex::new(None)));
+            let seed = swarm::load_or_create_seed(&dir)
+                .map_err(|e| format!("could not create this computer's session key: {e}"))?;
+            app.manage(Swarm::new(seed));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -241,6 +269,9 @@ fn main() {
             relay_connect,
             relay_disconnect,
             relay_send,
+            relay_approve,
+            relay_kick,
+            relay_set_code,
             asset_put,
             asset_has,
             asset_get,

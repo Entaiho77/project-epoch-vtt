@@ -73,6 +73,9 @@ export function installTauriBridge(): void {
   window.relay = {
     connect: (url, identity) => call('relay_connect', { url, identity }),
     disconnect: () => call('relay_disconnect'),
+    approve: (peerKey, allow) => call('relay_approve', { peerKey, allow }),
+    kick: (playerId) => call('relay_kick', { playerId }),
+    setCode: (roomCode) => call('relay_set_code', { roomCode }),
     send: (message) => call('relay_send', { message }),
     onMessage: (cb) => {
       messageCallbacks.push(cb);

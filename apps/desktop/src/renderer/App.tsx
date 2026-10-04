@@ -4,6 +4,7 @@ import { AuthPage } from './features/auth/AuthPage';
 import { LobbyPage } from './features/lobby/LobbyPage';
 import { GamePage } from './features/game/GamePage';
 import { CustomizePage } from './features/customize/CustomizePage';
+import { SessionOverlay } from './features/session/SessionOverlay';
 
 function FullScreenMessage({ children }: { children: string }) {
   return (
@@ -54,6 +55,7 @@ export function App() {
     <HashRouter>
       <AuthProvider>
         <AppRoutes />
+        <SessionOverlay />
       </AuthProvider>
     </HashRouter>
   );

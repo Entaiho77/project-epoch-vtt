@@ -18,6 +18,7 @@ import { Button } from '../../components/ui/Button';
 import { TextField } from '../../components/ui/TextField';
 import { Avatar } from '../../components/ui/Avatar';
 import { RoleBadge } from '../../components/ui/Badge';
+import { changeRoomCode, kickPlayer, useSession } from '../../data/realtime';
 import styles from './GameSettingsModal.module.css';
 
 interface GameSettingsModalProps {
@@ -96,6 +97,8 @@ export function GameSettingsModal({
   };
 
   const members = Object.entries(game.members ?? {});
+  const session = useSession();
+  const online = new Set(session.gameId === game.id ? session.players.map((p) => p.playerId) : []);
 
   async function saveName() {
     if (name.trim() && name.trim() !== game.name) {
@@ -116,7 +119,29 @@ export function GameSettingsModal({
   async function regenerate() {
     setBusy(true);
     try {
-      await regenerateInviteCode(game.id, game.inviteCode);
+      const code = await regenerateInviteCode(game.id, game.inviteCode);
+      await changeRoomCode(game.id, code); // keep hosting under the new code
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Remove a player: disconnect them, drop their membership, and change the code
+   * so they can't come back with the old one. Their character is kept. */
+  async function removePlayer(uid: string, displayName: string) {
+    if (
+      !confirm(
+        `Remove ${displayName}? They'll be disconnected and the invite code will change, so share the new code with everyone else.`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    try {
+      if (session.players.some((p) => p.playerId === uid)) await kickPlayer(uid);
+      await removeMember(game.id, uid);
+      const code = await regenerateInviteCode(game.id, game.inviteCode);
+      await changeRoomCode(game.id, code);
     } finally {
       setBusy(false);
     }
@@ -402,12 +427,14 @@ export function GameSettingsModal({
                   {uid === currentUid && (
                     <span className={styles.you}> (you)</span>
                   )}
+                  {online.has(uid) && <span className={styles.you}> · online</span>}
                 </span>
                 <RoleBadge role={m.role} />
                 {isGM && uid !== currentUid && (
                   <button
                     className={styles.remove}
-                    onClick={() => void removeMember(game.id, uid)}
+                    onClick={() => void removePlayer(uid, m.displayName)}
+                    disabled={busy}
                     title="Remove from game"
                     aria-label={`Remove ${m.displayName}`}
                   >

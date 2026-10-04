@@ -10,8 +10,6 @@ import {
   hostSession,
   joinSession,
   leaveSession,
-  getRelayUrl,
-  setRelayUrl,
 } from '../realtime';
 
 /**
@@ -37,10 +35,18 @@ const mockRelay = {
   send: vi.fn(),
   connect: vi.fn(),
   disconnect: vi.fn(),
+  approve: vi.fn(),
+  kick: vi.fn(),
+  setCode: vi.fn(),
 };
+
+/** Every game in these tests has an invite code (hosting uses it as the room code). */
+const readWithInviteCodes = (path: string) =>
+  Promise.resolve(path.endsWith('/inviteCode') ? 'ABCD-EFGH' : null);
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockDb.read.mockImplementation(readWithInviteCodes);
   Object.assign(window, { db: mockDb, relay: mockRelay });
 });
 
@@ -161,29 +167,19 @@ describe('Realtime - Session Management', () => {
     expect(session.error).toBeNull();
   });
 
-  it('gets relay URL', async () => {
+  it("hosts under the game's invite code", async () => {
+    const code = await hostSession('game123', { uid: 'gm1', displayName: 'GM' });
+    expect(code).toBe('ABCD-EFGH');
+    expect(mockRelay.connect).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ mode: 'host', roomCode: 'ABCD-EFGH' }),
+    );
+    expect(getSession().roomCode).toBe('ABCD-EFGH');
+  });
+
+  it('refuses to host a game without an invite code', async () => {
     mockDb.read.mockResolvedValue(null);
-
-    const url = await getRelayUrl();
-    expect(url).toBe('ws://localhost:3001');
-  });
-
-  it('stores relay URL', async () => {
-    await setRelayUrl('ws://custom:3002');
-
-    expect(mockDb.write).toHaveBeenCalledWith(
-      'local/settings/relayUrl',
-      'ws://custom:3002'
-    );
-  });
-
-  it('sanitizes relay URL', async () => {
-    await setRelayUrl('  ');
-
-    expect(mockDb.write).toHaveBeenCalledWith(
-      'local/settings/relayUrl',
-      'ws://localhost:3001'
-    );
+    await expect(hostSession('nocode', { uid: 'gm1', displayName: 'GM' })).rejects.toThrow(/invite code/);
   });
 
   it('hosts a session as GM', async () => {

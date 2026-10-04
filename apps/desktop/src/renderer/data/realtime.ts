@@ -1,20 +1,29 @@
 import { useEffect, useState } from 'react';
 import { ensureAssets, handleAssetOp, initAssetSync, isAssetOp } from './assetSync';
+import {
+  checkPlayerOp,
+  isPrivatePath,
+  projectForPlayer,
+  touchedPaths,
+  visibilityRoot,
+  type GateContext,
+  type WriteOp,
+} from './gatekeeper';
 
 /**
  * The ONE sync mechanism, re-homed from Firebase RTDB to the desktop stack:
- * local SQLite (window.db, main process) is the source of truth, and a live
- * session mirrors writes across the WebSocket relay (window.relay).
+ * local SQLite (window.db) is the source of truth, and a live session mirrors
+ * writes peer-to-peer (window.relay, backed by the Hyperswarm helper).
  *
  * The API is signature-identical to the Firebase version, so every data module
  * and screen above this file is unchanged:
  *   subscribe / readValue / writeValue / updateValue / multiUpdate / newKey / useValue
  *
  * Sync model (GM-authoritative):
- * - Any local mutation (outside `local/…`, which never leaves the machine) is
- *   applied to SQLite and — while in a session — broadcast over the relay.
- * - The GM applies player ops and re-broadcasts them so every player converges
- *   (the relay only routes player→GM and GM→players).
+ * - Any local mutation is applied to SQLite and, while in a session, shared
+ *   (private paths — see gatekeeper.isPrivatePath — never leave the machine).
+ * - Players send changes to the GM; the GM checks them (gatekeeper), applies them,
+ *   and sends each player the result trimmed to what they may see.
  * - A joining player receives a snapshot of the hosted game from the GM; anything
  *   else resolves on demand via read-requests answered by the GM.
  */
@@ -45,10 +54,7 @@ function wireBridges(): void {
     subs.get(subId)?.cb(value);
   });
   window.relay.onMessage((message) => void handleRelayMessage(message as RelayServerMessage));
-  window.relay.onStatus((status) => {
-    session.status = status as SessionStatus;
-    emitSession();
-  });
+  window.relay.onStatus((status) => setStatus(status as SessionStatus));
 }
 
 export function subscribe<T>(path: string, cb: (value: T | null) => void): Unsubscribe {
@@ -156,11 +162,30 @@ export function useValue<T>(path: string | null): { value: T | null; loading: bo
 }
 
 // ---------------------------------------------------------------------------
-// Session management (host / join / leave) + relay sync
+// Live sessions (peer-to-peer)
+//
+// The GM hosts a game under its invite code; players join with that code. The
+// transport (window.relay, backed by the Hyperswarm helper) routes player → GM and
+// GM → players. The GM's copy is the authority: every player change is checked by
+// the gatekeeper before it's applied, and everything the GM sends out is trimmed to
+// what each player may see (data/gatekeeper.ts).
 // ---------------------------------------------------------------------------
 
 export type SessionStatus = 'idle' | 'connecting' | 'open' | 'closed' | 'error';
 export type SessionRole = 'idle' | 'gm' | 'player';
+
+export interface JoinRequest {
+  peerKey: string;
+  playerId: string;
+  displayName: string;
+  /** Set when this request deserves a second look. */
+  warning?: string;
+}
+
+export interface SessionPlayer {
+  playerId: string;
+  displayName: string;
+}
 
 export interface SessionState {
   role: SessionRole;
@@ -169,6 +194,14 @@ export interface SessionState {
   /** The game being played over this session (set for GM at host, player at join-ack). */
   gameId: string | null;
   error: string | null;
+  /** Player: connected to the GM but not let in yet. */
+  waitingForApproval: boolean;
+  /** Player: the session was open at some point (so a drop means "reconnecting"). */
+  wasOpen: boolean;
+  /** GM: people asking to join, waiting for a decision. */
+  joinRequests: JoinRequest[];
+  /** GM: players connected right now. */
+  players: SessionPlayer[];
 }
 
 const session: SessionState = {
@@ -177,7 +210,16 @@ const session: SessionState = {
   roomCode: null,
   gameId: null,
   error: null,
+  waitingForApproval: false,
+  wasOpen: false,
+  joinRequests: [],
+  players: [],
 };
+
+/** GM: this computer's uid while hosting (owner of the library players read). */
+let hostUid: string | null = null;
+/** GM: who's hosting, so hosting can be restarted after a dropped connection. */
+let hostIdentity: SessionIdentity | null = null;
 
 initAssetSync({
   send: (op) => void window.relay.send({ type: 'game-message', payload: { data: op } }),
@@ -191,7 +233,7 @@ function emitSession(): void {
 }
 
 export function getSession(): SessionState {
-  return { ...session };
+  return { ...session, joinRequests: [...session.joinRequests], players: [...session.players] };
 }
 
 /** React hook: live session state (role, room code, status). */
@@ -207,12 +249,19 @@ export function useSession(): SessionState {
   return getSession();
 }
 
-// --- Wire payloads (ride the relay's opaque game-message data field) --------
+function setStatus(status: SessionStatus): void {
+  session.status = status;
+  if (status === 'open' && session.role === 'player') {
+    session.wasOpen = true;
+    session.waitingForApproval = false;
+  }
+  emitSession();
+}
+
+// --- Wire payloads -----------------------------------------------------------
 
 type SyncOp =
-  | { t: 'write'; path: string; value: unknown }
-  | { t: 'update'; path: string; partial: Record<string, unknown> }
-  | { t: 'multi'; updates: Record<string, unknown> }
+  | WriteOp
   | { t: 'read'; path: string; reqId: string }
   | { t: 'readres'; path: string; reqId: string; value: unknown }
   | { t: 'session'; gameId: string; snapshot: Record<string, unknown> };
@@ -223,36 +272,48 @@ interface RelayServerMessage {
     roomCode?: string;
     playerId?: string;
     displayName?: string;
+    peerKey?: string;
     from?: string;
     data?: unknown;
     message?: string;
   };
 }
 
-/** Paths under these roots never leave this machine. */
-const isPrivate = (path: string): boolean =>
-  path === 'local' || path.startsWith('local/');
+const isWriteOp = (op: SyncOp): op is WriteOp =>
+  op.t === 'write' || op.t === 'update' || op.t === 'multi';
 
-function opTouchesPrivate(op: SyncOp): boolean {
+/** Drop anything that must stay on this computer from an outgoing change. */
+function withoutPrivate(op: WriteOp): WriteOp | null {
   switch (op.t) {
     case 'write':
     case 'update':
-      return isPrivate(op.path);
-    case 'multi':
-      return Object.keys(op.updates).some(isPrivate);
-    default:
-      return false;
+      return isPrivatePath(op.path) ? null : op;
+    case 'multi': {
+      const updates = Object.fromEntries(
+        Object.entries(op.updates).filter(([p]) => !isPrivatePath(p)),
+      );
+      return Object.keys(updates).length ? { t: 'multi', updates } : null;
+    }
   }
 }
 
-function broadcast(op: SyncOp): void {
-  if (session.role === 'idle' || session.status !== 'open') return;
-  if (opTouchesPrivate(op)) return;
+const sendToGm = (op: SyncOp): void =>
   void window.relay.send({ type: 'game-message', payload: { data: op } });
+
+const sendTo = (playerId: string, op: SyncOp): void =>
+  void window.relay.send({ type: 'game-message', payload: { data: op, to: playerId } });
+
+/** Called after every local change. */
+function broadcast(op: WriteOp): void {
+  if (session.role === 'idle' || session.status !== 'open') return;
+  const shared = withoutPrivate(op);
+  if (!shared) return;
+  if (session.role === 'player') sendToGm(shared);
+  else void fanOut(touchedPaths(shared));
 }
 
 /** Apply a remote op to local SQLite WITHOUT re-broadcasting from here. */
-async function applyOp(op: SyncOp): Promise<void> {
+async function applyOp(op: WriteOp): Promise<void> {
   switch (op.t) {
     case 'write':
       await window.db.write(op.path, op.value ?? null);
@@ -263,26 +324,202 @@ async function applyOp(op: SyncOp): Promise<void> {
     case 'multi':
       await window.db.multiUpdate(op.updates);
       break;
-    default:
-      break;
   }
 }
+
+// --- GM side ------------------------------------------------------------------
+
+function gateContext(): GateContext {
+  return {
+    gameId: session.gameId ?? '',
+    gmUid: hostUid ?? '',
+    read: (path) => window.db.read(path),
+  };
+}
+
+/** What a player may see at `path`, even below the piece visibility is decided on. */
+function projectPath(path: string, value: unknown, playerId: string, ctx: GateContext): unknown {
+  const root = visibilityRoot(path);
+  const norm = path.replace(/^\/+|\/+$/g, '');
+  if (root === norm || root.length >= norm.length) {
+    return projectForPlayer(norm, value, { uid: playerId }, ctx);
+  }
+  return undefined; // caller re-reads the root
+}
+
+/**
+ * GM: after anything changes, re-send the affected pieces to each connected player,
+ * trimmed to what that player may see.
+ */
+async function fanOut(paths: string[]): Promise<void> {
+  if (session.role !== 'gm' || !session.gameId || session.players.length === 0) return;
+  const ctx = gateContext();
+  const roots = [...new Set(paths.map(visibilityRoot))];
+  const values = new Map<string, unknown>();
+  for (const root of roots) values.set(root, await window.db.read(root));
+  for (const { playerId } of session.players) {
+    const updates: Record<string, unknown> = {};
+    for (const root of roots) {
+      const projected = projectForPlayer(root, values.get(root), { uid: playerId }, ctx);
+      if (projected !== undefined) updates[`/${root}`] = projected;
+    }
+    if (Object.keys(updates).length) sendTo(playerId, { t: 'multi', updates });
+  }
+}
+
+/** GM: answer a player's read with only what they may see. */
+async function answerRead(playerId: string, path: string, reqId: string): Promise<void> {
+  const ctx = gateContext();
+  const root = visibilityRoot(path);
+  const norm = path.replace(/^\/+|\/+$/g, '');
+  let value: unknown;
+  if (root.length < norm.length) {
+    // Deeper than the piece visibility is decided on: project the piece, then descend.
+    let node = projectForPlayer(root, await window.db.read(root), { uid: playerId }, ctx);
+    for (const seg of norm.slice(root.length + 1).split('/')) {
+      node = node && typeof node === 'object' ? (node as Record<string, unknown>)[seg] : undefined;
+    }
+    value = node;
+  } else {
+    value = projectPath(norm, await window.db.read(norm), playerId, ctx);
+  }
+  sendTo(playerId, { t: 'readres', path: norm, reqId, value: value ?? null });
+}
+
+const ROLL_LOG_CAP = 100;
+
+/** GM: keep the dice log to the newest entries (players can't delete entries). */
+async function trimRollLog(gameId: string): Promise<void> {
+  const log = (await window.db.read(`games/${gameId}/rollLog`)) as Record<string, unknown> | null;
+  if (!log) return;
+  const keys = Object.keys(log).sort();
+  if (keys.length <= ROLL_LOG_CAP) return;
+  const updates: Record<string, null> = {};
+  for (const k of keys.slice(0, keys.length - ROLL_LOG_CAP)) updates[`/games/${gameId}/rollLog/${k}`] = null;
+  await multiUpdate(updates);
+}
+
+/** GM: a change from a player. Apply it only if the gatekeeper allows it. */
+async function handlePlayerChange(playerId: string, op: WriteOp): Promise<void> {
+  const ctx = gateContext();
+  const verdict = await checkPlayerOp(op, playerId, ctx);
+  if (!verdict.ok) {
+    console.warn(`[session] blocked a change from ${playerId}: ${verdict.reason}`);
+    // Put that player's copy back in line with the GM's.
+    const roots = [...new Set(touchedPaths(op).map(visibilityRoot))];
+    const updates: Record<string, unknown> = {};
+    for (const root of roots) {
+      const projected = projectForPlayer(root, await window.db.read(root), { uid: playerId }, ctx);
+      if (projected !== undefined) updates[`/${root}`] = projected;
+    }
+    if (Object.keys(updates).length) sendTo(playerId, { t: 'multi', updates });
+    return;
+  }
+  await applyOp(op);
+  await fanOut(touchedPaths(op));
+  void ensureAssets(op); // e.g. a player's new character art
+  if (touchedPaths(op).some((p) => p.startsWith(`games/${ctx.gameId}/rollLog/`))) {
+    await trimRollLog(ctx.gameId);
+  }
+}
+
+/** GM → one player: everything they need to enter the hosted game. */
+async function sendSessionSnapshot(gameId: string, playerId: string): Promise<void> {
+  const ctx = gateContext();
+  const viewer = { uid: playerId };
+  const snapshot: Record<string, unknown> = {};
+  const game = projectForPlayer(`games/${gameId}`, await window.db.read(`games/${gameId}`), viewer, ctx);
+  if (game) snapshot[`games/${gameId}`] = game;
+
+  const characters = (await window.db.read('characters')) as Record<string, unknown> | null;
+  for (const [id, c] of Object.entries(characters ?? {})) {
+    const projected = projectForPlayer(`characters/${id}`, c, viewer, ctx);
+    if (projected) snapshot[`characters/${id}`] = projected;
+  }
+  const index = await window.db.read(`gameCharacters/${gameId}`);
+  if (index) snapshot[`gameCharacters/${gameId}`] = index;
+  if (hostUid) {
+    const gmUser = projectForPlayer(`users/${hostUid}`, await window.db.read(`users/${hostUid}`), viewer, ctx);
+    if (gmUser) snapshot[`users/${hostUid}`] = gmUser;
+  }
+  sendTo(playerId, { t: 'session', gameId, snapshot });
+}
+
+/** GM: someone wants in. Let a known device straight back in; ask about anyone else. */
+async function handleJoinRequest(req: JoinRequest): Promise<void> {
+  if (!session.gameId) return;
+  const member = (await window.db.read(`games/${session.gameId}/members/${req.playerId}`)) as
+    | { role?: string; peerKey?: string; displayName?: string }
+    | null;
+  if (member?.role === 'gm') {
+    // Nobody else can be the GM of this game.
+    void window.relay.approve(req.peerKey, false);
+    return;
+  }
+  if (member?.peerKey && member.peerKey === req.peerKey) {
+    void window.relay.approve(req.peerKey, true);
+    return;
+  }
+  const warning = member
+    ? member.peerKey
+      ? `${member.displayName ?? req.displayName} is already in this game, but this request comes from a different computer. Only allow it if you're sure it's them.`
+      : `${member.displayName ?? req.displayName} is already in this game. This is their first time joining from this computer.`
+    : undefined;
+  session.joinRequests = [
+    ...session.joinRequests.filter((r) => r.peerKey !== req.peerKey),
+    { ...req, ...(warning ? { warning } : {}) },
+  ];
+  emitSession();
+}
+
+/** GM: decide on a join request. */
+export async function answerJoinRequest(peerKey: string, allow: boolean): Promise<void> {
+  session.joinRequests = session.joinRequests.filter((r) => r.peerKey !== peerKey);
+  emitSession();
+  await window.relay.approve(peerKey, allow);
+}
+
+/** GM: remove a player from the session. Their computer can't rejoin on this code. */
+export async function kickPlayer(playerId: string): Promise<void> {
+  session.players = session.players.filter((p) => p.playerId !== playerId);
+  emitSession();
+  await window.relay.kick(playerId);
+}
+
+async function onPlayerJoined(playerId: string, displayName: string, peerKey: string): Promise<void> {
+  if (session.role !== 'gm' || !session.gameId) return;
+  const gameId = session.gameId;
+  session.players = [
+    ...session.players.filter((p) => p.playerId !== playerId),
+    { playerId, displayName },
+  ];
+  emitSession();
+  // Enroll (or re-key) the player. Their device key is how we recognise them next time.
+  const membersPath = `games/${gameId}/members/${playerId}`;
+  const existing = (await window.db.read(membersPath)) as Record<string, unknown> | null;
+  await updateValue(membersPath, {
+    role: 'player',
+    displayName: (existing?.displayName as string | undefined) ?? displayName,
+    joinedAt: (existing?.joinedAt as number | undefined) ?? Date.now(),
+    peerKey,
+  });
+  await sendSessionSnapshot(gameId, playerId);
+}
+
+// --- Player side ----------------------------------------------------------------
 
 // Pending player→GM read requests.
 const pendingReads = new Map<string, (value: unknown) => void>();
 let readSeq = 0;
 
 function requestRead(path: string): Promise<unknown> {
-  if (session.role !== 'player' || session.status !== 'open' || isPrivate(path)) {
+  if (session.role !== 'player' || session.status !== 'open' || isPrivatePath(path)) {
     return Promise.resolve(null);
   }
   const reqId = `r${++readSeq}-${Math.random().toString(36).slice(2, 8)}`;
   return new Promise((resolve) => {
     pendingReads.set(reqId, resolve);
-    void window.relay.send({
-      type: 'game-message',
-      payload: { data: { t: 'read', path, reqId } satisfies SyncOp },
-    });
+    sendToGm({ t: 'read', path, reqId });
     // Don't hang forever if the GM missed it.
     setTimeout(() => {
       if (pendingReads.delete(reqId)) resolve(null);
@@ -290,41 +527,53 @@ function requestRead(path: string): Promise<unknown> {
   });
 }
 
+/** Player: store data from the GM. Objects merge, so data from other games stays. */
+async function storeFromGm(path: string, value: unknown): Promise<void> {
+  if (value === null || value === undefined || isPrivatePath(path)) return;
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    await window.db.update(path, value as Record<string, unknown>);
+  } else {
+    await window.db.write(path, value);
+  }
+}
+
+// --- Messages from the transport ---------------------------------------------------
+
 async function handleRelayMessage(msg: RelayServerMessage): Promise<void> {
+  const p = msg.payload ?? {};
   switch (msg.type) {
     case 'hosted':
-      session.roomCode = msg.payload?.roomCode ?? null;
       session.error = null;
       emitSession();
       break;
 
-    case 'player-joined': {
-      // GM: enroll the newcomer as a member (players can't write the GM's game
-      // themselves), then greet them with the hosted game's snapshot. (The relay
-      // broadcasts GM messages to every player; extras apply idempotently.)
-      if (session.role === 'gm' && session.gameId) {
-        const { playerId, displayName } = msg.payload ?? {};
-        void (async () => {
-          if (playerId) {
-            const existing = await window.db.read(
-              `games/${session.gameId}/members/${playerId}`,
-            );
-            if (!existing) {
-              await updateValue(`games/${session.gameId}/members/${playerId}`, {
-                role: 'player',
-                displayName: displayName ?? 'Adventurer',
-                joinedAt: Date.now(),
-              });
-            }
-          }
-          await sendSessionSnapshot(session.gameId!);
-        })();
+    case 'join-request':
+      if (session.role === 'gm' && p.peerKey && p.playerId) {
+        await handleJoinRequest({
+          peerKey: p.peerKey,
+          playerId: p.playerId,
+          displayName: p.displayName ?? 'Adventurer',
+        });
       }
       break;
-    }
+
+    case 'player-joined':
+      if (p.playerId && p.peerKey) await onPlayerJoined(p.playerId, p.displayName ?? 'Adventurer', p.peerKey);
+      break;
+
+    case 'player-left':
+      session.players = session.players.filter((pl) => pl.playerId !== p.playerId);
+      session.joinRequests = session.joinRequests.filter((r) => r.playerId !== p.playerId);
+      emitSession();
+      break;
+
+    case 'waiting':
+      session.waitingForApproval = true;
+      emitSession();
+      break;
 
     case 'game-message': {
-      const op = msg.payload?.data as SyncOp | undefined;
+      const op = p.data as SyncOp | undefined;
       if (!op || typeof op !== 'object' || !('t' in op)) return;
 
       // Image file transfers have their own handler and are never re-broadcast.
@@ -334,70 +583,57 @@ async function handleRelayMessage(msg: RelayServerMessage): Promise<void> {
       }
 
       if (session.role === 'gm') {
-        // Player-originated op: apply, then re-broadcast so all players converge.
+        const from = p.from;
+        if (!from) return;
         if (op.t === 'read') {
-          if (isPrivate(op.path)) return;
-          const value = await window.db.read(op.path);
-          void window.relay.send({
-            type: 'game-message',
-            payload: {
-              data: { t: 'readres', path: op.path, reqId: op.reqId, value } satisfies SyncOp,
-            },
-          });
+          if (!isPrivatePath(op.path)) await answerRead(from, op.path, op.reqId);
           return;
         }
-        if (op.t === 'write' || op.t === 'update' || op.t === 'multi') {
-          if (opTouchesPrivate(op)) return;
-          await applyOp(op);
-          void window.relay.send({ type: 'game-message', payload: { data: op } });
-          void ensureAssets(op); // e.g. a player's new character art
-        }
+        if (isWriteOp(op)) await handlePlayerChange(from, op);
         return;
       }
 
-      // Player side.
+      // Player side: everything here comes from the GM.
       switch (op.t) {
         case 'session': {
-          await window.db.multiUpdate(op.snapshot);
+          for (const [path, value] of Object.entries(op.snapshot)) await storeFromGm(path, value);
           void ensureAssets(op.snapshot);
           session.gameId = op.gameId;
           session.error = null;
+          session.waitingForApproval = false;
           emitSession();
           break;
         }
         case 'readres': {
-          if (op.value !== null && !isPrivate(op.path)) {
-            await window.db.write(op.path, op.value);
-            void ensureAssets(op.value);
-          }
+          await storeFromGm(op.path, op.value);
+          void ensureAssets(op.value);
           pendingReads.get(op.reqId)?.(op.value);
           pendingReads.delete(op.reqId);
           break;
         }
-        case 'write':
-        case 'update':
-        case 'multi':
-          if (!opTouchesPrivate(op)) {
-            await applyOp(op);
-            void ensureAssets(op);
-          }
-          break;
         default:
+          if (isWriteOp(op)) {
+            const shared = withoutPrivate(op);
+            if (shared) {
+              await applyOp(shared);
+              void ensureAssets(shared);
+            }
+          }
           break;
       }
       break;
     }
 
     case 'gm-disconnected':
-      session.error = 'The GM disconnected — the session has ended.';
-      session.role = 'idle';
-      session.status = 'idle';
-      session.roomCode = null;
-      emitSession();
+      endSession('The GM ended the session.');
+      break;
+
+    case 'kicked':
+      endSession('The GM removed you from the session.');
       break;
 
     case 'error':
-      session.error = msg.payload?.message ?? 'Relay error.';
+      session.error = p.message ?? 'Connection error.';
       emitSession();
       break;
 
@@ -406,31 +642,19 @@ async function handleRelayMessage(msg: RelayServerMessage): Promise<void> {
   }
 }
 
-/** GM → players: everything a player needs to enter the hosted game. */
-async function sendSessionSnapshot(gameId: string): Promise<void> {
-  const snapshot: Record<string, unknown> = {};
-  const game = await window.db.read(`games/${gameId}`);
-  if (game) snapshot[`games/${gameId}`] = game;
-
-  // Characters belonging to this game (global root, gameId field).
-  const characters = (await window.db.read('characters')) as Record<
-    string,
-    { gameId?: string }
-  > | null;
-  if (characters) {
-    for (const [id, c] of Object.entries(characters)) {
-      if (c && c.gameId === gameId) snapshot[`characters/${id}`] = c;
-    }
-  }
-
-  // Member profiles (display names, avatars) — small, and sheets read them.
-  const users = await window.db.read('users');
-  if (users) snapshot['users'] = users;
-
-  void window.relay.send({
-    type: 'game-message',
-    payload: { data: { t: 'session', gameId, snapshot } satisfies SyncOp },
-  });
+function endSession(error: string | null): void {
+  session.role = 'idle';
+  session.status = 'idle';
+  session.roomCode = null;
+  session.gameId = null;
+  session.error = error;
+  session.waitingForApproval = false;
+  session.wasOpen = false;
+  session.joinRequests = [];
+  session.players = [];
+  hostUid = null;
+  hostIdentity = null;
+  emitSession();
 }
 
 // --- Public session API (the lobby drives these) -----------------------------
@@ -440,49 +664,47 @@ export interface SessionIdentity {
   displayName: string;
 }
 
-const DEFAULT_RELAY_URL = 'ws://localhost:3001';
-
-export async function getRelayUrl(): Promise<string> {
-  const stored = (await window.db.read('local/settings/relayUrl')) as string | null;
-  return stored || DEFAULT_RELAY_URL;
-}
-
-export async function setRelayUrl(url: string): Promise<void> {
-  await window.db.write('local/settings/relayUrl', url.trim() || DEFAULT_RELAY_URL);
-}
-
-/** GM: host a live session for one of the local games. */
-export async function hostSession(gameId: string, identity: SessionIdentity): Promise<void> {
+/** GM: host a live session for one of the local games, under its invite code. */
+export async function hostSession(gameId: string, identity: SessionIdentity): Promise<string> {
   wireBridges();
-  const url = await getRelayUrl();
+  const code = (await window.db.read(`games/${gameId}/inviteCode`)) as string | null;
+  if (!code) throw new Error('This game has no invite code yet. Regenerate one in game settings.');
+  hostUid = identity.uid;
+  hostIdentity = identity;
   session.role = 'gm';
   session.status = 'connecting';
   session.gameId = gameId;
-  session.roomCode = null;
+  session.roomCode = code;
   session.error = null;
+  session.joinRequests = [];
+  session.players = [];
   emitSession();
-  await window.relay.connect(url, {
+  await window.relay.connect('p2p', {
     mode: 'host',
     uid: identity.uid,
     displayName: identity.displayName,
+    roomCode: code,
   });
+  return code;
 }
 
-/** Player: join a GM's session by room code. Resolves with the gameId once the
- * GM's snapshot lands (that's the join-ack in this protocol). */
-export async function joinSession(
-  roomCode: string,
-  identity: SessionIdentity,
-): Promise<string> {
+/** How long to look for the GM, and how long to wait for them to let you in. */
+const FIND_GM_MS = 45_000;
+const APPROVAL_MS = 5 * 60_000;
+
+/** Player: join a GM's session by room code. Resolves with the gameId once the GM
+ * has let you in and sent the game. */
+export async function joinSession(roomCode: string, identity: SessionIdentity): Promise<string> {
   wireBridges();
-  const url = await getRelayUrl();
   session.role = 'player';
   session.status = 'connecting';
   session.gameId = null;
   session.roomCode = roomCode.trim().toUpperCase();
   session.error = null;
+  session.waitingForApproval = false;
+  session.wasOpen = false;
   emitSession();
-  await window.relay.connect(url, {
+  await window.relay.connect('p2p', {
     mode: 'join',
     roomCode: session.roomCode,
     uid: identity.uid,
@@ -494,8 +716,17 @@ export async function joinSession(
     const tick = (): void => {
       if (session.gameId) return resolve(session.gameId);
       if (session.error) return reject(new Error(session.error));
-      if (Date.now() - started > 15000) {
-        return reject(new Error('Timed out waiting for the GM. Check the room code.'));
+      if (session.role === 'idle') return reject(new Error('The session ended.'));
+      const waited = Date.now() - started;
+      if (!session.waitingForApproval && waited > FIND_GM_MS) {
+        void leaveSession();
+        return reject(
+          new Error("Couldn't find that game. Check the code, and that the GM has clicked Host session."),
+        );
+      }
+      if (waited > APPROVAL_MS) {
+        void leaveSession();
+        return reject(new Error('The GM didn’t let you in. Ask them to check for your request.'));
       }
       setTimeout(tick, 150);
     };
@@ -507,12 +738,22 @@ export async function joinSession(
   return gameId;
 }
 
+/** GM: start hosting again after the connection dropped. */
+export async function restartHosting(): Promise<void> {
+  if (session.role !== 'gm' || !session.gameId || !hostIdentity) return;
+  await hostSession(session.gameId, hostIdentity);
+}
+
+/** GM: the invite code changed — keep hosting under the new one. Players already
+ * in the session stay connected. */
+export async function changeRoomCode(gameId: string, code: string): Promise<void> {
+  if (session.role !== 'gm' || session.gameId !== gameId) return;
+  session.roomCode = code;
+  emitSession();
+  await window.relay.setCode(code);
+}
+
 export async function leaveSession(): Promise<void> {
   await window.relay.disconnect();
-  session.role = 'idle';
-  session.status = 'idle';
-  session.roomCode = null;
-  session.gameId = null;
-  session.error = null;
-  emitSession();
+  endSession(null);
 }

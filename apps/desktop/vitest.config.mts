@@ -26,6 +26,7 @@ export default defineConfig({
     // Renderer tests AND the shared-package tests (engine/systems) run here.
     include: [
       'src/**/*.{test,spec}.{ts,tsx}',
+      'swarm/**/*.{test,spec}.ts',
       '../../packages/*/src/**/*.{test,spec}.{ts,tsx}',
     ],
   },

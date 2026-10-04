@@ -1,14 +1,8 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthProvider';
 import { useUserGames } from '../../data/games';
-import {
-  getRelayUrl,
-  hostSession,
-  joinSession,
-  setRelayUrl,
-  useSession,
-} from '../../data/realtime';
+import { hostSession, joinSession, useSession } from '../../data/realtime';
 import type { Game } from '@epoch/shared-types';
 import { roleOf } from '../../permissions';
 import { Avatar } from '../../components/ui/Avatar';
@@ -29,11 +23,6 @@ export function LobbyPage() {
   const [code, setCode] = useState('');
   const [joinError, setJoinError] = useState('');
   const [joining, setJoining] = useState(false);
-  const [relayUrl, setRelayUrlState] = useState('');
-
-  useEffect(() => {
-    void getRelayUrl().then(setRelayUrlState);
-  }, []);
 
   function openGame(game: Game) {
     navigate(`/game/${game.id}`);
@@ -44,7 +33,6 @@ export function LobbyPage() {
     if (!user) return;
     setJoinError('');
     try {
-      await setRelayUrl(relayUrl);
       await hostSession(game.id, { uid: user.uid, displayName });
       navigate(`/game/${game.id}`);
     } catch (err) {
@@ -52,15 +40,13 @@ export function LobbyPage() {
     }
   }
 
-  /** Player: join a GM's live session with the room code they shared. */
-  async function handleJoin(e: FormEvent) {
-    e.preventDefault();
-    if (!user || !code.trim()) return;
+  /** Player: join a GM's live session with the code they shared. */
+  async function join(roomCode: string) {
+    if (!user || !roomCode.trim()) return;
     setJoining(true);
     setJoinError('');
     try {
-      await setRelayUrl(relayUrl);
-      const gameId = await joinSession(code, { uid: user.uid, displayName });
+      const gameId = await joinSession(roomCode, { uid: user.uid, displayName });
       setCode('');
       navigate(`/game/${gameId}`);
     } catch (err) {
@@ -69,6 +55,17 @@ export function LobbyPage() {
       setJoining(false);
     }
   }
+
+  function handleJoin(e: FormEvent) {
+    e.preventDefault();
+    void join(code);
+  }
+
+  const joinStatus = !joining
+    ? null
+    : session.waitingForApproval
+      ? 'Found the game — waiting for the GM to let you in…'
+      : 'Looking for the game… this can take up to half a minute.';
 
   return (
     <div className={styles.page}>
@@ -118,6 +115,11 @@ export function LobbyPage() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <GameRow game={g} uid={uid} onOpen={openGame} />
                   </div>
+                  {roleOf(g, uid) === 'player' && g.inviteCode && (
+                    <Button size="sm" variant="secondary" disabled={joining} onClick={() => void join(g.inviteCode)}>
+                      Rejoin
+                    </Button>
+                  )}
                   {roleOf(g, uid) === 'gm' && (
                     <>
                       <Button size="sm" onClick={() => void handleHost(g)}>
@@ -139,9 +141,10 @@ export function LobbyPage() {
               label="Join a session"
               value={code}
               onChange={(e) => setCode(e.target.value)}
-              placeholder="Enter the room code your GM shared (e.g. ABCDEF)"
+              placeholder="Enter the code your GM shared (e.g. SVLT-7K2P)"
               error={joinError || undefined}
             />
+            {joinStatus && <p className={styles.muted}>{joinStatus}</p>}
           </div>
           <Button
             type="submit"
@@ -152,25 +155,6 @@ export function LobbyPage() {
           </Button>
         </form>
 
-        <form
-          className={styles.joinRow}
-          onSubmit={(e) => {
-            e.preventDefault();
-            void setRelayUrl(relayUrl);
-          }}
-        >
-          <div className={styles.joinField}>
-            <TextField
-              label="Relay server"
-              value={relayUrl}
-              onChange={(e) => setRelayUrlState(e.target.value)}
-              placeholder="ws://localhost:3001"
-            />
-          </div>
-          <Button type="submit" variant="secondary">
-            Save
-          </Button>
-        </form>
       </main>
 
       <CreateGameModal

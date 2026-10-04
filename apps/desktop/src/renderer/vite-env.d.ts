@@ -17,8 +17,15 @@ interface DbBridge {
   onUpdate(callback: (path: string, value: unknown, subId: string) => void): void;
 }
 
+/** Live-session transport (peer-to-peer via the Hyperswarm helper). */
 interface RelayBridge {
   connect(url: string, identity: unknown): Promise<void>;
+  /** GM: let a waiting player in, or turn them away. */
+  approve(peerKey: string, allow: boolean): Promise<void>;
+  /** GM: remove a player; their computer can't rejoin on this code. */
+  kick(playerId: string): Promise<void>;
+  /** GM: move the hosted game to a new room code; connected players stay. */
+  setCode(roomCode: string): Promise<void>;
   disconnect(): Promise<void>;
   send(message: unknown): Promise<void>;
   onMessage(callback: (message: unknown) => void): void;

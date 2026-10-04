@@ -53,11 +53,12 @@ export function RollLogProvider({
 
   const postRoll = useCallback(
     (text: string) => {
-      void postRollEntry(gameId, { text, at: Date.now(), byUid: uid, by: byName }).then(
-        () => trimRollLog(gameId, log),
+      // Only the GM trims old entries (players can't delete rolls during a session).
+      void postRollEntry(gameId, { text, at: Date.now(), byUid: uid, by: byName }).then(() =>
+        canClear ? trimRollLog(gameId, log) : undefined,
       );
     },
-    [gameId, uid, byName, log],
+    [gameId, uid, byName, log, canClear],
   );
 
   const clear = useCallback(() => {

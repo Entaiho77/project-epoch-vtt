@@ -4,10 +4,16 @@
  */
 const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 
+/** Cryptographically random: the invite code is what lets people find a hosted game. */
 function randomChars(n: number): string {
+  const max = 256 - (256 % ALPHABET.length); // reject values that would skew the odds
   let out = '';
-  for (let i = 0; i < n; i++) {
-    out += ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
+  while (out.length < n) {
+    const bytes = new Uint8Array(n * 2);
+    crypto.getRandomValues(bytes);
+    for (const b of bytes) {
+      if (b < max && out.length < n) out += ALPHABET[b % ALPHABET.length];
+    }
   }
   return out;
 }
