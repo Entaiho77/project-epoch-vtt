@@ -10,10 +10,10 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@solryn/engine": "*",
-    "@solryn/systems": "*",
-    "@solryn/shared-types": "*",
-    "@solryn/protocol": "*",
+    "@epoch/engine": "*",
+    "@epoch/systems": "*",
+    "@epoch/shared-types": "*",
+    "@epoch/protocol": "*",
     "better-sqlite3": "^11.0.0",
     "ws": "^8.18.0",
     "react": "^18.3.1",
