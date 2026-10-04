@@ -46,6 +46,10 @@ export function installTauriBridge(): void {
       for (const cb of statusCallbacks) cb(payload);
     }),
   ]);
+  ready.catch((error: unknown) => {
+    // Usually a missing permission in src-tauri/capabilities/default.json.
+    console.error('[tauriBridge] could not register native event listeners:', error);
+  });
 
   const call = async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
     await ready;
