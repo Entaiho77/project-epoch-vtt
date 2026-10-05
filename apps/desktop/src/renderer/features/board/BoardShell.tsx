@@ -1,6 +1,11 @@
 import type { ReactNode } from 'react';
 import styles from './BoardShell.module.css';
 
+/** Render a glyph: a plain string is rendered as text, anything else is rendered as-is (e.g. an <img>). */
+function Glyph({ g }: { g: ReactNode }) {
+  return <>{g}</>;
+}
+
 /**
  * The board's symmetric edge-bar + fly-out drawer shell (§4.4 / §4.8 / §4.11).
  * Config-driven and role-agnostic: GM and player pass different item lists. Drawers open
@@ -15,7 +20,7 @@ export type BarItem =
       id: string;
       label: string;
       short?: string;
-      glyph: string;
+      glyph: ReactNode;
       content: ReactNode;
       wide?: boolean;
       /** Unread count shown on the button (e.g. new chat messages); the button pulses while > 0. */
@@ -26,7 +31,7 @@ export type BarItem =
       id: string;
       label: string;
       short?: string;
-      glyph: string;
+      glyph: ReactNode;
       onClick: () => void;
       active?: boolean;
     }
@@ -110,11 +115,17 @@ function Strip({
         if (item.kind === 'divider') return <div key={item.id} className={styles.divider} />;
         const active = item.kind === 'drawer' ? openId === item.id : item.active;
         const badge = item.kind === 'drawer' && !active ? (item.badge ?? 0) : 0;
+        const isIconTile = typeof item.glyph !== 'string';
         return (
           <button
             key={item.id}
             type="button"
-            className={`${styles.tool} ${active ? styles.toolActive : ''} ${badge > 0 ? styles.toolAlert : ''}`}
+            className={[
+              styles.tool,
+              isIconTile ? styles.toolIcon : '',
+              active ? (isIconTile ? styles.toolIconActive : styles.toolActive) : '',
+              badge > 0 ? styles.toolAlert : '',
+            ].filter(Boolean).join(' ')}
             title={item.label}
             aria-label={badge > 0 ? `${item.label} (${badge} new)` : item.label}
             aria-pressed={active}
@@ -123,10 +134,10 @@ function Strip({
             }
           >
             <span className={styles.glyph} aria-hidden="true">
-              {item.glyph}
+              <Glyph g={item.glyph} />
               {badge > 0 && <span className={styles.badge}>{badge > 9 ? '9+' : badge}</span>}
             </span>
-            <span className={styles.toolLabel}>{item.short ?? item.label}</span>
+            {!isIconTile && <span className={styles.toolLabel}>{item.short ?? item.label}</span>}
           </button>
         );
       })}

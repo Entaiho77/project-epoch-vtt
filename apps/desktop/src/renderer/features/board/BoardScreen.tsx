@@ -56,6 +56,27 @@ import { isClassAndLevel } from '@epoch/systems/registry';
 import { pcTokenStats } from '@epoch/systems/dnd5e/character';
 import styles from './BoardScreen.module.css';
 
+// Slate icon tiles — the image is the full button face, no separate label.
+import icoDice from '../../assets/icons/icon-dice.png';
+import icoChat from '../../assets/icons/icon-chat.png';
+import icoFog from '../../assets/icons/icon-fog-of-war.png';
+import icoInitiative from '../../assets/icons/icon-initiative.png';
+import icoInventory from '../../assets/icons/icon-inventory.png';
+import icoMap from '../../assets/icons/icon-map.png';
+import icoMeasure from '../../assets/icons/icon-measure.png';
+import icoMonster from '../../assets/icons/icon-monster.png';
+import icoJournal from '../../assets/icons/icon-journal.png';
+import icoSettings from '../../assets/icons/icon-settings.png';
+import icoShapes from '../../assets/icons/icon-shape-tools.png';
+import icoToken from '../../assets/icons/icon-token.png';
+// icoVoice is imported here for future use in the voice top-bar button.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import icoVoice from '../../assets/icons/icon-voice.png';
+
+function Ico({ src, alt }: { src: string; alt: string }) {
+  return <img src={src} alt={alt} />;
+}
+
 interface BoardScreenProps {
   system: SystemDefinition;
   game: Game;
@@ -371,14 +392,14 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
     const id = t.kind === 'roll' ? 'log' : 'chat';
     setOpenLeft(id);
   }
-  const dice: BarItem = { kind: 'drawer', id: 'dice', label: 'Dice', short: 'Dice', glyph: '⚄', content: <DiceDrawer /> };
-  const log: BarItem = { kind: 'drawer', id: 'log', label: 'Log', short: 'Log', glyph: '📜', content: <RollLog /> };
+  const dice: BarItem = { kind: 'drawer', id: 'dice', label: 'Dice', short: 'Dice', glyph: <Ico src={icoDice} alt="Dice" />, content: <DiceDrawer /> };
+  const log: BarItem = { kind: 'drawer', id: 'log', label: 'Log', short: 'Log', glyph: <Ico src={icoJournal} alt="Log" />, content: <RollLog /> };
   const chat: BarItem = {
     kind: 'drawer',
     id: 'chat',
     label: 'Chat',
     short: 'Chat',
-    glyph: '✉',
+    glyph: <Ico src={icoChat} alt="Chat" />,
     badge: unreadCount,
     content: <ChatDrawer gameId={gameId} uid={uid} displayName={myName} members={game.members} />,
   };
@@ -396,7 +417,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
     id: 'initiative',
     label: 'Initiative',
     short: 'Initiative',
-    glyph: '⚔',
+    glyph: <Ico src={icoInitiative} alt="Initiative" />,
     content: <InitiativeDrawer gameId={gameId} game={game} activeMap={activeMap} system={system} uid={uid} homebrewEntries={homebrewEntries} rules={rules} target={target} />,
   };
 
@@ -406,7 +427,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
     id: 'measure',
     label: 'Measure distance',
     short: 'Measure',
-    glyph: '↔',
+    glyph: <Ico src={icoMeasure} alt="Measure" />,
     active: measuring,
     onClick: () => {
       setShapeDraft(null); // measuring and shape placement are mutually exclusive
@@ -423,7 +444,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
     id: 'shapes',
     label: 'Shapes',
     short: 'Shapes',
-    glyph: '◎',
+    glyph: <Ico src={icoShapes} alt="Shapes" />,
     content: (
       <ShapesDrawer
         gameId={gameId}
@@ -444,7 +465,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
           dice,
           log,
           chat,
-          { kind: 'drawer', id: 'notes', label: 'Notes', short: 'Notes', glyph: '✎', content: <NotesDrawer uid={uid} gameId={gameId} /> },
+          { kind: 'drawer', id: 'notes', label: 'Notes', short: 'Notes', glyph: <Ico src={icoJournal} alt="Notes" />, content: <NotesDrawer uid={uid} gameId={gameId} /> },
           rulesBar,
         ];
 
@@ -459,7 +480,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
         id: 'fog',
         label: 'Fog of war',
         short: 'Fog',
-        glyph: '☁',
+        glyph: <Ico src={icoFog} alt="Fog of war" />,
         content: <FogDrawer gameId={gameId} activeMap={activeMap} />,
       },
       {
@@ -467,7 +488,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
         id: 'creatures',
         label: 'Add creature',
         short: 'Creature',
-        glyph: '✚',
+        glyph: <Ico src={icoMonster} alt="Add creature" />,
         content: (
           <AddCreatureDrawer
             system={system}
@@ -484,7 +505,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
         id: 'library',
         label: 'Open my library',
         short: 'Library',
-        glyph: '📖',
+        glyph: <Ico src={icoInventory} alt="Library" />,
         onClick: () => navigate(`/game/${gameId}/customize`),
       },
       {
@@ -501,7 +522,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
         id: 'grid',
         label: 'Grid',
         short: 'Grid',
-        glyph: '#',
+        glyph: <Ico src={icoSettings} alt="Grid settings" />,
         content: (
           <GridDrawer
             gmToggle={
@@ -517,7 +538,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
         id: 'maps',
         label: 'Maps',
         short: 'Maps',
-        glyph: '▦',
+        glyph: <Ico src={icoMap} alt="Maps" />,
         content: <MapsDrawer system={system} gameId={gameId} game={game} />,
       },
     ];
@@ -525,14 +546,14 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
     right = [
       measureAction,
       shapes,
-      { kind: 'drawer', id: 'grid', label: 'Grid', short: 'Grid', glyph: '#', content: <GridDrawer /> },
+      { kind: 'drawer', id: 'grid', label: 'Grid', short: 'Grid', glyph: <Ico src={icoSettings} alt="Grid settings" />, content: <GridDrawer /> },
       { kind: 'divider', id: 'pd1' },
       {
         kind: 'drawer',
         id: 'character',
         label: 'Character',
         short: 'Character',
-        glyph: '◈',
+        glyph: <Ico src={icoToken} alt="Character" />,
         // The richer 5e sheet gets a wider drawer; Solryn's quick-view stays the default width.
         wide: isClassAndLevel(system),
         // Class-and-level systems (5e) use their own sheet; Solryn keeps CharacterQuickView.
