@@ -159,7 +159,7 @@ export function ShapesDrawer({
       {active.length === 0 ? (
         <p className={s.hint}>No shapes placed.</p>
       ) : (
-        <p className={s.hint}>To move a placed shape, drag it by its center square on the board. Shapes placed on a token follow that token.</p>
+        <p className={s.hint}>With the Select tool, drag a shape's white ✥ handle to move it and its amber dot to turn it. Shapes placed on a token follow that token (they can still be turned).</p>
       )}
       <div className={s.list}>
         {active.map((sh) => {

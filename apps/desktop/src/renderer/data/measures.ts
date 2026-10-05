@@ -18,3 +18,9 @@ export function clearAllMeasures(gameId: string): Promise<void> {
 export function moveShape(gameId: string, shapeId: string, col: number, row: number): Promise<void> {
   return writeValue(`games/${gameId}/shapes/${shapeId}/anchor`, { col, row });
 }
+
+/** Turn a placed shape (cone, line, square) to face a new direction, in degrees. */
+export function rotateShape(gameId: string, shapeId: string, angleDeg: number): Promise<void> {
+  const a = ((Math.round(angleDeg) % 360) + 360) % 360;
+  return writeValue(`games/${gameId}/shapes/${shapeId}/angleDeg`, a);
+}

@@ -101,6 +101,10 @@ describe('gatekeeper: what honest players do is allowed', () => {
     await allowed({ t: 'write', path: `games/${G}/shapes/s1/anchor`, value: { col: 5, row: 6 } });
     await blocked({ t: 'write', path: `games/${G}/shapes/s2/anchor`, value: { col: 5, row: 6 } });
     await blocked({ t: 'write', path: `games/${G}/shapes/s1/anchor`, value: { tokenId: 'x' } });
+    await allowed({ t: 'write', path: `games/${G}/shapes/s1/angleDeg`, value: 135 });
+    await blocked({ t: 'write', path: `games/${G}/shapes/s2/angleDeg`, value: 135 });
+    await blocked({ t: 'write', path: `games/${G}/shapes/s1/angleDeg`, value: 'north' });
+    await blocked({ t: 'write', path: `games/${G}/shapes/s1/angleDeg`, value: 720 });
   });
 
   it('mark myself in or out of the voice call — but nobody else', async () => {

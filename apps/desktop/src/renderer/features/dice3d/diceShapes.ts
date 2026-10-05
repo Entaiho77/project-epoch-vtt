@@ -33,22 +33,59 @@ export interface DieShape {
   labelSize: number;
 }
 
-/** Dice we draw. Anything else (d3, d2, d100's tens) is shown as the nearest real die. */
+/** Real polyhedral dice we can draw. */
 export const DRAWN_SIDES = [4, 6, 8, 10, 12, 20] as const;
 
-/** Which die to draw for an N-sided roll. */
-export function drawnSides(sides: number): number {
-  if ((DRAWN_SIDES as readonly number[]).includes(sides)) return sides;
-  if (sides === 100) return 10;
-  if (sides <= 4) return 4;
-  if (sides <= 6) return 6;
-  return 20;
+/**
+ * One die to put on screen for a rolled die: which real die to draw, which of its faces lands
+ * up, and what each face says. Most dice print 1..N; a d3 is a d6 marked 1–3 twice, a d2 a
+ * d6 marked 1–2, a d100 is a pair of d10s (tens 00–90 + units 0–9), and an unusual die (d7,
+ * d30…) is drawn as the nearest real die with the rolled number on the face that lands up.
+ */
+export interface PlannedDie {
+  /** The real die to draw (4, 6, 8, 10, 12 or 20). */
+  draw: number;
+  /** Which face (1..draw) lands up. */
+  land: number;
+  /** Text printed on each face (1..draw). */
+  label: (face: number) => string;
+  /** Tint variant: the d100's tens die is drawn darker so the pair reads as one roll. */
+  variant?: 'tens';
 }
 
-/**
- * Pentagonal trapezohedron (a d10): two apexes and a zig-zag ring of 10 points, with the apex
- * height worked out so every kite face is perfectly flat.
- */
+const plain = () => (face: number) => String(face);
+
+export function diePlan(sides: number, face: number): PlannedDie[] {
+  const f = Math.max(1, Math.round(face));
+  if ((DRAWN_SIDES as readonly number[]).includes(sides)) {
+    return [{ draw: sides, land: Math.min(f, sides), label: plain() }];
+  }
+  if (sides === 100) {
+    // 1..100 → tens digit 0–9 ("00"–"90") + units 0–9; 100 is "00" + "0".
+    const units = f % 10;
+    const tens = Math.floor((f % 100) / 10);
+    const faceFor = (digit: number) => (digit === 0 ? 10 : digit);
+    return [
+      { draw: 10, land: faceFor(tens), label: (v) => `${(v % 10) * 10}`.padStart(2, '0'), variant: 'tens' },
+      { draw: 10, land: faceFor(units), label: (v) => String(v % 10) },
+    ];
+  }
+  if (sides === 3 || sides === 2) {
+    // A d6 numbered 1..sides repeating; land on the first face showing the result.
+    return [{ draw: 6, land: Math.min(f, sides), label: (v) => String(((v - 1) % sides) + 1) }];
+  }
+  // Anything else: the smallest real die with enough faces (d20 beyond that), the rolled number
+  // printed on the face that lands up.
+  const draw = DRAWN_SIDES.find((n) => n >= sides) ?? 20;
+  const land = Math.min(f, draw);
+  return [{ draw, land, label: (v) => (v === land ? String(f) : String(v)) }];
+}
+
+/** Which die to draw for an N-sided roll (first die of its plan). */
+export function drawnSides(sides: number): number {
+  return diePlan(sides, 1)[0].draw;
+}
+
 function d10Geometry(): BufferGeometry {
   const a = 0.105; // ring zig-zag
   const ring = Array.from({ length: 10 }, (_, i) => {
@@ -122,7 +159,7 @@ const cache = new Map<number, DieShape>();
 
 /** The shape of an N-sided die with its numbered faces (cached). */
 export function dieShape(sides: number): DieShape {
-  const n = drawnSides(sides);
+  const n = (DRAWN_SIDES as readonly number[]).includes(sides) ? sides : drawnSides(sides);
   const hit = cache.get(n);
   if (hit) return hit;
   const geometry = baseGeometry(n);
@@ -151,14 +188,6 @@ export function dieShape(sides: number): DieShape {
   const shape: DieShape = { sides: n, geometry, faces, labelSize };
   cache.set(n, shape);
   return shape;
-}
-
-/** The number to show on the drawn die for a rolled face (d100: the units/tens die shows 0–9 as 1–10). */
-export function shownValue(sides: number, face: number): number {
-  const n = drawnSides(sides);
-  if (sides === 100) return ((face - 1) % 10) + 1;
-  if (face > n) return ((face - 1) % n) + 1;
-  return Math.max(1, face);
 }
 
 const UP = new Vector3(0, 0, 1);

@@ -214,6 +214,7 @@ async function checkAssignment(
       return c && rest.length === 0 ? checkRoll(c, value, uid, ctx) : deny('the dice log is add-only');
     case 'shapes':
       if (c && rest.length === 1 && rest[0] === 'anchor') return checkShapeMove(c, value, uid, ctx);
+      if (c && rest.length === 1 && rest[0] === 'angleDeg') return checkShapeTurn(c, value, uid, ctx);
       return c && rest.length === 0 ? checkShape(c, value, uid, ctx) : deny('GM only');
     case 'initiative':
       return c === undefined ? checkInitiative(value, uid, ctx) : deny('GM only');
@@ -590,6 +591,13 @@ async function checkShapeMove(id: string, value: unknown, uid: string, ctx: Gate
   if (!isObj(value) || Object.keys(value).length !== 2 || !Number.isInteger(value.col) || !Number.isInteger(value.row)) {
     return deny('bad shape position');
   }
+  return OK;
+}
+
+async function checkShapeTurn(id: string, value: unknown, uid: string, ctx: GateContext): Promise<Verdict> {
+  const existing = await ctx.read(`games/${ctx.gameId}/shapes/${id}`);
+  if (!isObj(existing) || existing.ownerUid !== uid) return deny('not your shape');
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value >= 360) return deny('bad shape angle');
   return OK;
 }
 

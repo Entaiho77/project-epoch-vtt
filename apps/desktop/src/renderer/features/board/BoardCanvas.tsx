@@ -89,6 +89,8 @@ interface BoardCanvasProps {
   shapes?: BoardShape[];
   /** Move a grid-anchored shape (only offered for shapes this viewer may move). */
   onMoveShape?: (shapeId: string, col: number, row: number) => void;
+  /** Turn a cone / line / square to a new direction (degrees, 0 = east). */
+  onRotateShape?: (shapeId: string, angleDeg: number) => void;
   /** Measuring lines everyone has left on this map. */
   measures?: SharedMeasure[];
   /** Leave my measuring line on the board for everyone. */
@@ -178,7 +180,17 @@ function shapePath(
   if (kind === 'circle') {
     ctx.arc(cx, cy, px, 0, Math.PI * 2);
   } else if (kind === 'square') {
-    ctx.rect(cx - px / 2, cy - px / 2, px, px);
+    // Rotated by angleDeg around its middle (0 = square to the grid).
+    const h = px / 2;
+    const corners = [
+      [-h, -h],
+      [h, -h],
+      [h, h],
+      [-h, h],
+    ].map(([u, v]) => [cx + u * dx - v * dy, cy + u * dy + v * dx]);
+    ctx.moveTo(corners[0][0], corners[0][1]);
+    for (const [x, y] of corners.slice(1)) ctx.lineTo(x, y);
+    ctx.closePath();
   } else if (kind === 'line') {
     const hw = gridSize / 2; // 1 square wide
     ctx.moveTo(cx + nx * hw, cy + ny * hw);
@@ -209,6 +221,7 @@ export function BoardCanvas({
   partyScale,
   measureScale,
   onMoveShape,
+  onRotateShape,
   measures,
   onCommitMeasure,
   onClearMeasures,
@@ -258,6 +271,48 @@ export function BoardCanvas({
   // Dragging a placed (grid-anchored) shape by its center square.
   const shapeDrag = useRef<{ id: string } | null>(null);
   const [shapeGhost, setShapeGhost] = useState<{ id: string; col: number; row: number } | null>(null);
+  // Turning a shape by its rotate handle: the live angle while dragging.
+  const shapeTurn = useRef<{ id: string } | null>(null);
+  const [turnGhost, setTurnGhost] = useState<{ id: string; angleDeg: number } | null>(null);
+
+  /**
+   * Where each shape this viewer may change is, with its handles: a move handle in the middle
+   * (grid-placed shapes; token-placed ones follow the token) and a rotate handle at the far end
+   * of cones, lines and squares. World pixels.
+   */
+  function shapeHandles() {
+    const g = map.gridSize;
+    const scale = measureScale?.value ?? 1;
+    const out: { id: string; cx: number; cy: number; angleDeg: number; move: boolean; rotate: { x: number; y: number } | null }[] = [];
+    for (const sh of shapes ?? []) {
+      if (!(role === 'gm' || sh.ownerUid === uid)) continue;
+      let c: { x: number; y: number }, size = 1;
+      if ('tokenId' in sh.anchor) {
+        const tokId = sh.anchor.tokenId;
+        const t = tokens.find((tk) => tk.id === tokId);
+        if (!t) continue;
+        c = footprintCenter(t.col, t.row, t.size, g);
+        size = t.size ?? 1;
+      } else {
+        const a = shapeGhost?.id === sh.id ? shapeGhost : sh.anchor;
+        c = cellCenter(a.col, a.row, g);
+      }
+      const angleDeg = turnGhost?.id === sh.id ? turnGhost.angleDeg : (sh.angleDeg ?? 0);
+      const a = (angleDeg * Math.PI) / 180;
+      const px = ftToPx(sh.sizeFt, scale, g);
+      const edge = edgeAllowance(sh.kind, size, g);
+      const reach = sh.kind === 'square' ? (px + edge) / 2 + g * 0.45 : sh.kind === 'circle' ? 0 : edge + px;
+      out.push({
+        id: sh.id,
+        cx: c.x,
+        cy: c.y,
+        angleDeg,
+        move: !('tokenId' in sh.anchor),
+        rotate: sh.kind === 'circle' ? null : { x: c.x + Math.cos(a) * reach, y: c.y + Math.sin(a) * reach },
+      });
+    }
+    return out;
+  }
   // Hover tooltip listing a token's active conditions (screen coords + text), null when none.
   const [hoverTip, setHoverTip] = useState<{ x: number; y: number; text: string } | null>(null);
   // While aiming a cone/line: the fixed anchor (grid cell or token) + current angle (deg).
@@ -474,7 +529,47 @@ export function BoardCanvas({
       const moved = shapeGhost?.id === shape.id ? { col: shapeGhost.col, row: shapeGhost.row } : shape.anchor;
       const center = shapeCenter(moved);
       if (!center) continue;
-      paintShape(shape.kind, center, shape.sizeFt, shape.angleDeg ?? 0, shape.color ?? COLORS.teal);
+      const angle = turnGhost?.id === shape.id ? turnGhost.angleDeg : (shape.angleDeg ?? 0);
+      paintShape(shape.kind, center, shape.sizeFt, angle, shape.color ?? COLORS.teal);
+    }
+
+    // Handles on the shapes this viewer may change: ✥ in the middle to move, ● at the end to turn.
+    if (tool === 'select') {
+      const r = 8 / cam.zoom;
+      for (const hd of shapeHandles()) {
+        if (hd.move) {
+          ctx.beginPath();
+          ctx.arc(hd.cx, hd.cy, r, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(15,17,21,0.75)';
+          ctx.fill();
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.5 / cam.zoom;
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(hd.cx - r * 0.6, hd.cy);
+          ctx.lineTo(hd.cx + r * 0.6, hd.cy);
+          ctx.moveTo(hd.cx, hd.cy - r * 0.6);
+          ctx.lineTo(hd.cx, hd.cy + r * 0.6);
+          ctx.stroke();
+        }
+        if (hd.rotate) {
+          ctx.beginPath();
+          ctx.moveTo(hd.cx, hd.cy);
+          ctx.lineTo(hd.rotate.x, hd.rotate.y);
+          ctx.setLineDash([3 / cam.zoom, 3 / cam.zoom]);
+          ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+          ctx.lineWidth = 1 / cam.zoom;
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.beginPath();
+          ctx.arc(hd.rotate.x, hd.rotate.y, r * 0.8, 0, Math.PI * 2);
+          ctx.fillStyle = COLORS.amber;
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(15,17,21,0.9)';
+          ctx.lineWidth = 1.5 / cam.zoom;
+          ctx.stroke();
+        }
+      }
     }
 
     // Live preview while placing a shape (anchor chosen, aiming or about to commit).
@@ -653,6 +748,8 @@ export function BoardCanvas({
     measure,
     measures,
     shapeGhost,
+    turnGhost,
+    tool,
     shapes,
     shapeDraft,
     shapeAim,
@@ -712,7 +809,26 @@ export function BoardCanvas({
       return;
     }
 
-    // A placed shape can be dragged by its center square (when no token is standing there).
+    // Shape handles: the rotate dot, then the move handle in the middle (hit within ~12px).
+    if (tool === 'select' && (onRotateShape || onMoveShape)) {
+      const w = screenToWorld(camera.current, e.nativeEvent.offsetX, e.nativeEvent.offsetY);
+      const reach = 12 / camera.current.zoom;
+      const near = (x: number, y: number) => Math.hypot(w.x - x, w.y - y) <= reach;
+      const handles = shapeHandles();
+      const turn = onRotateShape ? handles.find((hd) => hd.rotate && near(hd.rotate.x, hd.rotate.y)) : undefined;
+      if (turn) {
+        shapeTurn.current = { id: turn.id };
+        setTurnGhost({ id: turn.id, angleDeg: turn.angleDeg });
+        return;
+      }
+      const mv = onMoveShape ? handles.find((hd) => hd.move && near(hd.cx, hd.cy)) : undefined;
+      if (mv) {
+        shapeDrag.current = { id: mv.id };
+        setShapeGhost({ id: mv.id, col, row });
+        return;
+      }
+    }
+    // A placed shape can also be dragged by its center square (when no token is standing there).
     if (tool === 'select' && onMoveShape) {
       const onCell = tokensAtCell(onMap.filter((t) => tokenVisibility(t, uid, role) !== 'hidden'), col, row);
       const grab = onCell.length === 0
@@ -789,6 +905,15 @@ export function BoardCanvas({
       return;
     }
     const { col, row } = eventCell(e);
+    if (shapeTurn.current) {
+      const hd = shapeHandles().find((x) => x.id === shapeTurn.current!.id);
+      if (hd) {
+        const w = screenToWorld(camera.current, e.nativeEvent.offsetX, e.nativeEvent.offsetY);
+        const deg = (Math.atan2(w.y - hd.cy, w.x - hd.cx) * 180) / Math.PI;
+        setTurnGhost({ id: hd.id, angleDeg: Math.round(deg) });
+      }
+      return;
+    }
     if (shapeDrag.current) {
       if (shapeGhost?.col !== col || shapeGhost?.row !== row) setShapeGhost({ id: shapeDrag.current.id, col, row });
       return;
@@ -827,6 +952,13 @@ export function BoardCanvas({
         });
       }
       setShapeAim(null);
+      return;
+    }
+    if (shapeTurn.current) {
+      const sh = (shapes ?? []).find((x) => x.id === shapeTurn.current!.id);
+      if (sh && turnGhost && turnGhost.angleDeg !== (sh.angleDeg ?? 0)) onRotateShape?.(sh.id, turnGhost.angleDeg);
+      shapeTurn.current = null;
+      setTurnGhost(null);
       return;
     }
     if (shapeDrag.current) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Vector3 } from 'three';
-import { dieShape, drawnSides, faceTowardViewer, landingQuaternion, shownValue } from '../diceShapes';
+import { diePlan, dieShape, drawnSides, faceTowardViewer, landingQuaternion } from '../diceShapes';
 
 describe('3D dice shapes', () => {
   it('every die has one flat face per side, numbered 1..N', () => {
@@ -31,12 +31,31 @@ describe('3D dice shapes', () => {
     }
   });
 
-  it('odd dice are drawn as the nearest real die and still show their number', () => {
-    expect(drawnSides(100)).toBe(10);
-    expect(shownValue(100, 37)).toBe(7);
-    expect(shownValue(100, 40)).toBe(10);
-    expect(drawnSides(3)).toBe(4);
-    expect(shownValue(3, 2)).toBe(2);
-    expect(drawnSides(2)).toBe(4);
+  it('a d100 is a pair of d10s: tens (00–90) and units (0–9)', () => {
+    const [tens, units] = diePlan(100, 37);
+    expect([tens.draw, units.draw]).toEqual([10, 10]);
+    expect(tens.label(tens.land)).toBe('30');
+    expect(units.label(units.land)).toBe('7');
+    const hundred = diePlan(100, 100);
+    expect(hundred.map((d) => d.label(d.land))).toEqual(['00', '0']);
+    const ten = diePlan(100, 10);
+    expect(ten.map((d) => d.label(d.land))).toEqual(['10', '0']);
+  });
+
+  it('a d3 shows 1–3 (a d6 marked twice) and lands on the result', () => {
+    const [d] = diePlan(3, 2);
+    expect(d.draw).toBe(6);
+    expect([1, 2, 3, 4, 5, 6].map(d.label)).toEqual(['1', '2', '3', '1', '2', '3']);
+    expect(d.label(d.land)).toBe('2');
+  });
+
+  it('an unusual die shows its real number on the face that lands up', () => {
+    const [d7] = diePlan(7, 7);
+    expect(d7.draw).toBe(8);
+    expect(d7.label(d7.land)).toBe('7');
+    const [d30] = diePlan(30, 27);
+    expect(d30.draw).toBe(20);
+    expect(d30.label(d30.land)).toBe('27');
+    expect(drawnSides(20)).toBe(20);
   });
 });

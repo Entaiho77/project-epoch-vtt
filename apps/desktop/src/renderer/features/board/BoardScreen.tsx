@@ -14,7 +14,7 @@ import {
   updateToken,
 } from '../../data/board';
 import { addShape } from '../../data/shapes';
-import { clearAllMeasures, moveShape, setMyMeasure } from '../../data/measures';
+import { clearAllMeasures, moveShape, rotateShape, setMyMeasure } from '../../data/measures';
 import { useCreatureArt, useMyCreatures } from '../../data/creatures';
 import { useGameCharacterArt } from '../../data/characters';
 import { firstFreeCell, gridDimensions, takenSquares } from './boardGeometry';
@@ -608,6 +608,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
             targetTokenId={target?.id}
             shapes={visibleShapes}
             onMoveShape={(id, col, row) => void moveShape(gameId, id, col, row)}
+            onRotateShape={(id, deg) => void rotateShape(gameId, id, deg)}
             measures={Object.values(game.measures ?? {}).filter((m) => m.mapId === activeMap?.id)}
             onCommitMeasure={(seg) =>
               activeMap && void setMyMeasure(gameId, uid, { ...seg, ownerUid: uid, ownerName: character?.name ?? myName, mapId: activeMap.id })
