@@ -3,8 +3,12 @@ import { TARGET_HINT, useAttackBlocked } from '../board/attackGate';
 import { RollModeSelect } from '../../components/ui/RollModeSelect';
 import type { Dnd5eSpell, SystemDefinition } from '@epoch/shared-types';
 import type { Character } from '@epoch/shared-types';
-import { attackAdvantage, autoCritAgainst, combineAdvantage, describeRoll, effectsFor, getCombatResolver, rollDice } from '@epoch/engine';
-import { equipInventoryItem, removeInventoryItem, restoreSpellSlots, setConcentrating, setFeatResource, setLevelUpPending, setPoolCurrent, setSpellSlot, setSubclass } from '../../data/characters';
+import { attackAdvantage, autoCritAgainst, combineAdvantage, describeRoll, effectsFor, getCombatResolver, resolveCheck, rollDice } from '@epoch/engine';
+import { equipInventoryItem, removeInventoryItem, restoreSpellSlots, setCharacterImage, setConcentrating, setDeathSaves, setFeatResource, setHp, setLevelUpPending, setSpellSlot, setSubclass } from '../../data/characters';
+import { applyDeathSave, deathState } from '@epoch/systems/dnd5e/deathSaves';
+import { TokenArtUpload } from '../../components/ui/TokenArtUpload';
+import { longRest5e, shortRest5e } from '../../data/rests';
+import { multiUpdate } from '../../data/realtime';
 import { xpProgress } from '@epoch/systems/dnd5e/xp';
 import { pcDerived, ABILITY_IDS } from '@epoch/systems/dnd5e/character';
 import { spells as allSpells, getSpellsForClass } from '@epoch/systems/dnd5e/spells';
@@ -256,8 +260,71 @@ export function Dnd5eSheet({
 
   const showCombat = !d.spell || tab === 'combat';
 
+  // Ability checks, saves and skills: click to roll (checked dice, Normal/Adv/Disadv above).
+  // Open rolls — no DC; the GM says whether it works.
+  const rollCheck = (label: string, modifier: number) =>
+    void secureRoll(() =>
+      postRoll(resolveCheck({ label: `${character.name} — ${label}`, modifier, dc: null, advantage }).logText),
+    );
+
+  // Death saves (5e): only while at 0 HP.
+  const down = hpCurrent <= 0;
+  const ds = character.play.deathSaves;
+  const dState = deathState(ds);
+  const rollDeathSave = () =>
+    void secureRoll(() => {
+      const res = resolveCheck({ label: `${character.name} — death save`, dc: null });
+      const out = applyDeathSave(ds, res.face);
+      postRoll(`${character.name} — death save: d20 ${res.face} — ${out.text}`);
+      if (out.state === 'revived') void setHp(character.id, 1, true);
+      else void setDeathSaves(character.id, out.saves);
+    });
+  const pill = (on: boolean, color: string): React.CSSProperties => ({
+    width: 14, height: 14, borderRadius: 7, display: 'inline-block',
+    border: `2px solid ${color}`, background: on ? color : 'transparent',
+  });
+  // Rests.
+  const [shortOpen, setShortOpen] = useState(false);
+  const [diceToSpend, setDiceToSpend] = useState(1);
+  const hitDieSize = Number(String(d.cls?.hitDie ?? 'd8').replace(/^\D*/, '')) || 8;
+  const hitDiceUsed = character.play.hitDiceUsed ?? 0;
+  const hitDiceLeft = Math.max(0, character.play.level - hitDiceUsed);
+  const restInput = {
+    characterId: character.id,
+    name: character.name,
+    level: character.play.level,
+    maxHp: d.maxHp,
+    currentHp: hpCurrent,
+    isWarlock: d.cls?.id === 'warlock',
+    hitDiceUsed,
+    ...(d.spell?.maxSlots ? { maxSlots: d.spell.maxSlots } : {}),
+  };
+  const longRest = () => {
+    const r = longRest5e(restInput);
+    void multiUpdate(r.updates).then(() => postRoll(r.text));
+  };
+  const shortRest = (n: number) => {
+    setShortOpen(false);
+    const roll = () => {
+      const faces = Array.from({ length: n }, () => rollDice(`1d${hitDieSize}`).total);
+      const r = shortRest5e(restInput, faces, d.mods.CON ?? 0);
+      void multiUpdate(r.updates);
+      postRoll(r.text);
+    };
+    if (n > 0) void secureRoll(roll);
+    else roll();
+  };
+  const clickable: React.CSSProperties = { cursor: 'pointer', border: '1px solid var(--border-hairline)', font: 'inherit', color: 'inherit' };
+
   return (
     <div className={s.section}>
+      <TokenArtUpload
+        scope={character.id}
+        imageUrl={character.imageUrl}
+        label="portrait"
+        onChange={(url) => void setCharacterImage(character.id, url)}
+        onClear={() => void setCharacterImage(character.id, null)}
+      />
       <span className={s.label}>{character.name} · {d.cls?.name ?? 'Adventurer'} {character.play.level}</span>
       {d.raceName && (
         <span className={s.itemMeta}>
@@ -298,10 +365,23 @@ export function Dnd5eSheet({
           {/* Ability scores + modifiers */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
             {ABILITY_IDS.map((id) => (
-              <span key={id} className={s.preview} title={id}>
+              <button
+                key={id}
+                type="button"
+                className={s.preview}
+                style={clickable}
+                title={`Roll a ${id} check`}
+                onClick={() => rollCheck(`${id} check`, d.mods[id] ?? 0)}
+              >
                 <strong>{id}</strong> {d.scores[id] ?? 10} ({sign(d.mods[id] ?? 0)})
-              </span>
+              </button>
             ))}
+          </div>
+
+          {/* One roll-mode control for everything this sheet rolls (checks, saves, attacks). */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+            <span className={s.itemMeta}>Roll mode</span>
+            <RollModeSelect value={advantage} onChange={setAdvantage} />
           </div>
 
           {/* Core combat numbers */}
@@ -311,8 +391,64 @@ export function Dnd5eSheet({
             label="HP"
             current={hpCurrent}
             max={d.maxHp}
-            onChange={(n) => void setPoolCurrent(character.id, 'hp', n)}
+            onChange={(n) => void setHp(character.id, n, !!ds)}
           />
+
+          {/* Death saves — at 0 HP. Healing (HP above 0) clears them. */}
+          {down && (
+            <div style={{ padding: 'var(--space-2)', borderRadius: 'var(--radius-sm)', border: `1px solid ${dState === 'dead' ? 'var(--accent-red)' : 'var(--accent-amber)'}`, background: 'var(--surface-raised)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+              <span style={bodyText}>
+                <strong>{dState === 'dead' ? 'Dead' : dState === 'stable' ? 'Stable — unconscious at 0 HP' : 'Dying — death saves'}</strong>
+              </span>
+              <div style={{ display: 'flex', gap: 'var(--space-4)', alignItems: 'center', flexWrap: 'wrap' }}>
+                <span className={s.itemMeta} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                  Successes {[0, 1, 2].map((i) => <span key={i} style={pill(i < (ds?.successes ?? 0), 'var(--accent-teal)')} />)}
+                </span>
+                <span className={s.itemMeta} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                  Failures {[0, 1, 2].map((i) => <span key={i} style={pill(i < (ds?.failures ?? 0), 'var(--accent-red)')} />)}
+                </span>
+              </div>
+              {dState === 'dying' && (
+                <Button size="sm" onClick={rollDeathSave}>Roll death save</Button>
+              )}
+              <p className={s.hint} style={{ margin: 0 }}>
+                10+ succeeds · natural 20 = back up with 1 HP · natural 1 = two failures · getting hit = a failure · any healing ends it.
+              </p>
+            </div>
+          )}
+
+          {/* Rests */}
+          <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
+            <Button size="sm" variant="ghost" onClick={() => { setDiceToSpend(Math.min(1, hitDiceLeft)); setShortOpen(true); }}>
+              Short rest
+            </Button>
+            <Button size="sm" variant="ghost" onClick={longRest} title="HP and spell slots back to full, half your hit dice back">
+              Long rest
+            </Button>
+            <span className={s.itemMeta}>Hit dice {hitDiceLeft}/{character.play.level} (d{hitDieSize})</span>
+          </div>
+          {shortOpen && (
+            <Modal open onClose={() => setShortOpen(false)} title="Short rest" width={380}>
+              <div className={s.section}>
+                <p className={s.hint}>
+                  Spend hit dice to heal: each heals 1d{hitDieSize} {sign(d.mods.CON ?? 0)}. You have {hitDiceLeft} left.
+                  {d.cls?.id === 'warlock' ? ' Your pact slots come back too.' : ''}
+                </p>
+                <label className={s.itemMeta} style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                  Hit dice to spend
+                  <input
+                    type="number"
+                    min={0}
+                    max={hitDiceLeft}
+                    value={diceToSpend}
+                    onChange={(e) => setDiceToSpend(Math.max(0, Math.min(hitDiceLeft, Number(e.target.value) || 0)))}
+                    style={{ width: 56 }}
+                  />
+                </label>
+                <Button onClick={() => shortRest(diceToSpend)}>Rest</Button>
+              </div>
+            </Modal>
+          )}
 
           {/* Experience — progress toward the next level; "Level Up!" appears at the threshold. */}
           <div style={row}>
@@ -332,23 +468,36 @@ export function Dnd5eSheet({
           <span className={s.label}>Saving throws</span>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
             {d.saves.map((sv) => (
-              <span key={sv.id} className={s.preview} title={sv.proficient ? 'proficient' : undefined}>
+              <button
+                key={sv.id}
+                type="button"
+                className={s.preview}
+                style={clickable}
+                title={`Roll a ${sv.id} save${sv.proficient ? ' (proficient)' : ''}`}
+                onClick={() => rollCheck(`${sv.id} save`, sv.mod)}
+              >
                 {sv.id} {sign(sv.mod)}{sv.proficient ? ' ●' : ''}
-              </span>
+              </button>
             ))}
           </div>
 
-          {/* Skills (proficient) */}
-          {d.skills.length > 0 && (
-            <>
-              <span className={s.label}>Skills</span>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
-                {d.skills.map((sk) => (
-                  <span key={sk.id} className={s.preview}>{sk.name} {sign(sk.mod)}</span>
-                ))}
-              </div>
-            </>
-          )}
+          {/* All 18 skills — ● = proficient. Click to roll. */}
+          <span className={s.label}>Skills <span className={s.itemMeta}>(● proficient · click to roll)</span></span>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 'var(--space-1)' }}>
+            {d.allSkills.map((sk) => (
+              <button
+                key={sk.id}
+                type="button"
+                className={s.preview}
+                style={{ ...clickable, display: 'flex', justifyContent: 'space-between', gap: 'var(--space-2)', fontWeight: sk.proficient ? 700 : 400 }}
+                title={`Roll ${sk.name} (${sk.ability})`}
+                onClick={() => rollCheck(sk.name, sk.mod)}
+              >
+                <span>{sk.proficient ? '● ' : ''}{sk.name} <span className={s.itemMeta}>{sk.ability}</span></span>
+                <span>{sign(sk.mod)}</span>
+              </button>
+            ))}
+          </div>
 
           {/* Attacks — through attackRollVsAc. AC comes from the current target when one is set
               (right-click a creature on the board); otherwise the typed Target AC is the fallback. */}
@@ -364,7 +513,6 @@ export function Dnd5eSheet({
                 <input type="number" value={targetAc} onChange={(e) => setTargetAc(Number(e.target.value) || 0)} style={{ width: 56 }} />
               </label>
             )}
-            <RollModeSelect value={advantage} onChange={setAdvantage} />
             {d.sneakAttackDice && (
               <label className={s.itemMeta} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }} title="Adds Sneak Attack dice on a hit — enable when it applies (advantage or an ally adjacent).">
                 <input type="checkbox" checked={sneak} onChange={(e) => setSneak(e.target.checked)} />

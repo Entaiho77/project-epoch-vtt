@@ -35,7 +35,7 @@ function world(): Record<string, unknown> {
           toHer: { id: 'toHer', senderId: GM, senderName: 'GM', audience: OTHER, text: 'secret', ts: 3 },
         },
         shapes: {
-          s1: { id: 's1', ownerUid: ME, kind: 'circle', mapId: 'm1' },
+          s1: { id: 's1', ownerUid: ME, kind: 'circle', mapId: 'm1', anchor: { col: 2, row: 2 } },
           s2: { id: 's2', ownerUid: GM, kind: 'circle', mapId: 'm1', hidden: true },
         },
         initiative: {
@@ -90,6 +90,17 @@ describe('gatekeeper: what honest players do is allowed', () => {
     await allowed({ t: 'multi', updates: { [`/games/${G}/tokens/mine/col`]: 4, [`/games/${G}/tokens/mine/row`]: 6 } });
     await allowed({ t: 'write', path: `games/${G}/tokens/mine/conditions/poisoned`, value: true });
     await allowed({ t: 'write', path: `games/${G}/tokens/mine/conditions/poisoned`, value: null });
+  });
+
+  it('leave my own measuring line on the board, and move my own shape', async () => {
+    const m = { ownerUid: ME, ownerName: 'Brannoc', mapId: 'm1', sc: 1, sr: 1, ec: 4, er: 2 };
+    await allowed({ t: 'write', path: `games/${G}/measures/${ME}`, value: m });
+    await allowed({ t: 'write', path: `games/${G}/measures/${ME}`, value: null });
+    await blocked({ t: 'write', path: `games/${G}/measures/${OTHER}`, value: null });
+    await blocked({ t: 'write', path: `games/${G}/measures/${ME}`, value: { ...m, ownerUid: OTHER } });
+    await allowed({ t: 'write', path: `games/${G}/shapes/s1/anchor`, value: { col: 5, row: 6 } });
+    await blocked({ t: 'write', path: `games/${G}/shapes/s2/anchor`, value: { col: 5, row: 6 } });
+    await blocked({ t: 'write', path: `games/${G}/shapes/s1/anchor`, value: { tokenId: 'x' } });
   });
 
   it('mark myself in or out of the voice call — but nobody else', async () => {

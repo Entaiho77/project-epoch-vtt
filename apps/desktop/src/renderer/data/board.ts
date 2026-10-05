@@ -131,6 +131,29 @@ export function revealAllCreatures(gameId: string, tokens: Token[], mapId: strin
   return Object.keys(patch).length ? multiUpdate(patch) : Promise.resolve();
 }
 
+/**
+ * Set a token's HP. For creatures, 0 HP marks it defeated and anything above 0 brings it back
+ * (so a healed monster is targetable and takes turns again).
+ */
+export function setTokenHp(gameId: string, token: Pick<Token, 'id' | 'kind' | 'hp'>, current: number): Promise<void> {
+  const max = token.hp?.max ?? current;
+  const hp = Math.max(0, Math.min(Math.round(current), max));
+  return multiUpdate({
+    [`/games/${gameId}/tokens/${token.id}/hp`]: { current: hp, max },
+    ...(token.kind === 'creature' ? { [`/games/${gameId}/tokens/${token.id}/defeated`]: hp === 0 ? true : null } : {}),
+  });
+}
+
+/** Mark a creature defeated, or bring it back (at least 1 HP so it's really back in the fight). */
+export function setDefeated(gameId: string, token: Pick<Token, 'id' | 'hp'>, defeated: boolean): Promise<void> {
+  return multiUpdate({
+    [`/games/${gameId}/tokens/${token.id}/defeated`]: defeated ? true : null,
+    ...(!defeated && token.hp && token.hp.current <= 0
+      ? { [`/games/${gameId}/tokens/${token.id}/hp/current`]: 1 }
+      : {}),
+  });
+}
+
 export function removeToken(gameId: string, tokenId: string): Promise<void> {
   return writeValue(`games/${gameId}/tokens/${tokenId}`, null);
 }

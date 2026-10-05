@@ -4,6 +4,7 @@ import { secureRoll } from '../../../data/secureDice';
 import { Button } from '../../../components/ui/Button';
 import { RollLog, useRollLog } from '../../rolllog/rollLog';
 import s from './drawers.module.css';
+import { setDice3dEnabled, useDice3dEnabled } from '../../dice3d/dice3d';
 
 const QUICK = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];
 
@@ -25,8 +26,13 @@ export function DiceDrawer() {
     });
   }
 
+  const show3d = useDice3dEnabled();
   return (
     <div className={s.section}>
+      <label className={s.toggleRow}>
+        <span>Show my dice in 3D (only you see them roll)</span>
+        <input type="checkbox" checked={show3d} onChange={(e) => setDice3dEnabled(e.target.checked)} />
+      </label>
       <span className={s.label}>Quick roll</span>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
         {QUICK.map((d) => (

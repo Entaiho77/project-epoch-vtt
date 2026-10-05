@@ -55,3 +55,9 @@
 .loot {
   padding: 0 var(--space-3) var(--space-3);
 }
+
+.lootNote {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}

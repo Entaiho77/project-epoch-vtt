@@ -3,6 +3,9 @@ import type { SemanticColor, SystemDefinition } from '@epoch/shared-types';
 import type { Character } from '@epoch/shared-types';
 import { computeDerived } from '@epoch/engine';
 import { setCharacterImage, setPoolCurrent } from '../../../data/characters';
+import { restSolryn, type SolrynRest } from '../../../data/rests';
+import { multiUpdate } from '../../../data/realtime';
+import { useRollLog } from '../../rolllog/rollLog';
 import { Modal } from '../../../components/ui/Modal';
 import { Button } from '../../../components/ui/Button';
 import { TokenArtUpload } from '../../../components/ui/TokenArtUpload';
@@ -48,6 +51,19 @@ export function CharacterQuickView({
   const pools = derived.filter((d) => d.resourcePool);
   const refs = derived.filter((d) => !d.resourcePool);
   const isCaster = character.definition.knownSpellIds.length > 0;
+  const { postRoll } = useRollLog();
+  const poolOf = (id: string) => {
+    const p = pools.find((x) => x.id === id);
+    return p ? { id, max: p.value, current: character.play.pools?.[id]?.current ?? p.value } : undefined;
+  };
+  function rest(kind: SolrynRest) {
+    const r = restSolryn(character.id, character.name, kind, {
+      hp: poolOf('hp'),
+      ap: poolOf('arcanaPoints'),
+      luck: poolOf('luckPoints'),
+    });
+    void multiUpdate(r.updates).then(() => postRoll(r.text));
+  }
 
   return (
     <div className={s.section}>
@@ -107,6 +123,18 @@ export function CharacterQuickView({
         )}
         <Button variant="secondary" size="sm" onClick={() => setSheetOpen(true)}>
           Full sheet
+        </Button>
+      </div>
+
+      <div className={s.row} style={{ flexWrap: 'wrap' }}>
+        <Button variant="ghost" size="sm" onClick={() => rest('short')} title="1 hour: AP recovers half its max">
+          Short rest
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => rest('long-field')} title="8 hours in the field: HP +half max, AP and Luck full">
+          Long rest (field)
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => rest('long-town')} title="8 hours in town: HP, AP and Luck full">
+          Long rest (town)
         </Button>
       </div>
 

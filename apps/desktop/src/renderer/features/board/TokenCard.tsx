@@ -1,7 +1,9 @@
 import { useState } from 'react';
+import { useRollLog } from '../rolllog/rollLog';
+import { isClassAndLevel } from '@epoch/systems/registry';
 import type { SystemDefinition } from '@epoch/shared-types';
 import type { Character, Role, Token } from '@epoch/shared-types';
-import { removeToken, updateToken } from '../../data/board';
+import { removeToken, updateToken, setTokenHp, setDefeated } from '../../data/board';
 import { canSeeMonsterStats, tokenVisibility } from '../../permissions';
 import { ResourceTracker } from '../sheet/ResourceTracker';
 import { Button } from '../../components/ui/Button';
@@ -30,6 +32,11 @@ export function TokenCard({
 }) {
   const view = tokenVisibility(token, uid, role);
   const [harvestOpen, setHarvestOpen] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const { postRoll } = useRollLog();
+  // Solryn harvests corpses with crafting skills; 5e has no harvest — you search and the GM
+  // decides what's found (Give loot / the monster's loot list).
+  const lootByHarvest = !isClassAndLevel(system);
   const canLoot =
     token.kind !== 'character' && Boolean(token.defeated) && Boolean(viewerCharacter);
 
@@ -103,7 +110,7 @@ export function TokenCard({
             current={token.hp.current}
             max={token.hp.max}
             onChange={(n) =>
-              void updateToken(gameId, token.id, { hp: { current: n, max: token.hp!.max } })
+              void setTokenHp(gameId, token, n)
             }
           />
         )}
@@ -122,7 +129,7 @@ export function TokenCard({
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => void updateToken(gameId, token.id, { defeated: !token.defeated })}
+            onClick={() => void setDefeated(gameId, token, !token.defeated)}
           >
             {token.defeated ? 'Revive' : 'Defeat'}
           </Button>
@@ -152,12 +159,28 @@ export function TokenCard({
       {body()}
       {canLoot && (
         <div className={styles.loot}>
-          <Button full size="sm" onClick={() => setHarvestOpen(true)}>
-            Loot
-          </Button>
+          {lootByHarvest ? (
+            <Button full size="sm" onClick={() => setHarvestOpen(true)}>
+              Harvest
+            </Button>
+          ) : searched ? (
+            <p className={styles.lootNote}>You searched it — the GM will hand over anything you find.</p>
+          ) : (
+            <Button
+              full
+              size="sm"
+              onClick={() => {
+                // 5e: searching a body is the GM's call — tell the table; the GM gives the items.
+                postRoll(`searches the ${token.name} for loot`);
+                setSearched(true);
+              }}
+            >
+              Search for loot
+            </Button>
+          )}
         </div>
       )}
-      {canLoot && viewerCharacter && (
+      {canLoot && lootByHarvest && viewerCharacter && (
         <HarvestModal
           system={system}
           character={viewerCharacter}

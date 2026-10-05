@@ -23,8 +23,10 @@ interface RollLogValue {
   /** Post a roll. `hit` = damage to the roller's target, taken off its HP automatically. */
   postRoll: (text: string, opts?: { hit?: Hit }) => void;
   clear: () => void;
-  /** GM-only: the Clear button is hidden otherwise. */
+  /** GM: clears the log for everyone. */
   canClear: boolean;
+  /** Players: hide everything up to now on this computer only (the shared log is untouched). */
+  clearMine: () => void;
 }
 
 const RollLogContext = createContext<RollLogValue | null>(null);
@@ -50,14 +52,33 @@ export function RollLogProvider({
   canClear: boolean;
   children: ReactNode;
 }) {
+  // A player's own "Clear log": entries up to this push key are hidden on this computer.
+  const hideKey = `epoch.logHiddenBefore.${gameId}.${uid}`;
+  const [hiddenBefore, setHiddenBefore] = useState<string>(() => {
+    try {
+      return localStorage.getItem(hideKey) ?? '';
+    } catch {
+      return '';
+    }
+  });
   // Newest-first by push key (chronological, clock-skew-proof), limited for render.
   const entries = useMemo(
     () =>
       Object.values(log ?? {})
+        .filter((e) => !hiddenBefore || e.id > hiddenBefore)
         .sort((a, b) => (a.id < b.id ? 1 : a.id > b.id ? -1 : 0))
         .slice(0, RENDER_LIMIT),
-    [log],
+    [log, hiddenBefore],
   );
+  const clearMine = useCallback(() => {
+    const newest = Object.keys(log ?? {}).sort().pop() ?? '';
+    setHiddenBefore(newest);
+    try {
+      localStorage.setItem(hideKey, newest);
+    } catch {
+      // Only affects this session then.
+    }
+  }, [log, hideKey]);
 
   const postRoll = useCallback(
     (text: string, opts?: { hit?: Hit }) => {
@@ -92,7 +113,7 @@ export function RollLogProvider({
   }, [gameId, canClear]);
 
   return (
-    <RollLogContext.Provider value={{ entries, postRoll, clear, canClear }}>
+    <RollLogContext.Provider value={{ entries, postRoll, clear, canClear, clearMine }}>
       {children}
     </RollLogContext.Provider>
   );
@@ -106,7 +127,7 @@ export function useRollLog(): RollLogValue {
 
 /** The shared log window. Drop it anywhere inside a RollLogProvider. */
 export function RollLog() {
-  const { entries, clear, canClear } = useRollLog();
+  const { entries, clear, canClear, clearMine } = useRollLog();
   const [showAll, setShowAll] = useState(false);
   if (entries.length === 0) {
     return <p className={s.hint}>No rolls yet. Attacks, dice, and monster rolls land here.</p>;
@@ -115,8 +136,12 @@ export function RollLog() {
   const shown = showAll ? entries : entries.slice(0, SHOWN_AT_FIRST);
   return (
     <div className={s.section}>
-      {canClear && (
+      {canClear ? (
         <button type="button" className={s.place} onClick={clear} style={{ alignSelf: 'flex-end' }} title="Clear the roll log for everyone">
+          Clear log
+        </button>
+      ) : (
+        <button type="button" className={s.place} onClick={clearMine} style={{ alignSelf: 'flex-end' }} title="Clear the log on your screen (others still see theirs)">
           Clear log
         </button>
       )}

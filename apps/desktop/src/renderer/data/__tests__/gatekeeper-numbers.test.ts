@@ -168,6 +168,13 @@ describe('auto-damage on the target', () => {
     await expect(check(write(`games/${G}/rollLog/r9`, entry({ rngId, dice, hit: { tokenId: 'gob', amount: -4 } })))).resolves.toMatchObject(no);
   });
 
+  it("a character at 0 HP can't deal damage", async () => {
+    const s = rolled();
+    (s.data as any).gameCharacters = { [G]: { [ME]: 'c-me' } };
+    (s.data.characters as any)['c-me'].play.pools.hp.current = 0;
+    await expect(s.check(write(`games/${G}/rollLog/r9`, entry({ rngId: s.rngId, dice: s.dice, hit: { tokenId: 'gob', amount: 2 } })))).resolves.toMatchObject(no);
+  });
+
   it("in combat, attacks wait for your turn unless the GM allows off-turn attacks", async () => {
     const order = [{ id: 'gob', kind: 'creature', tokenId: 'gob', initiative: 15, tieBreak: 0 }, { id: 'char:c-me', kind: 'character', ownerUserId: ME, initiative: 9, tieBreak: 0 }];
     const notMine = rolled({ initiative: { active: true, phase: 'running', round: 1, turnIndex: 0, order } });

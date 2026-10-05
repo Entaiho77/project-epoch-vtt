@@ -6,7 +6,7 @@ import type { Token } from '@epoch/shared-types';
 import type { CampaignRules, HomebrewEquipment } from '../../../data/homebrew';
 import { attackAdvantage, autoCritAgainst, combineAdvantage, computeModifier, describeRoll, effectsFor, getCombatResolver, resolveCheck, rollDice } from '@epoch/engine';
 import { resolveSolrynAttack } from '@epoch/systems/solryn/combat';
-import { removeToken, updateToken } from '../../../data/board';
+import { removeToken, updateToken, setTokenHp, setDefeated } from '../../../data/board';
 import { setCreatureArt, useCreatureArt } from '../../../data/creatures';
 import { Button } from '../../../components/ui/Button';
 import { TokenArtUpload } from '../../../components/ui/TokenArtUpload';
@@ -228,7 +228,7 @@ export function MonsterStatCard({
           current={token.hp.current}
           max={token.hp.max}
           onChange={(n) =>
-            gameId && void updateToken(gameId, token.id, { hp: { current: n, max: token.hp!.max } })
+            gameId && void setTokenHp(gameId, token, n)
           }
         />
       ) : (
@@ -405,7 +405,7 @@ export function MonsterStatCard({
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => void updateToken(gameId, token.id, { defeated: !token.defeated })}
+            onClick={() => void setDefeated(gameId, token, !token.defeated)}
           >
             {token.defeated ? 'Revive' : 'Defeat'}
           </Button>

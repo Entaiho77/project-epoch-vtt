@@ -14,12 +14,14 @@ import {
   updateToken,
 } from '../../data/board';
 import { addShape } from '../../data/shapes';
+import { clearAllMeasures, moveShape, setMyMeasure } from '../../data/measures';
 import { useCreatureArt, useMyCreatures } from '../../data/creatures';
 import { useGameCharacterArt } from '../../data/characters';
 import { firstFreeCell, gridDimensions, takenSquares } from './boardGeometry';
 import { isPartyScale } from './partyMode';
 import { useGridPrefs } from './gridPrefs';
 import { GridDrawer } from './drawers/GridDrawer';
+import { GiveLootModal } from './drawers/GiveLootModal';
 import { BoardShell, type BarItem } from './BoardShell';
 import { BoardCanvas, type BoardTool, type ShapeDraft } from './BoardCanvas';
 import { TokenCard } from './TokenCard';
@@ -40,6 +42,7 @@ import { MonsterStatCard } from './drawers/MonsterStatCard';
 import { RollLog, useRollLog } from '../rolllog/rollLog';
 import { AttackGateContext } from './attackGate';
 import { playChime } from '../voice/chime';
+import { dice3dEnabled, playDice } from '../dice3d/dice3d';
 import { isDefeated } from '../../data/damage';
 import { creatureCombatant, joinCombat, leaveCombat, rollInitiative, turnBlockReason } from '../../data/combat';
 import { initiativeModifier } from '../../data/initiativeModifier';
@@ -120,6 +123,8 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
   const [targetId, setTargetId] = useState<string | null>(null);
   // Every player's character (GM tools: rolling a player into initiative).
   const gameCharacters = useGameCharacters(role === 'gm' ? gameId : null);
+  // GM "Give loot" (open or secret); null = closed, '' = no player picked yet.
+  const [giveLootFor, setGiveLootFor] = useState<string | null>(null);
   // GM right-click token menu (board cleanup): the token + cursor position, null when closed.
   const [ctxMenu, setCtxMenu] = useState<{ token: Token; x: number; y: number } | null>(null);
   const [measuring, setMeasuring] = useState(false);
@@ -255,7 +260,12 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
   // Attacks during combat wait for your turn (the GM's computer enforces the same rule).
   const turnName = (c: { name: string; kind: string; tokenId?: string }) =>
     role !== 'gm' && c.kind === 'creature' && (!c.tokenId || game.tokens?.[c.tokenId]?.visible === false) ? 'someone else' : c.name;
-  const myTurnBlock = turnBlockReason(initState, { uid }, turnName);
+  // A character at 0 HP is down: no attacks or spells until healed (5e: death saves instead).
+  const myHp = character?.play.pools?.hp?.current;
+  const iAmDown = role === 'player' && typeof myHp === 'number' && myHp <= 0;
+  const myTurnBlock = iAmDown
+    ? (is5e ? "You're down at 0 HP — roll death saves until you're healed." : "You're down at 0 HP — you can't act until you're healed.")
+    : turnBlockReason(initState, { uid }, turnName);
 
   // conditionId → { name, color } for the canvas indicators + hover tooltips.
   const conditionDefs = useMemo(() => {
@@ -317,7 +327,9 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
               uid={uid}
               target={target}
               rules={rules}
-              turnBlocked={turnBlockReason(initState, { tokenId: selected.id })}
+              turnBlocked={
+                isDefeated(selected) ? `${selected.name} is down and can't act.` : turnBlockReason(initState, { tokenId: selected.id })
+              }
               onClose={closeMonsterPanel}
             />
           ),
@@ -345,10 +357,14 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
     if (chatOpen) setUnreadChat([]);
   }, [chatOpen]);
   const unreadCount = unreadChat.filter((id) => chatMsgs.some((m) => m.id === id && canSeeMessage(m, uid))).length;
-  const { entries: rollEntries } = useRollLog();
+  const { entries: rollEntries, postRoll: postRollText } = useRollLog();
+  const boardAreaRef = useRef<HTMLDivElement | null>(null);
   useArrivals(rollEntries, (fresh) => {
     for (const e of rollsToShow(fresh, uid, role === 'gm', new Set()).reverse()) {
-      pushToast({ id: `roll-${e.id}`, kind: 'roll', by: e.by, mine: e.byUid === uid, roll: summarizeRoll(e) });
+      const card = () => pushToast({ id: `roll-${e.id}`, kind: 'roll', by: e.by, mine: e.byUid === uid, roll: summarizeRoll(e) });
+      // Only the roller sees their dice tumble; the card shows once they've landed.
+      if (e.byUid === uid && e.dice?.length && dice3dEnabled()) void playDice(boardAreaRef.current, e.dice).then(card);
+      else card();
     }
   });
   function openToast(t: Toast) {
@@ -471,6 +487,14 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
         glyph: '📖',
         onClick: () => navigate(`/game/${gameId}/customize`),
       },
+      {
+        kind: 'action',
+        id: 'giveloot',
+        label: 'Give loot to a player (openly or secretly)',
+        short: 'Loot',
+        glyph: '🎁',
+        onClick: () => setGiveLootFor(''),
+      },
       { kind: 'divider', id: 'd2' },
       {
         kind: 'drawer',
@@ -558,7 +582,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
       onToggle={toggle}
       leftPanel={monsterPanel}
     >
-      <div className={styles.boardArea}>
+      <div className={styles.boardArea} ref={boardAreaRef}>
         {activeMap ? (
           <BoardCanvas
             map={activeMap}
@@ -583,6 +607,12 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
             highlightTokenId={highlightTokenId}
             targetTokenId={target?.id}
             shapes={visibleShapes}
+            onMoveShape={(id, col, row) => void moveShape(gameId, id, col, row)}
+            measures={Object.values(game.measures ?? {}).filter((m) => m.mapId === activeMap?.id)}
+            onCommitMeasure={(seg) =>
+              activeMap && void setMyMeasure(gameId, uid, { ...seg, ownerUid: uid, ownerName: character?.name ?? myName, mapId: activeMap.id })
+            }
+            onClearMeasures={() => void (role === 'gm' ? clearAllMeasures(gameId) : setMyMeasure(gameId, uid, null))}
             shapeDraft={shapeDraft}
             onCommitShape={(shape) =>
               activeMap && void addShape(gameId, { ...shape, mapId: activeMap.id, ownerUid: uid })
@@ -627,6 +657,13 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
 
         <BoardToasts toasts={toasts} onDismiss={dismissToast} onOpen={openToast} />
 
+        {measuring && (
+          <div className={styles.toolHint} role="status">
+            Drag to measure — the line stays for everyone. Right-click or Esc removes{' '}
+            {role === 'gm' ? 'all measuring lines' : 'yours'}.
+          </div>
+        )}
+
         {ctxMenu && (
           <TokenContextMenu
             // Read the LIVE token from state so condition toggles reflect (and can remove)
@@ -652,7 +689,25 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
                   }
                 : undefined
             }
+            onGiveLoot={
+              role === 'gm' && ctxMenu.token.kind === 'character' && ctxMenu.token.characterId
+                ? () => setGiveLootFor(ctxMenu.token.characterId!)
+                : undefined
+            }
             onClose={() => setCtxMenu(null)}
+          />
+        )}
+
+        {giveLootFor !== null && role === 'gm' && (
+          <GiveLootModal
+            gameId={gameId}
+            gmUid={uid}
+            gmName={myName}
+            characters={gameCharacters}
+            equipment={Object.values(library?.equipment ?? {})}
+            initialCharacterId={giveLootFor || undefined}
+            announce={(text) => postRollText(text)}
+            onClose={() => setGiveLootFor(null)}
           />
         )}
 

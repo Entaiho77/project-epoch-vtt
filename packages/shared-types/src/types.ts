@@ -111,6 +111,8 @@ export interface Game {
   tokens?: Record<string, Token>;
   /** AoE/measurement shape overlays, keyed by id (object map — never an array). */
   shapes?: Record<string, BoardShape>;
+  /** Measuring lines left on the board, one per person (keyed by uid). */
+  measures?: Record<string, SharedMeasure>;
 
   // --- Combat & social (Phase E) ---
   initiative?: InitiativeState;
@@ -203,6 +205,17 @@ export interface BoardShape {
   createdAt: number;
 }
 
+/** A measuring line left on the board for everyone (one per person, at games/{id}/measures/{uid}). */
+export interface SharedMeasure {
+  ownerUid: string;
+  ownerName: string;
+  mapId: string;
+  sc: number;
+  sr: number;
+  ec: number;
+  er: number;
+}
+
 export interface Token {
   id: string;
   mapId: string;
@@ -290,6 +303,15 @@ export interface CharacterPlayState {
   reputation: string;
   /** Resource pools by derived-stat id (e.g. hp, arcanaPoints, luckPoints). */
   pools: Record<string, { current: number }>;
+  /**
+   * 5e: HP gained on level-ups beyond the standard average (campaigns using max or rolled HP).
+   * Added to the derived max HP; can be negative for low rolls. Kept within what the hit die allows.
+   */
+  hpExtra?: number;
+  /** 5e death saves while at 0 HP (cleared when healed). */
+  deathSaves?: { successes: number; failures: number };
+  /** 5e hit dice spent on short rests (recovered on a long rest). */
+  hitDiceUsed?: number;
   /** 5e spell slots remaining, keyed by slot level (1–9). Max is derived from class+level;
    *  only the current count is stored here (like pools/HP). Expended on cast, recovered on rest. */
   spellSlots?: Record<number, number>;

@@ -25,6 +25,7 @@ export function TokenContextMenu({
   canRemove,
   conditions,
   initiative,
+  onGiveLoot,
   onClose,
 }: {
   token: Token;
@@ -43,6 +44,8 @@ export function TokenContextMenu({
   conditions?: TokenCondition[];
   /** GM, during combat: add this token to the initiative order (rolls for it) or take it out. */
   initiative?: { inOrder: boolean; onAdd: () => void; onRemove: () => void };
+  /** GM, on a player's token: open "Give loot" for that character. */
+  onGiveLoot?: () => void;
   onClose: () => void;
 }) {
   const [showConditions, setShowConditions] = useState(false);
@@ -191,6 +194,19 @@ export function TokenContextMenu({
               </div>
             )}
           </>
+        )}
+
+        {onGiveLoot && (
+          <button
+            className={styles.item}
+            role="menuitem"
+            onClick={() => {
+              onGiveLoot();
+              onClose();
+            }}
+          >
+            Give loot…
+          </button>
         )}
 
         {canRemove && (

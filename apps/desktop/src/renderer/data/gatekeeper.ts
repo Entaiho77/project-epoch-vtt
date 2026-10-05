@@ -41,6 +41,7 @@ import { pcDerived } from '@epoch/systems/dnd5e/character';
 import { levelForXp } from '@epoch/systems/dnd5e/xp';
 import type { ProofVerdict } from './diceLedger';
 import { withHomebrewOptions } from './homebrew';
+import { damageAtZero, type DeathSaves } from '@epoch/systems/dnd5e/deathSaves';
 import { hitChanges, hitNote, isDefeated, maxClaimableDamage, mayAttackNow, type Hit } from './damage';
 import { initiativeModifier } from './initiativeModifier';
 
@@ -212,9 +213,17 @@ async function checkAssignment(
     case 'rollLog':
       return c && rest.length === 0 ? checkRoll(c, value, uid, ctx) : deny('the dice log is add-only');
     case 'shapes':
+      if (c && rest.length === 1 && rest[0] === 'anchor') return checkShapeMove(c, value, uid, ctx);
       return c && rest.length === 0 ? checkShape(c, value, uid, ctx) : deny('GM only');
     case 'initiative':
       return c === undefined ? checkInitiative(value, uid, ctx) : deny('GM only');
+    case 'measures':
+      // games/{id}/measures/{uid}: your own measuring line (or null to remove it).
+      if (c !== uid || rest.length !== 0) return deny('you can only change your own measuring line');
+      if (value === null) return OK;
+      if (!isObj(value) || value.ownerUid !== uid || !isStr(value.ownerName, 64) || !isStr(value.mapId, 64)) return deny('bad measurement');
+      if (!['sc', 'sr', 'ec', 'er'].every((k) => Number.isInteger(value[k]) && (value[k] as number) >= 0 && (value[k] as number) < 10000)) return deny('bad measurement');
+      return OK;
     case 'voice':
       // games/{id}/voice/{uid} = true while you're in the voice call; only your own mark.
       if (c !== uid || rest.length !== 0) return deny('you can only mark yourself in voice');
@@ -295,7 +304,8 @@ function poolMaxima(system: SystemDefinition, character: Obj): Record<string, nu
       const size = Number(String(cls?.hitDie ?? '').replace(/^\D*/, '')) || 0;
       const level = num(playOf(character).level) ?? 1;
       const avg = Math.floor(size / 2) + 1;
-      return { hp: d.maxHp + Math.max(0, level - 1) * Math.max(0, size - avg) };
+      // Bound by the average formula plus a full die every level — not by the stored extra.
+      return { hp: d.maxHp - d.hpExtra + Math.max(0, level - 1) * Math.max(0, size - avg) };
     }
     const play = playOf(character);
     const armor = system.equipment.armor.find((a) => a.id === play.equippedArmorId);
@@ -513,6 +523,12 @@ async function checkRoll(id: string, value: unknown, uid: string, ctx: GateConte
     if (!mayAttackNow(asInitiative(await ctx.read(`games/${ctx.gameId}/initiative`)), { uid })) {
       return deny("it isn't your turn");
     }
+    // A character at 0 HP is down and can't deal damage.
+    const myCharId = await ctx.read(`gameCharacters/${ctx.gameId}/${uid}`);
+    if (isStr(myCharId, 64)) {
+      const hp = await ctx.read(`characters/${myCharId}/play/pools/hp/current`);
+      if (typeof hp === 'number' && hp <= 0) return deny("you're down at 0 HP");
+    }
   }
   if (value.dice === undefined && value.rngId === undefined) {
     // A plain line, not a checked roll — and so it can't deal damage.
@@ -548,6 +564,15 @@ export async function hitFollowUps(
     const v = await ctx.read(`characters/${token.characterId}/play/pools/hp/current`);
     charHp = typeof v === 'number' ? v : undefined;
   }
+  // A character already at 0 HP doesn't lose more — each hit is a failed death save (5e).
+  if (token.kind === 'character' && token.characterId && charHp === 0) {
+    const ds = (await ctx.read(`characters/${token.characterId}/play/deathSaves`)) as DeathSaves | null;
+    const next = damageAtZero(ds ?? undefined);
+    return {
+      [`/characters/${token.characterId}/play/deathSaves`]: next,
+      [`/games/${ctx.gameId}/rollLog/${rollId}/applied`]: `${token.name} is hit while down — a failed death save${next.failures >= 3 ? ' · DEAD' : ''}`,
+    };
+  }
   const changes = hitChanges(ctx.gameId, token, hit.amount, charHp);
   if (!changes) return {};
   const after = token.kind === 'character' ? Math.max(0, (charHp ?? 0) - hit.amount) : Math.max(0, (token.hp?.current ?? 0) - hit.amount);
@@ -555,6 +580,17 @@ export async function hitFollowUps(
     ...changes,
     [`/games/${ctx.gameId}/rollLog/${rollId}/applied`]: hitNote(token.name, hit.amount, after === 0),
   };
+}
+
+/** Moving your own placed shape: a new grid square only (token-bound shapes move with the token). */
+async function checkShapeMove(id: string, value: unknown, uid: string, ctx: GateContext): Promise<Verdict> {
+  const existing = await ctx.read(`games/${ctx.gameId}/shapes/${id}`);
+  if (!isObj(existing) || existing.ownerUid !== uid) return deny('not your shape');
+  if (!isObj(existing.anchor) || !('col' in existing.anchor)) return deny('that shape follows a token');
+  if (!isObj(value) || Object.keys(value).length !== 2 || !Number.isInteger(value.col) || !Number.isInteger(value.row)) {
+    return deny('bad shape position');
+  }
+  return OK;
 }
 
 async function checkShape(id: string, value: unknown, uid: string, ctx: GateContext): Promise<Verdict> {

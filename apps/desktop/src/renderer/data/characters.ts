@@ -63,6 +63,7 @@ export function applyLevelUp5e(
   result: {
     level: number;
     hpCurrent: number;
+    hpExtra?: number;
     coreScores: Record<string, number>;
     knownSpellIds: string[];
     spellbookSpellIds?: string[];
@@ -76,6 +77,7 @@ export function applyLevelUp5e(
     [`/characters/${characterId}/play/level`]: result.level,
     [`/characters/${characterId}/play/levelUpPending`]: false,
     [`/characters/${characterId}/play/pools/hp/current`]: result.hpCurrent,
+    ...(result.hpExtra !== undefined ? { [`/characters/${characterId}/play/hpExtra`]: result.hpExtra } : {}),
     [`/characters/${characterId}/definition/coreScores`]: result.coreScores,
     [`/characters/${characterId}/definition/knownSpellIds`]: result.knownSpellIds,
   };
@@ -148,6 +150,19 @@ export function confirmSkillPoints(
   const updates: Record<string, unknown> = { [`/characters/${characterId}/play/unspentSkillPoints`]: unspent };
   for (const [id, st] of Object.entries(skills)) updates[`/characters/${characterId}/play/skills/${id}`] = st;
   return multiUpdate(updates);
+}
+
+/** 5e death saves (null clears them, e.g. when healed). */
+export function setDeathSaves(characterId: string, ds: { successes: number; failures: number } | null): Promise<void> {
+  return writeValue(`characters/${characterId}/play/deathSaves`, ds);
+}
+
+/** Set HP; healing above 0 also clears any death saves. */
+export function setHp(characterId: string, current: number, hadDeathSaves: boolean): Promise<void> {
+  return multiUpdate({
+    [`/characters/${characterId}/play/pools/hp/current`]: current,
+    ...(current > 0 && hadDeathSaves ? { [`/characters/${characterId}/play/deathSaves`]: null } : {}),
+  });
 }
 
 export function setUnspentSkillPoints(

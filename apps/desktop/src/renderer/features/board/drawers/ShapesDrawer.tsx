@@ -156,7 +156,11 @@ export function ShapesDrawer({
       )}
 
       <span className={s.label}>On this map ({active.length})</span>
-      {active.length === 0 && <p className={s.hint}>No shapes placed.</p>}
+      {active.length === 0 ? (
+        <p className={s.hint}>No shapes placed.</p>
+      ) : (
+        <p className={s.hint}>To move a placed shape, drag it by its center square on the board. Shapes placed on a token follow that token.</p>
+      )}
       <div className={s.list}>
         {active.map((sh) => {
           const canRemove = sh.ownerUid === uid || role === 'gm';

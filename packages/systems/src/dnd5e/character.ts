@@ -73,8 +73,12 @@ export interface PcDerived {
   proficiencyBonus: number;
   ac: number;
   maxHp: number;
+  /** The part of maxHp from max/rolled level-up HP (see play.hpExtra), as applied. */
+  hpExtra: number;
   saves: { id: AbilityId; mod: number; proficient: boolean }[];
   skills: { id: string; name: string; ability?: string; mod: number }[];
+  /** Every skill in the system (5e's 18), proficient or not, for the full sheet. */
+  allSkills: { id: string; name: string; ability?: string; mod: number; proficient: boolean }[];
   attacks: { name: string; dice: string; damageType: string; attackBonus: number }[];
   /** Rogue Sneak Attack dice at the character's level (e.g. "1d6"), if the class has it. */
   sneakAttackDice?: string;
@@ -179,7 +183,14 @@ export function pcDerived(system: SystemDefinition, character: Character): PcDer
 
   // Tough (+2 HP/level) and other per-level feat HP fold into the max.
   const featHpPerLevel = ownedFeats.reduce((sum, f) => sum + (f.effects?.hpPerLevel ?? 0), 0);
-  const maxHp = (cls ? maxHitPoints(cls, level, mods.CON) : 0) + featHpPerLevel * level;
+  // Level-ups under "max" or "rolled" HP gain more/less than the average the formula uses; that
+  // difference is kept in play.hpExtra, bounded by what the hit die could give.
+  const hitDie = cls ? Number(String(cls.hitDie).replace(/^\D*/, '')) || 0 : 0;
+  const avgDie = Math.floor(hitDie / 2) + 1;
+  const levelsGained = Math.max(0, level - 1);
+  const rawExtra = Number(character.play.hpExtra) || 0;
+  const hpExtra = Math.max(levelsGained * (1 - avgDie), Math.min(levelsGained * (hitDie - avgDie), Math.round(rawExtra)));
+  const maxHp = (cls ? maxHitPoints(cls, level, mods.CON) : 0) + featHpPerLevel * level + hpExtra;
 
   const saves = ABILITY_IDS.map((id) => ({
     id,
@@ -210,6 +221,15 @@ export function pcDerived(system: SystemDefinition, character: Character): PcDer
     const aMod = sk?.attribute ? (mods[sk.attribute] ?? 0) : 0;
     return { id: sid, name: sk?.name ?? sid, ability: sk?.attribute, mod: aMod + pb };
   });
+
+  const proficientSet = new Set(proficientSkillIds);
+  const allSkills = system.skills
+    .map((sk) => {
+      const aMod = sk.attribute ? (mods[sk.attribute] ?? 0) : 0;
+      const proficient = proficientSet.has(sk.id);
+      return { id: sk.id, name: sk.name, ability: sk.attribute, mod: aMod + (proficient ? pb : 0), proficient };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   const builtinAttacks = character.play.equippedWeaponIds
     .map((wid) => system.equipment.weapons.find((w) => w.id === wid))
@@ -307,8 +327,10 @@ export function pcDerived(system: SystemDefinition, character: Character): PcDer
     proficiencyBonus: pb,
     ac,
     maxHp,
+    hpExtra,
     saves,
     skills,
+    allSkills,
     attacks,
     ...(typeof sneakAttackDice === 'string' ? { sneakAttackDice } : {}),
     feats: ownedFeats,

@@ -144,8 +144,10 @@ export interface LevelUpChoices {
 
 export interface LevelUpResult {
   level: number;
-  /** New current HP (old current + the HP gain — a full character stays full). */
+  /** New current HP: old current + however much the max went up (never above the new max). */
   hpCurrent: number;
+  /** New play.hpExtra: level-up HP beyond the average (max / rolled campaigns). */
+  hpExtra: number;
   coreScores: Record<string, number>;
   knownSpellIds: string[];
   spellbookSpellIds?: string[];
@@ -190,9 +192,29 @@ export function computeLevelUp(
   const knownSpellIds = [...new Set([...known, ...choices.newCantripIds, ...(summary.model === 'spellbook' ? [] : choices.newSpellIds)])];
   const spellbookSpellIds = summary.model === 'spellbook' ? [...new Set([...book, ...choices.newSpellIds])] : undefined;
 
+  // The max goes up by this level's HP (and any CON change applies to every level, per 5e).
+  // HP beyond the average the formula uses is kept in hpExtra so the max matches what was gained.
+  const size = Number(String(d.cls?.hitDie ?? '').replace(/^\D*/, '')) || 0;
+  const averageGain = Math.floor(size / 2) + 1 + (d.mods.CON ?? 0);
+  const hpExtra = (character.play.hpExtra ?? 0) + (summary.hpGain - averageGain);
+  const after: Character = {
+    ...character,
+    definition: { ...character.definition, coreScores },
+    play: {
+      ...character.play,
+      level: summary.toLevel,
+      hpExtra,
+      ...(featIds ? { featIds } : {}),
+      ...(featChoices ? { featChoices } : {}),
+    },
+  };
+  const newMax = pcDerived(system, after).maxHp;
+  const hpCurrent = Math.min(newMax, Math.max(0, curHp + (newMax - d.maxHp)));
+
   return {
     level: summary.toLevel,
-    hpCurrent: curHp + summary.hpGain,
+    hpCurrent,
+    hpExtra,
     coreScores,
     knownSpellIds,
     ...(spellbookSpellIds ? { spellbookSpellIds } : {}),

@@ -232,14 +232,16 @@ export interface CheckInput {
   label: string;
   /** Save/check bonus added to the d20. */
   modifier?: number;
-  /** Difficulty Class to meet or beat. */
-  dc?: number;
+  /** Difficulty Class to meet or beat. `null` = an open roll with no DC (the GM judges it). */
+  dc?: number | null;
   advantage?: 'advantage' | 'disadvantage';
   rng?: Rng;
 }
 
 export interface CheckResolution {
   success: boolean;
+  /** The kept d20's natural face (for natural 20 / natural 1 effects). */
+  face: number;
   /** d20 + modifier total. */
   roll: number;
   modifier: number;
@@ -258,9 +260,14 @@ export function resolveCheck({
   const roll = face + modifier;
   const advTag =
     advantage === 'advantage' ? ' (adv)' : advantage === 'disadvantage' ? ' (dis)' : '';
+  if (dc === null) {
+    const nat = face === 20 ? ' — natural 20!' : face === 1 ? ' — natural 1' : '';
+    return { success: true, face, roll, modifier, dc: 0, logText: `${label}: 1d20${sign(modifier)} = ${roll}${advTag}${nat}` };
+  }
   const success = roll >= dc;
   return {
     success,
+    face,
     roll,
     modifier,
     dc,

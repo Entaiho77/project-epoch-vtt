@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef, useState, type MouseEvent } from 'react';
-import type { BoardShape, MapDef, Role, ShapeKind, Token } from '@epoch/shared-types';
+import type { BoardShape, MapDef, Role, ShapeKind, SharedMeasure, Token } from '@epoch/shared-types';
 import { squareKey } from '../../data/board';
 import { imageSrc } from '../../data/images';
 import { onAssetStored } from '../../data/assetSync';
@@ -87,6 +87,14 @@ interface BoardCanvasProps {
   targetTokenId?: string;
   /** Persisted AoE/measurement shapes to draw (already filtered to this map + visibility). */
   shapes?: BoardShape[];
+  /** Move a grid-anchored shape (only offered for shapes this viewer may move). */
+  onMoveShape?: (shapeId: string, col: number, row: number) => void;
+  /** Measuring lines everyone has left on this map. */
+  measures?: SharedMeasure[];
+  /** Leave my measuring line on the board for everyone. */
+  onCommitMeasure?: (seg: { sc: number; sr: number; ec: number; er: number }) => void;
+  /** Remove my measuring line (the GM's removes everyone's). */
+  onClearMeasures?: () => void;
   /** Armed shape from the Shapes drawer (tool === 'shape'); null when none armed. */
   shapeDraft?: ShapeDraft | null;
   onCommitShape?: (shape: ShapeCommit) => void;
@@ -200,6 +208,10 @@ export function BoardCanvas({
   onViewSettled,
   partyScale,
   measureScale,
+  onMoveShape,
+  measures,
+  onCommitMeasure,
+  onClearMeasures,
   selectedTokenId,
   highlightTokenId,
   targetTokenId,
@@ -243,6 +255,9 @@ export function BoardCanvas({
     null,
   );
   const [measure, setMeasure] = useState<Segment | null>(null);
+  // Dragging a placed (grid-anchored) shape by its center square.
+  const shapeDrag = useRef<{ id: string } | null>(null);
+  const [shapeGhost, setShapeGhost] = useState<{ id: string; col: number; row: number } | null>(null);
   // Hover tooltip listing a token's active conditions (screen coords + text), null when none.
   const [hoverTip, setHoverTip] = useState<{ x: number; y: number; text: string } | null>(null);
   // While aiming a cone/line: the fixed anchor (grid cell or token) + current angle (deg).
@@ -293,13 +308,18 @@ export function BoardCanvas({
     if (tool !== 'measure') setMeasure(null);
   }, [tool]);
 
-  // Escape clears an active measuring line.
+  // Escape clears an active measuring line (and, in measure mode, removes my shared one).
+  const clearMeasuresRef = useRef(onClearMeasures);
+  clearMeasuresRef.current = onClearMeasures;
+  const toolRef = useRef(tool);
+  toolRef.current = tool;
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         measuringRef.current = false;
         setMeasure(null);
         setShapeAim(null);
+        if (toolRef.current === 'measure') clearMeasuresRef.current?.();
       }
     }
     window.addEventListener('keydown', onKey);
@@ -451,7 +471,8 @@ export function BoardCanvas({
     };
 
     for (const shape of shapes ?? []) {
-      const center = shapeCenter(shape.anchor);
+      const moved = shapeGhost?.id === shape.id ? { col: shapeGhost.col, row: shapeGhost.row } : shape.anchor;
+      const center = shapeCenter(moved);
       if (!center) continue;
       paintShape(shape.kind, center, shape.sizeFt, shape.angleDeg ?? 0, shape.color ?? COLORS.teal);
     }
@@ -583,8 +604,12 @@ export function BoardCanvas({
     }
     ctx.restore();
 
-    // Measure overlay.
-    if (measure && measureScale) {
+    // Measuring lines: everyone's that were left on the board, plus the one being drawn now.
+    const lines: { seg: Segment; who?: string }[] = (measures ?? [])
+      .filter((m) => !(measure && m.ownerUid === uid))
+      .map((m) => ({ seg: m, who: m.ownerUid === uid ? undefined : m.ownerName }));
+    if (measure) lines.push({ seg: measure });
+    for (const { seg: measure, who } of measureScale ? lines : []) {
       const a = cellCenter(measure.sc, measure.sr, g);
       const b = cellCenter(measure.ec, measure.er, g);
       ctx.strokeStyle = measureColor;
@@ -597,7 +622,7 @@ export function BoardCanvas({
       ctx.setLineDash([]);
 
       const squares = gridDistanceSquares(measure.sc, measure.sr, measure.ec, measure.er);
-      const label = `${squares} sq · ${fmt(squares * measureScale.value)} ${measureScale.unit}`;
+      const label = `${who ? `${who} · ` : ''}${squares} sq · ${fmt(squares * measureScale!.value)} ${measureScale!.unit}`;
       // Draw the label at a constant on-screen size regardless of zoom.
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -626,6 +651,8 @@ export function BoardCanvas({
     targetTokenId,
     ghost,
     measure,
+    measures,
+    shapeGhost,
     shapes,
     shapeDraft,
     shapeAim,
@@ -683,6 +710,19 @@ export function BoardCanvas({
       fogPaint.current = { target: fogged, seen: new Set([squareKey(col, row)]) };
       onToggleFog(col, row, fogged);
       return;
+    }
+
+    // A placed shape can be dragged by its center square (when no token is standing there).
+    if (tool === 'select' && onMoveShape) {
+      const onCell = tokensAtCell(onMap.filter((t) => tokenVisibility(t, uid, role) !== 'hidden'), col, row);
+      const grab = onCell.length === 0
+        ? (shapes ?? []).find((sh) => 'col' in sh.anchor && sh.anchor.col === col && sh.anchor.row === row && (role === 'gm' || sh.ownerUid === uid))
+        : undefined;
+      if (grab) {
+        shapeDrag.current = { id: grab.id };
+        setShapeGhost({ id: grab.id, col, row });
+        return;
+      }
     }
 
     // Repeated clicks on a stacked cell cycle through the tokens (topmost first, then
@@ -749,6 +789,10 @@ export function BoardCanvas({
       return;
     }
     const { col, row } = eventCell(e);
+    if (shapeDrag.current) {
+      if (shapeGhost?.col !== col || shapeGhost?.row !== row) setShapeGhost({ id: shapeDrag.current.id, col, row });
+      return;
+    }
     if (measuringRef.current) {
       setMeasure((m) => (m ? { ...m, ec: col, er: row } : m));
     } else if (tokenDrag.current) {
@@ -785,6 +829,19 @@ export function BoardCanvas({
       setShapeAim(null);
       return;
     }
+    if (shapeDrag.current) {
+      const sh = (shapes ?? []).find((x) => x.id === shapeDrag.current!.id);
+      if (sh && shapeGhost && 'col' in sh.anchor && (sh.anchor.col !== shapeGhost.col || sh.anchor.row !== shapeGhost.row)) {
+        onMoveShape?.(sh.id, shapeGhost.col, shapeGhost.row);
+      }
+      shapeDrag.current = null;
+      setShapeGhost(null);
+      return;
+    }
+    // A finished measurement stays on the board for everyone (replacing my previous one).
+    if (measuringRef.current && measure && (measure.sc !== measure.ec || measure.sr !== measure.er)) {
+      onCommitMeasure?.(measure);
+    }
     const drag = tokenDrag.current;
     if (drag && ghost) {
       const mover = tokens.find((t) => t.id === drag.id);
@@ -817,6 +874,7 @@ export function BoardCanvas({
       e.preventDefault();
       measuringRef.current = false;
       setMeasure(null);
+      onClearMeasures?.();
       return;
     }
     if (!onContextToken) return;

@@ -95,3 +95,27 @@ describe('computeLevelUp — folds choices into persisted values', () => {
     expect(res.spellbookSpellIds).toBeUndefined();
   });
 });
+
+import { pcDerived } from '../character';
+
+describe('level-up HP never goes above the new max (playtest: "bonus health")', () => {
+  it('max-HP campaigns: the max rises by the full die and a full character stays exactly full', () => {
+    const c = char('fighter', S, 1, { pools: { hp: { current: 12 } } }); // d10 + CON 2 = 12 at level 1
+    const summary = levelUpSummary(dnd5eSystem, c, 'max');
+    const r = computeLevelUp(dnd5eSystem, c, summary, { asi: {}, newCantripIds: [], newSpellIds: [] });
+    const after = { ...c, play: { ...c.play, level: 2, hpExtra: r.hpExtra } } as Character;
+    const max = pcDerived(dnd5eSystem, after).maxHp;
+    expect(max).toBe(12 + 10 + 2);
+    expect(r.hpCurrent).toBe(max);
+  });
+  it('a hurt character goes up by the gain, still never above the max; average campaigns unchanged', () => {
+    const hurt = char('fighter', S, 1, { pools: { hp: { current: 5 } } });
+    const r = computeLevelUp(dnd5eSystem, hurt, levelUpSummary(dnd5eSystem, hurt, 'average'), { asi: {}, newCantripIds: [], newSpellIds: [] });
+    expect(r.hpExtra).toBe(0);
+    expect(r.hpCurrent).toBe(5 + 6 + 2);
+  });
+  it('a stored extra beyond what the dice allow is ignored', () => {
+    const c = char('fighter', S, 3, { hpExtra: 500 });
+    expect(pcDerived(dnd5eSystem, c).maxHp).toBe(12 + 2 * 8 + 2 * 4); // 12 at level 1, average 6+2 per level after, at most +4 extra per level
+  });
+});
