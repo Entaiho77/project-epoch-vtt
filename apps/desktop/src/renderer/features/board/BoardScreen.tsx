@@ -69,9 +69,12 @@ import icoJournal from '../../assets/icons/icon-journal.png';
 import icoSettings from '../../assets/icons/icon-settings.png';
 import icoShapes from '../../assets/icons/icon-shape-tools.png';
 import icoToken from '../../assets/icons/icon-token.png';
-// icoVoice is imported here for future use in the voice top-bar button.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import icoRules from '../../assets/icons/icon-rules.png';
+import icoLoot from '../../assets/icons/icon-loot.png';
+// Imported for future use in the voice top-bar button (not yet wired up);
+// the `void` reference keeps both eslint and tsc quiet about the unused import.
 import icoVoice from '../../assets/icons/icon-voice.png';
+void icoVoice;
 
 function Ico({ src, alt }: { src: string; alt: string }) {
   return <img src={src} alt={alt} />;
@@ -408,7 +411,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
     id: 'rules',
     label: 'Rules',
     short: 'Rules',
-    glyph: 'ℹ',
+    glyph: <Ico src={icoRules} alt="Rules" />,
     content: <RulesDrawer system={system} rules={rules} role={role} gameId={gameId} />,
   };
 
@@ -513,7 +516,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
         id: 'giveloot',
         label: 'Give loot to a player (openly or secretly)',
         short: 'Loot',
-        glyph: '🎁',
+        glyph: <Ico src={icoLoot} alt="Give loot" />,
         onClick: () => setGiveLootFor(''),
       },
       { kind: 'divider', id: 'd2' },
