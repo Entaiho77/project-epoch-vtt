@@ -7,6 +7,9 @@ import { Button } from '../../components/ui/Button';
 import { useRollLog } from '../rolllog/rollLog';
 import styles from './AttacksSection.module.css';
 import { secureRoll } from '../../data/secureDice';
+import { TARGET_HINT, useAttackBlocked } from '../board/attackGate';
+import { useState } from 'react';
+import { RollModeSelect, type RollMode } from '../../components/ui/RollModeSelect';
 
 const sign = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
 /** The Luck Points resource pool id (Solryn derived stat). */
@@ -21,11 +24,13 @@ export function AttacksSection({
   system: SystemDefinition;
   character: Character;
   /** Current click-to-target creature (Solryn): its DR drives auto-hit damage resolution. */
-  target?: { name: string; dr?: number; conditions?: Record<string, true> };
+  target?: { id?: string; name: string; dr?: number; conditions?: Record<string, true> };
   /** The attacker's own token conditions (Solryn: can't-act disables the attack buttons). */
   attackerConditions?: Record<string, true>;
 }) {
   const { postRoll } = useRollLog();
+  // Combat advantage (rulebook §3.1): no attack rolls, so it shifts the target's DR by 2.
+  const [rollMode, setRollMode] = useState<RollMode>(undefined);
   const mode = system.modes.skill;
   const scores = character.definition.coreScores;
 
@@ -40,6 +45,12 @@ export function AttacksSection({
   // attacker that can't act has its attack controls disabled.
   const forcedCrit = !!effectsFor(system.tokenConditions, target?.conditions).ignoreDrAgainst;
   const attackerCantAct = !!effectsFor(system.tokenConditions, attackerConditions).cantAct;
+  // During combat, attacks wait for your turn (the board says whose turn it is).
+  const turnBlocked = useAttackBlocked();
+  const blocked = attackerCantAct || !!turnBlocked;
+  /** Damage that comes off the targeted creature automatically (Solryn: after its DR). */
+  const hitFor = (hpLoss: number) =>
+    target?.id && typeof target.dr === 'number' && hpLoss > 0 ? { hit: { tokenId: target.id, amount: hpLoss } } : undefined;
 
   const weapons = character.play.equippedWeaponIds
     .map((id) => system.equipment.weapons.find((w) => w.id === id))
@@ -91,8 +102,9 @@ export function AttacksSection({
       bonus: weaponBonus(w),
       targetDr: target?.dr,
       crit,
+      combatAdvantage: rollMode,
     });
-    postRoll(res.logText + suffix);
+    postRoll(res.logText + suffix, hitFor(res.hpLoss));
   }
 
   function cast(useCrit: boolean) {
@@ -113,7 +125,7 @@ export function AttacksSection({
       // Solryn spell save: DC = 10 + Arcana modifier (+ skill bonus, unused here). Success = half,
       // which the target/GM then compares against DR — surfaced as a note on the log line.
       const saveDc = 10 + arcanaMod;
-      const res = resolveSolrynAttack({ label: attackLabel(loaded.name), dice: loaded.damageDice, targetDr: target?.dr, crit });
+      const res = resolveSolrynAttack({ label: attackLabel(loaded.name), dice: loaded.damageDice, targetDr: target?.dr, crit, combatAdvantage: rollMode });
       postRoll(`${res.logText} · save DC ${saveDc} (success: half vs DR) · −${loaded.cost} AP${suffix}`);
     } else {
       postRoll(`${character.name} — ${loaded.name}: cast (−${loaded.cost} AP)`);
@@ -133,8 +145,24 @@ export function AttacksSection({
         </p>
       )}
 
+      <div
+        style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap', margin: 'var(--space-1) 0' }}
+        title="Combat advantage: ignore 2 of the target's DR. Disadvantage: the target gets +2 DR."
+      >
+        <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Combat</span>
+        <RollModeSelect value={rollMode} onChange={setRollMode} />
+      </div>
+
+      {!target && (
+        <p className={styles.synopsis} style={{ color: 'var(--accent-amber)' }}>
+          No target. {TARGET_HINT} Hits then come off its HP automatically.
+        </p>
+      )}
       {attackerCantAct && (
         <p className={styles.synopsis} style={{ color: 'var(--accent-red)' }}>Can’t act — attacks are disabled.</p>
+      )}
+      {turnBlocked && (
+        <p className={styles.synopsis} style={{ color: 'var(--accent-red)' }}>{turnBlocked}</p>
       )}
 
       {nothing ? (
@@ -150,13 +178,13 @@ export function AttacksSection({
                   {w.damageDice}
                   {bonus ? ` ${sign(bonus)}` : ''} · auto-hit vs DR
                 </span>
-                <Button size="sm" disabled={attackerCantAct} onClick={() => rollWeapon(w, false)}>
-                  Roll
+                <Button size="sm" disabled={blocked} onClick={() => rollWeapon(w, false)}>
+                  {target ? `Attack ${target.name}` : 'Roll'}
                 </Button>
                 <Button
                   size="sm"
                   variant="secondary"
-                  disabled={!canCrit || attackerCantAct}
+                  disabled={!canCrit || blocked}
                   title={canCrit ? 'Attempt Critical Hit (spend 1 Luck Point)' : 'No Luck Points'}
                   onClick={() => rollWeapon(w, true)}
                 >
@@ -189,7 +217,7 @@ export function AttacksSection({
                 type="button"
                 className={styles.cast}
                 onClick={() => cast(false)}
-                disabled={arcanaCurrent < loaded.cost}
+                disabled={arcanaCurrent < loaded.cost || blocked}
                 title={arcanaCurrent < loaded.cost ? 'Not enough Arcana' : undefined}
               >
                 Cast
@@ -197,7 +225,7 @@ export function AttacksSection({
               <Button
                 size="sm"
                 variant="secondary"
-                disabled={!canCrit || arcanaCurrent < loaded.cost}
+                disabled={!canCrit || arcanaCurrent < loaded.cost || blocked}
                 title={canCrit ? 'Attempt Critical Hit (spend 1 Luck Point)' : 'No Luck Points'}
                 onClick={() => cast(true)}
               >

@@ -77,3 +77,21 @@ describe('attemptLuckCrit', () => {
     expect(a.success).toBe(false);
   });
 });
+
+import { drWithAdvantage } from '../combat';
+
+describe('combat advantage (rulebook §3.1)', () => {
+  it('advantage ignores 2 DR (not below 0); disadvantage adds 2', () => {
+    expect(drWithAdvantage(5, 'advantage')).toBe(3);
+    expect(drWithAdvantage(1, 'advantage')).toBe(0);
+    expect(drWithAdvantage(5, 'disadvantage')).toBe(7);
+    expect(drWithAdvantage(5)).toBe(5);
+  });
+  it('applies to the attack and says so in the log', () => {
+    const rng = () => 0.99; // max damage
+    const r = resolveSolrynAttack({ label: 'X', dice: '1d6', targetDr: 4, combatAdvantage: 'advantage', rng });
+    expect(r.dr).toBe(2);
+    expect(r.hpLoss).toBe(4);
+    expect(r.logText).toContain('advantage: −2 DR');
+  });
+});

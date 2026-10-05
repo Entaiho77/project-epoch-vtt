@@ -16,3 +16,9 @@
   font-weight: 600;
   color: var(--accent-amber);
 }
+
+/* "Goblin takes 9 — down!": the damage the GM's computer applied for this roll. */
+.applied {
+  color: var(--accent-amber);
+  font-weight: 600;
+}

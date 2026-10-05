@@ -4,14 +4,27 @@ import v from './Voice.module.css';
 import { VoicePanel } from './VoicePanel';
 import { VoiceStatus } from './VoiceStatus';
 import { useVoice } from './voiceStore';
+import { useVoicePresence } from './voicePresence';
 
 /**
  * Voice in the game's top bar, so it's there on every game screen (choosing a
  * character, the builder, the board). The button opens the voice panel; while in
  * voice, a small pill stays on screen for mute and push-to-talk.
  */
-export function VoiceButton({ uid, members }: { uid: string; members: Record<string, GameMember> }) {
+export function VoiceButton({
+  uid,
+  members,
+  gameId,
+  role,
+}: {
+  uid: string;
+  members: Record<string, GameMember>;
+  gameId: string;
+  role: 'gm' | 'player';
+}) {
   const voice = useVoice();
+  // Who's in the call (with join/leave chimes for everyone in it).
+  const inVoice = useVoicePresence(gameId, uid, role);
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLDivElement | null>(null);
 
@@ -50,10 +63,11 @@ export function VoiceButton({ uid, members }: { uid: string; members: Record<str
       >
         <span aria-hidden>{voice.joined && muted ? '🔇' : '🎙'}</span>
         Voice
+        {inVoice.size > 0 && <span className={v.count}>{inVoice.size}</span>}
       </button>
       {open && (
         <div className={v.panel} role="dialog" aria-label="Voice">
-          <VoicePanel uid={uid} members={members} />
+          <VoicePanel uid={uid} members={members} inVoice={inVoice} />
         </div>
       )}
       <VoiceStatus uid={uid} />

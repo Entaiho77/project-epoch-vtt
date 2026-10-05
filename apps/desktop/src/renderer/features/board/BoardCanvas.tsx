@@ -14,6 +14,9 @@ import {
   occupiedCells,
   pixelToCell,
   tokensAtCell,
+  dragTopLeft,
+  edgeAllowance,
+  footprintCenter,
 } from './boardGeometry';
 import {
   loadView,
@@ -25,6 +28,7 @@ import {
   type Camera,
 } from './boardCamera';
 import { partyLockHeldByOther, visibleOnMap } from './partyMode';
+import { gridStroke, type GridPrefs } from './gridPrefs';
 import styles from './BoardCanvas.module.css';
 
 export type BoardTool = 'select' | 'fog' | 'measure' | 'shape';
@@ -69,7 +73,10 @@ interface BoardCanvasProps {
   uid: string;
   tool: BoardTool;
   /** GM-chosen grid + measure line color (session-only): white for dark maps, black for light. */
-  lineColor: 'white' | 'black';
+  /** How the grid looks on this computer (each person's own setting). */
+  gridLook: GridPrefs;
+  /** Called (debounced) with the square at the middle of the screen after a pan/zoom. */
+  onViewSettled?: (center: { col: number; row: number }) => void;
   /** Travel-scale map: hide per-character tokens, show the shared party token. */
   partyScale: boolean;
   measureScale?: { value: number; unit: string };
@@ -189,7 +196,8 @@ export function BoardCanvas({
   role,
   uid,
   tool,
-  lineColor,
+  gridLook,
+  onViewSettled,
   partyScale,
   measureScale,
   selectedTokenId,
@@ -225,7 +233,7 @@ export function BoardCanvas({
   // Camera: screen = world * zoom + (x, y). Kept in a ref so pan/zoom don't re-render React.
   const camera = useRef<Camera>({ zoom: 1, x: 0, y: 0 });
 
-  const tokenDrag = useRef<{ id: string; party: boolean } | null>(null);
+  const tokenDrag = useRef<{ id: string; party: boolean; dc: number; dr: number; size: number } | null>(null);
   const fogPaint = useRef<{ target: boolean; seen: Set<string> } | null>(null);
   const measuringRef = useRef(false);
   const panRef = useRef<{ lastX: number; lastY: number } | null>(null);
@@ -254,8 +262,26 @@ export function BoardCanvas({
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rememberView = () => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => saveView(mapIdRef.current, camera.current), 300);
+    saveTimer.current = setTimeout(() => {
+      saveView(mapIdRef.current, camera.current);
+      // Tell the board which square is in the middle of this screen (the GM's is shared so
+      // new player tokens appear where the GM is looking).
+      const c = canvasRef.current;
+      if (c && onViewSettledRef.current) {
+        const w = screenToWorld(camera.current, c.clientWidth / 2, c.clientHeight / 2);
+        const cell = pixelToCell(w.x, w.y, mapRef.current.gridSize);
+        onViewSettledRef.current(clampCell(cell.col, cell.row, colsRef.current, rowsRef.current));
+      }
+    }, 300);
   };
+  const onViewSettledRef = useRef(onViewSettled);
+  onViewSettledRef.current = onViewSettled;
+  const mapRef = useRef(map);
+  mapRef.current = map;
+  const colsRef = useRef(cols);
+  colsRef.current = cols;
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
   useEffect(() => {
     mapIdRef.current = map.id;
     camera.current = loadView(map.id) ?? { zoom: 1, x: 0, y: 0 };
@@ -347,10 +373,10 @@ export function BoardCanvas({
     const bg = getImage(map.imageUrl);
     if (bg) ctx.drawImage(bg, 0, 0, map.width, map.height);
 
-    // Grid + measure line color: a single GM toggle (session-only), white or black, so the GM
-    // can match whichever map is loaded (light maps → black, dark maps → white).
-    const dark = lineColor === 'black';
-    const gridColor = dark ? 'rgba(0, 0, 0, 0.45)' : 'rgba(255, 255, 255, 0.45)';
+    // Grid look is per person (strength, thickness, light/dark) — see gridPrefs. Measure
+    // lines follow the same light/dark choice.
+    const dark = gridLook.color === 'black';
+    const gridColor = gridStroke(gridLook);
     const measureColor = dark ? '#000000' : '#ffffff';
 
     // While a token is being dragged, the cells a blocking token already occupies — used to
@@ -365,7 +391,7 @@ export function BoardCanvas({
       ctx.rect(0, 0, map.width, map.height);
       ctx.clip();
       ctx.strokeStyle = gridColor;
-      ctx.lineWidth = 2 / cam.zoom; // keep grid lines ~2px on screen at any zoom
+      ctx.lineWidth = gridLook.width / cam.zoom; // same on-screen thickness at any zoom
       ctx.beginPath();
       for (let c = 0; c <= cols; c++) {
         ctx.moveTo(c * g, 0);
@@ -381,24 +407,39 @@ export function BoardCanvas({
 
     // --- AoE/measurement shapes (under tokens) ----------------------------------
     const scaleValue = measureScale?.value ?? 1;
+    // A shape on a token centers on the middle of the token's whole footprint (a Large 2×2's
+    // center is the grid point in its middle) and, for big creatures, reaches from its edge.
     const shapeCenter = (
       anchor: BoardShape['anchor'],
-    ): { x: number; y: number } | null => {
+    ): { x: number; y: number; size: number } | null => {
       if ('tokenId' in anchor) {
         const t = tokens.find((tk) => tk.id === anchor.tokenId);
-        return t ? cellCenter(t.col, t.row, g) : null; // token gone → drop the shape
+        if (!t) return null; // token gone → drop the shape
+        const dragging = ghost?.id === t.id;
+        const c = footprintCenter(dragging ? ghost!.col : t.col, dragging ? ghost!.row : t.row, t.size, g);
+        return { ...c, size: t.size ?? 1 };
       }
-      return cellCenter(anchor.col, anchor.row, g);
+      return { ...cellCenter(anchor.col, anchor.row, g), size: 1 };
     };
     const paintShape = (
       kind: ShapeKind,
-      center: { x: number; y: number },
+      center: { x: number; y: number; size: number },
       sizeFt: number,
       angleDeg: number,
       color: string,
     ) => {
-      const px = ftToPx(sizeFt, scaleValue, g);
-      shapePath(ctx, kind, center.x, center.y, px, angleDeg, g);
+      const edge = edgeAllowance(kind, center.size, g);
+      let { x, y } = center;
+      let px = ftToPx(sizeFt, scaleValue, g);
+      if (kind === 'cone' || kind === 'line') {
+        // Start at the creature's edge in the aimed direction.
+        const a = (angleDeg * Math.PI) / 180;
+        x += Math.cos(a) * edge;
+        y += Math.sin(a) * edge;
+      } else {
+        px += edge;
+      }
+      shapePath(ctx, kind, x, y, px, angleDeg, g);
       ctx.save();
       ctx.globalAlpha = 0.22;
       ctx.fillStyle = color;
@@ -419,7 +460,7 @@ export function BoardCanvas({
     if (shapeDraft && shapeAim) {
       const center = shapeAim.tokenId
         ? shapeCenter({ tokenId: shapeAim.tokenId })
-        : cellCenter(shapeAim.col, shapeAim.row, g);
+        : { ...cellCenter(shapeAim.col, shapeAim.row, g), size: 1 };
       if (center) {
         paintShape(shapeDraft.kind, center, shapeDraft.sizeFt, shapeAim.angleDeg, shapeDraft.color);
       }
@@ -574,6 +615,7 @@ export function BoardCanvas({
   }
 
   useEffect(draw, [
+    gridLook,
     map,
     tokens,
     partyScale,
@@ -660,8 +702,9 @@ export function BoardCanvas({
 
     if (hit && canControlToken(hit, uid, role) && !lockedByOther) {
       if (isParty) onGrabParty(hit.id);
-      tokenDrag.current = { id: hit.id, party: isParty };
-      setGhost({ id: hit.id, col, row });
+      // Remember which square of the token was grabbed so a big token doesn't jump.
+      tokenDrag.current = { id: hit.id, party: isParty, dc: col - hit.col, dr: row - hit.row, size: hit.size ?? 1 };
+      setGhost({ id: hit.id, col: hit.col, row: hit.row });
     } else if (lockedByOther) {
       // Selected for info, but it's locked — do nothing else (no pan, no drag).
     } else {
@@ -699,7 +742,7 @@ export function BoardCanvas({
       const w = screenToWorld(camera.current, e.nativeEvent.offsetX, e.nativeEvent.offsetY);
       const anchorTok = shapeAim.tokenId ? tokens.find((t) => t.id === shapeAim.tokenId) : undefined;
       const c = anchorTok
-        ? cellCenter(anchorTok.col, anchorTok.row, map.gridSize)
+        ? footprintCenter(anchorTok.col, anchorTok.row, anchorTok.size, map.gridSize)
         : cellCenter(shapeAim.col, shapeAim.row, map.gridSize);
       const angleDeg = (Math.atan2(w.y - c.y, w.x - c.x) * 180) / Math.PI;
       setShapeAim((a) => (a ? { ...a, angleDeg } : a));
@@ -709,8 +752,10 @@ export function BoardCanvas({
     if (measuringRef.current) {
       setMeasure((m) => (m ? { ...m, ec: col, er: row } : m));
     } else if (tokenDrag.current) {
-      if (ghost?.col !== col || ghost?.row !== row) {
-        setGhost({ id: tokenDrag.current.id, col, row });
+      const d = tokenDrag.current;
+      const at = dragTopLeft(col, row, d.dc, d.dr, d.size, cols, rows);
+      if (ghost?.col !== at.col || ghost?.row !== at.row) {
+        setGhost({ id: d.id, col: at.col, row: at.row });
       }
     } else if (fogPaint.current) {
       const key = squareKey(col, row);

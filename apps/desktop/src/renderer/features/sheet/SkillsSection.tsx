@@ -2,10 +2,8 @@ import { useState } from 'react';
 import type { SystemDefinition } from '@epoch/shared-types';
 import type { Character, CharacterSkillState } from '@epoch/shared-types';
 import { computeSkillState } from '@epoch/engine';
-import {
-  setSkillState,
-  setUnspentSkillPoints,
-} from '../../data/characters';
+import { confirmSkillPoints, setSkillState } from '../../data/characters';
+import { adjustDraft, draftSpent, withDraft, type SkillDraft } from './skillDraft';
 import styles from './SkillsSection.module.css';
 
 const sign = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
@@ -18,29 +16,27 @@ export function SkillsSection({
   character: Character;
 }) {
   const mode = system.modes.skill;
-  const unspent = character.play.unspentSkillPoints ?? 0;
+  const saved = character.play.unspentSkillPoints ?? 0;
   const skillById = (id: string) => system.skills.find((s) => s.id === id);
+  // Points are pencilled in first: move them around freely, then Confirm to lock them in.
+  const [draft, setDraft] = useState<SkillDraft>({});
+  const spent = draftSpent(draft);
+  const unspent = saved - spent;
+  const shown = withDraft(character.play.skills, draft, mode.maxPointsPerSkill);
 
-  function placePoint(skillId: string) {
-    const cur = character.play.skills[skillId] ?? {
-      investedPoints: 0,
-      realizedPoints: 0,
-    };
-    const investedPoints = Math.min(cur.investedPoints + 1, mode.maxPointsPerSkill);
-    if (investedPoints === cur.investedPoints) return;
-    void setSkillState(character.id, skillId, {
-      investedPoints,
-      realizedPoints: cur.realizedPoints,
-    });
-    void setUnspentSkillPoints(character.id, unspent - 1);
-  }
+  const nudge = (skillId: string, delta: 1 | -1) =>
+    setDraft((d) =>
+      adjustDraft(d, skillId, delta, {
+        available: saved,
+        current: character.play.skills[skillId]?.investedPoints ?? 0,
+        maxPerSkill: mode.maxPointsPerSkill,
+      }),
+    );
 
-  function learnSkill(skillId: string) {
-    void setSkillState(character.id, skillId, {
-      investedPoints: 1,
-      realizedPoints: 0,
-    });
-    void setUnspentSkillPoints(character.id, unspent - 1);
+  function confirm() {
+    const changed: Record<string, CharacterSkillState> = {};
+    for (const id of Object.keys(draft)) changed[id] = shown[id];
+    void confirmSkillPoints(character.id, changed, unspent).then(() => setDraft({}));
   }
 
   function train(skillId: string) {
@@ -57,17 +53,32 @@ export function SkillsSection({
       <div className={styles.head}>
         <h3 className={styles.title}>Skills</h3>
         <span className={`${styles.unspent} ${unspent > 0 ? styles.has : ''}`}>
-          Unspent points: {unspent}
+          {unspent > 0 ? `${unspent} point${unspent === 1 ? '' : 's'} to spend` : 'No points to spend'}
         </span>
       </div>
+      {spent > 0 && (
+        <div className={styles.confirmBar}>
+          <span>
+            {spent} point{spent === 1 ? '' : 's'} placed — not locked in yet. Move them with + / − until you're happy.
+          </span>
+          <span className={styles.confirmActions}>
+            <button type="button" className={styles.smallBtn} onClick={() => setDraft({})}>
+              Undo
+            </button>
+            <button type="button" className={`${styles.smallBtn} ${styles.trainBtn}`} onClick={confirm}>
+              Confirm
+            </button>
+          </span>
+        </div>
+      )}
 
       <div className={styles.columns}>
         {system.skillCategories.map((cat) => {
-          const knownIds = Object.keys(character.play.skills).filter(
+          const knownIds = Object.keys(shown).filter(
             (id) => skillById(id)?.categoryId === cat.id,
           );
           const unknown = system.skills.filter(
-            (s) => s.categoryId === cat.id && !character.play.skills[s.id],
+            (s) => s.categoryId === cat.id && !shown[s.id],
           );
           return (
             <div key={cat.id} className={styles.col}>
@@ -82,10 +93,12 @@ export function SkillsSection({
                     name={skillById(id)?.name ?? id}
                     description={skillById(id)?.description}
                     exampleUse={skillById(id)?.exampleUse}
-                    state={character.play.skills[id]}
+                    state={shown[id]}
                     mode={mode}
                     canPlace={unspent > 0}
-                    onPlace={() => placePoint(id)}
+                    pencilled={draft[id] ?? 0}
+                    onPlace={() => nudge(id, 1)}
+                    onRemove={() => nudge(id, -1)}
                     onTrain={() => train(id)}
                   />
                 ))}
@@ -94,7 +107,7 @@ export function SkillsSection({
                 <select
                   className={styles.learn}
                   value=""
-                  onChange={(e) => e.target.value && learnSkill(e.target.value)}
+                  onChange={(e) => e.target.value && nudge(e.target.value, 1)}
                   aria-label={`Learn a new ${cat.name} skill`}
                 >
                   <option value="">+ Learn new…</option>
@@ -120,7 +133,9 @@ function SkillRow({
   state,
   mode,
   canPlace,
+  pencilled,
   onPlace,
+  onRemove,
   onTrain,
 }: {
   name: string;
@@ -129,10 +144,13 @@ function SkillRow({
   state: CharacterSkillState;
   mode: SystemDefinition['modes']['skill'];
   canPlace: boolean;
+  /** Points pencilled into this skill, not confirmed yet. */
+  pencilled: number;
   onPlace: () => void;
+  onRemove: () => void;
   onTrain: () => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(pencilled > 0);
   const s = computeSkillState(state.investedPoints, state.realizedPoints, mode);
   const tierLabel = s.activeTier ? s.activeTier.label.slice(0, 4) : 'Untr';
   const bubbles = Array.from({ length: mode.pointsPerTier }, (_, i) => i < s.invested.bubblesFilled);
@@ -147,7 +165,10 @@ function SkillRow({
           description ? `${description}${exampleUse ? `\n\nExample: ${exampleUse}` : ''}` : undefined
         }
       >
-        <span className={styles.skillName}>{name}</span>
+        <span className={styles.skillName}>
+          {name}
+          {pencilled > 0 && <span className={styles.pencil}> +{pencilled}</span>}
+        </span>
         <span
           className={`${styles.tier} ${s.pendingTraining ? styles.pending : ''}`}
         >
@@ -180,7 +201,12 @@ function SkillRow({
                 + Place point
               </button>
             )}
-            {s.pendingTraining && (
+            {pencilled > 0 && (
+              <button type="button" className={styles.smallBtn} onClick={onRemove}>
+                − Take back
+              </button>
+            )}
+            {s.pendingTraining && pencilled === 0 && (
               <button
                 type="button"
                 className={`${styles.smallBtn} ${styles.trainBtn}`}

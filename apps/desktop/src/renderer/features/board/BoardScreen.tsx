@@ -18,6 +18,8 @@ import { useCreatureArt, useMyCreatures } from '../../data/creatures';
 import { useGameCharacterArt } from '../../data/characters';
 import { firstFreeCell, gridDimensions, takenSquares } from './boardGeometry';
 import { isPartyScale } from './partyMode';
+import { useGridPrefs } from './gridPrefs';
+import { GridDrawer } from './drawers/GridDrawer';
 import { BoardShell, type BarItem } from './BoardShell';
 import { BoardCanvas, type BoardTool, type ShapeDraft } from './BoardCanvas';
 import { TokenCard } from './TokenCard';
@@ -35,7 +37,17 @@ import { NotesDrawer } from './drawers/NotesDrawer';
 import { CharacterQuickView } from './drawers/CharacterQuickView';
 import { Dnd5eSheet } from '../sheet5e/Dnd5eSheet';
 import { MonsterStatCard } from './drawers/MonsterStatCard';
-import { RollLog } from '../rolllog/rollLog';
+import { RollLog, useRollLog } from '../rolllog/rollLog';
+import { AttackGateContext } from './attackGate';
+import { playChime } from '../voice/chime';
+import { isDefeated } from '../../data/damage';
+import { creatureCombatant, joinCombat, leaveCombat, rollInitiative, turnBlockReason } from '../../data/combat';
+import { initiativeModifier } from '../../data/initiativeModifier';
+import { useGameCharacters } from '../../data/characters';
+import { canSeeMessage, useChat } from '../../data/chat';
+import { writeValue } from '../../data/realtime';
+import { BoardToasts, useArrivals, useToasts, type Toast } from './BoardToasts';
+import { rollsToShow, summarizeRoll, unreadMessages } from './toastSummaries';
 import { canSeeMonsterStats } from '../../permissions';
 import { isClassAndLevel } from '@epoch/systems/registry';
 import { pcTokenStats } from '@epoch/systems/dnd5e/character';
@@ -48,6 +60,9 @@ interface BoardScreenProps {
   uid: string;
   character?: Character;
 }
+
+/** The left slot's id while it shows the selected creature's stat card. */
+const MONSTER_PANEL = '__monster';
 
 export function BoardScreen({ system, game, role, uid, character }: BoardScreenProps) {
   const navigate = useNavigate();
@@ -84,10 +99,12 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
   // A persisted initiative can be malformed: Firebase drops empty arrays, so a fully
   // cleared order comes back undefined. Only "active with a non-empty order" is real
   // combat; anything else degrades to no tracker instead of crashing.
+  // While rolling in, combat is on even with nobody in the order yet (a chase, a duel).
+  const rollingIn = !!initState?.active && initState.phase === 'rolling';
   const combatActive =
-    !!initState?.active && Array.isArray(initState.order) && initState.order.length > 0;
-  const highlightTokenId = combatActive
-    ? initState!.order[initState!.turnIndex]?.tokenId
+    !!initState?.active && (rollingIn || (Array.isArray(initState.order) && initState.order.length > 0));
+  const highlightTokenId = combatActive && !rollingIn
+    ? initState!.order?.[initState!.turnIndex]?.tokenId
     : undefined;
 
   const [openLeft, setOpenLeft] = useState<string | null>(null);
@@ -101,13 +118,15 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
   // Systems with a target-vs-defense combat model: 5e (attack roll vs AC) and Solryn (auto-hit vs DR).
   const canTargetMode = is5e || system.modes.combat.id === 'auto-hit-vs-dr';
   const [targetId, setTargetId] = useState<string | null>(null);
+  // Every player's character (GM tools: rolling a player into initiative).
+  const gameCharacters = useGameCharacters(role === 'gm' ? gameId : null);
   // GM right-click token menu (board cleanup): the token + cursor position, null when closed.
   const [ctxMenu, setCtxMenu] = useState<{ token: Token; x: number; y: number } | null>(null);
   const [measuring, setMeasuring] = useState(false);
   // Armed shape from the Shapes drawer (drives the 'shape' canvas tool); null when none.
   const [shapeDraft, setShapeDraft] = useState<ShapeDraft | null>(null);
-  // Session-only GM toggle for grid + measure line color (white for dark maps, black for light).
-  const [lineColor, setLineColor] = useState<'white' | 'black'>('white');
+  // How the grid looks on this computer (strength/thickness/light-dark) — per person.
+  const gridLook = useGridPrefs();
 
   const tool: BoardTool = measuring
     ? 'measure'
@@ -152,9 +171,11 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
     }
     if (attempted.current.has(key)) return;
     attempted.current.add(key);
-    // First free square along the top-left, skipping anything already standing there.
+    // Nearest free square to wherever the GM is looking (or the middle of the map), so the GM
+    // sees the new token arrive instead of hunting for it in a corner.
     const { cols, rows } = gridDimensions(activeMap.width, activeMap.height, activeMap.gridSize);
-    const spot = firstFreeCell(takenSquares(tokens, activeMap.id), 0, 0, cols, rows);
+    const start = activeMap.gmView ?? { col: Math.floor(cols / 2), row: Math.floor(rows / 2) };
+    const spot = firstFreeCell(takenSquares(tokens, activeMap.id), start.col, start.row, cols, rows);
     void addToken(gameId, {
       mapId: activeMap.id,
       kind: 'character',
@@ -216,7 +237,9 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
   // The current attack target (5e). We resolve its name + AC straight from the token's stats
   // (monsters carry AC from the bestiary; PC tokens are stamped with pcTokenStats). Using the
   // live token here also self-clears the target if it's removed from the board.
-  const targetToken = canTargetMode && targetId ? (tokens.find((t) => t.id === targetId) ?? null) : null;
+  // A defeated creature (0 HP) drops out as a target on its own.
+  const targetToken =
+    canTargetMode && targetId ? (tokens.find((t) => t.id === targetId && !isDefeated(t)) ?? null) : null;
   const target = targetToken
     ? {
         id: targetToken.id,
@@ -228,6 +251,11 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
     : undefined;
   // Toggle a token as the current target (click the same one again to clear).
   const onSetTarget = (id: string) => setTargetId((cur) => (cur === id ? null : id));
+
+  // Attacks during combat wait for your turn (the GM's computer enforces the same rule).
+  const turnName = (c: { name: string; kind: string; tokenId?: string }) =>
+    role !== 'gm' && c.kind === 'creature' && (!c.tokenId || game.tokens?.[c.tokenId]?.visible === false) ? 'someone else' : c.name;
+  const myTurnBlock = turnBlockReason(initState, { uid }, turnName);
 
   // conditionId → { name, color } for the canvas indicators + hover tooltips.
   const conditionDefs = useMemo(() => {
@@ -250,7 +278,20 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
 
   // GM-selected creature → the merged stat card in a proper right-side slide-out panel
   // (same chrome/width as the Add-creature drawer). Other tokens keep the floating TokenCard.
-  const showMonsterPanel = !!selected && selected.kind === 'creature' && canSeeMonsterStats(role);
+  const canShowMonster = !!selected && selected.kind === 'creature' && canSeeMonsterStats(role);
+  // The monster card lives in the LEFT slot and follows the one-panel-per-side rule: opening a
+  // left menu (Initiative, Dice, Log…) replaces it; clicking the creature again brings it back.
+  const showMonsterPanel = canShowMonster && openLeft === MONSTER_PANEL;
+  function selectToken(id: string | null) {
+    setSelectedId(id);
+    const t = id ? tokens.find((tk) => tk.id === id) : undefined;
+    if (t && t.kind === 'creature' && canSeeMonsterStats(role)) setOpenLeft(MONSTER_PANEL);
+    else setOpenLeft((o) => (o === MONSTER_PANEL ? null : o));
+  }
+  function closeMonsterPanel() {
+    setSelectedId(null);
+    setOpenLeft((o) => (o === MONSTER_PANEL ? null : o));
+  }
   // The homebrew loot the selected spawned monster carries, resolved from the game's equipment
   // library (drives the GM "Distribute Loot" button on the stat card).
   const selectedLoot = useMemo(() => {
@@ -276,14 +317,44 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
               uid={uid}
               target={target}
               rules={rules}
-              onClose={() => setSelectedId(null)}
+              turnBlocked={turnBlockReason(initState, { tokenId: selected.id })}
+              onClose={closeMonsterPanel}
             />
           ),
-          onClose: () => setSelectedId(null),
+          onClose: closeMonsterPanel,
         }
       : undefined;
 
   const myName = game.members[uid]?.displayName ?? 'Someone';
+
+  // --- Pop-ups: new chat/whispers (with an unread count on the Chat button) and roll results.
+  const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
+  const chatOpen = openLeft === 'chat';
+  const chatMsgs = useChat(gameId);
+  const [unreadChat, setUnreadChat] = useState<string[]>([]);
+  useArrivals(chatMsgs, (fresh) => {
+    const mine = unreadMessages(fresh, uid, new Set());
+    if (mine.length === 0 || chatOpen) return;
+    setUnreadChat((u) => [...u, ...mine.map((m) => m.id)]);
+    playChime('message');
+    for (const m of mine) {
+      pushToast({ id: `chat-${m.id}`, kind: m.audience === 'public' ? 'chat' : 'whisper', from: m.senderName, text: m.text });
+    }
+  });
+  useEffect(() => {
+    if (chatOpen) setUnreadChat([]);
+  }, [chatOpen]);
+  const unreadCount = unreadChat.filter((id) => chatMsgs.some((m) => m.id === id && canSeeMessage(m, uid))).length;
+  const { entries: rollEntries } = useRollLog();
+  useArrivals(rollEntries, (fresh) => {
+    for (const e of rollsToShow(fresh, uid, role === 'gm', new Set()).reverse()) {
+      pushToast({ id: `roll-${e.id}`, kind: 'roll', by: e.by, mine: e.byUid === uid, roll: summarizeRoll(e) });
+    }
+  });
+  function openToast(t: Toast) {
+    const id = t.kind === 'roll' ? 'log' : 'chat';
+    setOpenLeft(id);
+  }
   const dice: BarItem = { kind: 'drawer', id: 'dice', label: 'Dice', short: 'Dice', glyph: '⚄', content: <DiceDrawer /> };
   const log: BarItem = { kind: 'drawer', id: 'log', label: 'Log', short: 'Log', glyph: '📜', content: <RollLog /> };
   const chat: BarItem = {
@@ -292,6 +363,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
     label: 'Chat',
     short: 'Chat',
     glyph: '✉',
+    badge: unreadCount,
     content: <ChatDrawer gameId={gameId} uid={uid} displayName={myName} members={game.members} />,
   };
   const rulesBar: BarItem = {
@@ -401,23 +473,20 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
       },
       { kind: 'divider', id: 'd2' },
       {
-        kind: 'action',
+        kind: 'drawer',
         id: 'grid',
-        label: 'Toggle grid',
+        label: 'Grid',
         short: 'Grid',
         glyph: '#',
-        active: activeMap?.gridVisible,
-        onClick: () =>
-          activeMap && void setGridVisible(gameId, activeMap.id, !activeMap.gridVisible),
-      },
-      {
-        kind: 'action',
-        id: 'linecolor',
-        label: `Grid & measure lines: ${lineColor} — click for ${lineColor === 'white' ? 'black' : 'white'}`,
-        short: 'Color',
-        glyph: lineColor === 'white' ? '○' : '●',
-        active: lineColor === 'black',
-        onClick: () => setLineColor((c) => (c === 'white' ? 'black' : 'white')),
+        content: (
+          <GridDrawer
+            gmToggle={
+              activeMap
+                ? { on: activeMap.gridVisible, onChange: (on) => void setGridVisible(gameId, activeMap.id, on) }
+                : undefined
+            }
+          />
+        ),
       },
       {
         kind: 'drawer',
@@ -432,6 +501,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
     right = [
       measureAction,
       shapes,
+      { kind: 'drawer', id: 'grid', label: 'Grid', short: 'Grid', glyph: '#', content: <GridDrawer /> },
       { kind: 'divider', id: 'pd1' },
       {
         kind: 'drawer',
@@ -458,14 +528,35 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
     ];
   }
 
+  /** GM: put a token into the current fight — a creature rolls with its modifier, a player's
+   *  character with theirs. */
+  function addTokenToCombat(tok: Token) {
+    if (tok.kind === 'creature') {
+      void joinCombat(gameId, creatureCombatant(tok));
+      return;
+    }
+    const ch = tok.characterId ? gameCharacters.find((c) => c.id === tok.characterId) : undefined;
+    if (!ch) return;
+    void joinCombat(gameId, {
+      id: `char:${ch.id}`,
+      name: ch.name,
+      kind: 'character',
+      characterId: ch.id,
+      ownerUserId: ch.ownerUserId,
+      tokenId: tok.id,
+      ...rollInitiative(initiativeModifier(system, ch)),
+    });
+  }
+
   return (
+    <AttackGateContext.Provider value={myTurnBlock}>
     <BoardShell
       left={left}
       right={right}
       openLeft={openLeft}
       openRight={openRight}
       onToggle={toggle}
-      rightPanel={monsterPanel}
+      leftPanel={monsterPanel}
     >
       <div className={styles.boardArea}>
         {activeMap ? (
@@ -475,7 +566,17 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
             role={role}
             uid={uid}
             tool={tool}
-            lineColor={lineColor}
+            gridLook={gridLook}
+            onViewSettled={
+              role === 'gm' && activeMap
+                ? (c) => {
+                    const prev = activeMap.gmView;
+                    if (!prev || prev.col !== c.col || prev.row !== c.row) {
+                      void writeValue(`games/${gameId}/maps/${activeMap.id}/gmView`, c);
+                    }
+                  }
+                : undefined
+            }
             partyScale={partyScale}
             measureScale={measureScale}
             selectedTokenId={selected?.id}
@@ -490,7 +591,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
             onToggleFog={(col, row, f) =>
               activeMap && void toggleFogSquare(gameId, activeMap.id, col, row, f)
             }
-            onSelectToken={(t) => setSelectedId(t?.id ?? null)}
+            onSelectToken={(t) => selectToken(t?.id ?? null)}
             // Right-click token menu: set the attack target, toggle conditions (any member, on any
             // character/creature token), and — for the GM — remove tokens. Party is excluded.
             onContextToken={(token, x, y) => {
@@ -511,8 +612,8 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
         )}
 
         {/* Non-creature (or non-GM) tokens keep the floating TokenCard; GM creatures use the
-            right-side monster panel (rendered by BoardShell.rightPanel above). */}
-        {selected && selected.kind !== 'party' && !showMonsterPanel && (
+            left-side monster panel (rendered by BoardShell.leftPanel above). */}
+        {selected && selected.kind !== 'party' && !canShowMonster && (
           <TokenCard
             token={selected}
             system={system}
@@ -523,6 +624,8 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
             onClose={() => setSelectedId(null)}
           />
         )}
+
+        <BoardToasts toasts={toasts} onDismiss={dismissToast} onOpen={openToast} />
 
         {ctxMenu && (
           <TokenContextMenu
@@ -537,13 +640,25 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
             onSetTarget={() => onSetTarget(ctxMenu.token.id)}
             canRemove={role === 'gm'}
             conditions={system.tokenConditions}
+            initiative={
+              role === 'gm' && initState?.active && (ctxMenu.token.kind === 'creature' || ctxMenu.token.kind === 'character')
+                ? {
+                    inOrder: (initState.order ?? []).some((c) => c.tokenId === ctxMenu.token.id),
+                    onAdd: () => addTokenToCombat(ctxMenu.token),
+                    onRemove: () => {
+                      const c = (initState.order ?? []).find((o) => o.tokenId === ctxMenu.token.id);
+                      if (c) void leaveCombat(gameId, c.id);
+                    },
+                  }
+                : undefined
+            }
             onClose={() => setCtxMenu(null)}
           />
         )}
 
         {combatActive && (
           <InitiativeTracker
-            state={initState}
+            state={{ ...initState!, order: initState!.order ?? [] }}
             system={system}
             role={role}
             uid={uid}
@@ -551,10 +666,11 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
             gameId={gameId}
             tokens={game.tokens ?? {}}
             activeMapId={activeMap?.id}
-            onSelectToken={(id) => setSelectedId(id)}
+            onSelectToken={(id) => selectToken(id)}
           />
         )}
       </div>
     </BoardShell>
+    </AttackGateContext.Provider>
   );
 }

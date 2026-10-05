@@ -29,6 +29,18 @@ export interface SolrynAttackInput {
   crit?: CritState;
   /** Injectable RNG for deterministic tests. */
   rng?: Rng;
+  /**
+   * Combat advantage/disadvantage (rulebook §3.1): there are no attack rolls, so advantage
+   * ignores 2 points of the target's DR and disadvantage gives the target +2 DR.
+   */
+  combatAdvantage?: 'advantage' | 'disadvantage';
+}
+
+/** The target's DR after combat advantage (−2, never below 0) or disadvantage (+2). */
+export function drWithAdvantage(dr: number, mode?: 'advantage' | 'disadvantage'): number {
+  if (mode === 'advantage') return Math.max(0, dr - 2);
+  if (mode === 'disadvantage') return dr + 2;
+  return dr;
 }
 
 export interface SolrynAttackResult {
@@ -72,7 +84,7 @@ export function attemptLuckCrit(luckMod: number, rng?: Rng): LuckCritAttempt {
  * the caller spends the Luck Point / Arcana and posts `logText`.
  */
 export function resolveSolrynAttack(input: SolrynAttackInput): SolrynAttackResult {
-  const { label, dice, bonus = 0, targetDr, crit = 'none', rng } = input;
+  const { label, dice, bonus = 0, targetDr, crit = 'none', rng, combatAdvantage } = input;
   const rolled = rollDice(dice, rng).total + bonus;
 
   // Crit success: DR ignored, damage doubled.
@@ -102,16 +114,18 @@ export function resolveSolrynAttack(input: SolrynAttackInput): SolrynAttackResul
     };
   }
 
-  const dr = targetDr;
+  const dr = drWithAdvantage(targetDr, combatAdvantage);
   const hpLoss = Math.max(0, rolled - dr);
   const blocked = hpLoss === 0;
   const outcome = blocked ? 'Blocked (no damage)' : `${hpLoss} HP damage`;
+  const advNote =
+    combatAdvantage === 'advantage' ? ' (advantage: −2 DR)' : combatAdvantage === 'disadvantage' ? ' (disadvantage: +2 DR)' : '';
   return {
     rolled,
     dr,
     hpLoss,
     blocked,
     crit: false,
-    logText: `${label}: ${prefix}Rolled ${rolled} damage vs DR ${dr} → ${outcome}`,
+    logText: `${label}: ${prefix}Rolled ${rolled} damage vs DR ${dr}${advNote} → ${outcome}`,
   };
 }

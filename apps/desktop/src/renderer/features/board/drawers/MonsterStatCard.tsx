@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { TARGET_HINT } from '../attackGate';
+import { RollModeSelect } from '../../../components/ui/RollModeSelect';
 import type { BestiaryEntry, CreatureSave, SystemDefinition } from '@epoch/shared-types';
 import type { Token } from '@epoch/shared-types';
 import type { CampaignRules, HomebrewEquipment } from '../../../data/homebrew';
@@ -68,7 +70,7 @@ function abilityMod(
 
 // The merged creature card: read-only stats + tappable attacks (off the Phase-1
 // attacks[]), plus GM token controls. Looked up by id (fallback name). Rendered in a
-// proper side panel (BoardShell.rightPanel) — its own title/close come from the drawer
+// proper side panel (BoardShell.leftPanel) — its own title/close come from the drawer
 // chrome, so this body has no header of its own.
 export function MonsterStatCard({
   system,
@@ -81,6 +83,7 @@ export function MonsterStatCard({
   uid,
   target,
   rules,
+  turnBlocked,
   onClose,
 }: {
   system: SystemDefinition;
@@ -100,6 +103,8 @@ export function MonsterStatCard({
   target?: { id: string; name: string; ac?: number; dr?: number; conditions?: Record<string, true> };
   /** Campaign crit rules (threshold + damage formula) applied to this creature's attacks. */
   rules?: CampaignRules;
+  /** During combat: why this creature can't attack now ("It's Thorn's turn"), else null. */
+  turnBlocked?: string | null;
   onClose?: () => void;
 }) {
   const { postRoll } = useRollLog();
@@ -162,11 +167,15 @@ export function MonsterStatCard({
         dice: diceExpr,
         targetDr: drTargeted ? target!.dr : undefined,
         ...(drTargeted && ignoreDr ? { crit: 'success' as const } : {}),
+        ...(drTargeted && advantage ? { combatAdvantage: advantage } : {}),
       });
-      postRoll(res.logText + (drTargeted ? '' : ' · No target set — apply DR manually'));
+      postRoll(
+        res.logText + (drTargeted ? '' : ' · No target set — apply DR manually'),
+        drTargeted && res.hpLoss > 0 ? { hit: { tokenId: target!.id, amount: res.hpLoss } } : undefined,
+      );
       return;
     }
-    const line = resolver.resolveAttack({
+    const out = resolver.resolveAttack({
       label: usingTarget ? `${entry.name} → ${target!.name} — ${label}` : `${entry.name} — ${label}`,
       dice: diceExpr,
       damageType: type,
@@ -176,8 +185,14 @@ export function MonsterStatCard({
       critThreshold: autoCrit ? 1 : (rules?.critThreshold ?? 20),
       ...(rules?.critFormula ? { critFormula: rules.critFormula } : {}),
       ...(rules?.critFormulaCustom ? { critFormulaCustom: rules.critFormulaCustom } : {}),
-    }).logText;
-    postRoll(targetResists ? `${line} · target resists — halve the damage` : line);
+    });
+    const line = out.logText;
+    // A hit on the targeted token comes off its HP straight away (halved if it resists).
+    const amount = targetResists ? Math.floor(out.damage / 2) : out.damage;
+    postRoll(
+      targetResists ? `${line} · target resists — halved to ${amount}` : line,
+      usingTarget && out.hit && amount > 0 ? { hit: { tokenId: target!.id, amount } } : undefined,
+    );
   };
   // Abilities (breath weapons, traits) are NOT to-hit attacks — roll plain damage, never
   // through the attack resolver, so 5e dice-bearing abilities don't misfire as hit/miss.
@@ -242,6 +257,14 @@ export function MonsterStatCard({
         </div>
       )}
 
+      {/* Roll mode — same control as the character sheet; applies to everything this creature rolls.
+          5e: 2d20 high/low on attacks, saves and checks. Solryn: no attack rolls, so advantage
+          ignores 2 of the target's DR and disadvantage gives the target +2 DR (rulebook §3.1). */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+        <span className={s.label} style={{ margin: 0 }}>Roll mode</span>
+        <RollModeSelect value={advantage} onChange={setAdvantage} />
+      </div>
+
       {rollToHit && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
           {usingTarget ? (
@@ -259,20 +282,7 @@ export function MonsterStatCard({
               />
             </label>
           )}
-          <select
-            className={s.itemMeta}
-            value={advantage ?? 'normal'}
-            onChange={(e) => setAdvantage(e.target.value === 'normal' ? undefined : (e.target.value as 'advantage' | 'disadvantage'))}
-            aria-label="Roll mode"
-          >
-            <option value="normal">Normal</option>
-            <option value="advantage">Advantage</option>
-            <option value="disadvantage">Disadvantage</option>
-          </select>
         </div>
-      )}
-      {rollToHit && !usingTarget && (
-        <p className={s.hint}>Right-click a token on the board to attack its AC automatically.</p>
       )}
 
       {/* Roll-vs-DC: this creature (the defender) rolls a save / check vs an entered DC. */}
@@ -315,6 +325,10 @@ export function MonsterStatCard({
       {entry.attacks && entry.attacks.length > 0 && (
         <div>
           <span className={s.label}>Attacks</span>
+          {!target || target.id === token?.id ? (
+            <p className={s.hint} style={{ color: 'var(--accent-amber)' }}>No target. {TARGET_HINT}</p>
+          ) : null}
+          {turnBlocked && <p className={s.hint} style={{ color: 'var(--accent-red)' }}>{turnBlocked}</p>}
           {entry.attacks.map((a, i) => (
             <div key={i} style={interactiveRow}>
               <span style={nameCol}>
@@ -325,7 +339,9 @@ export function MonsterStatCard({
                   {a.note ? ` · ${a.note}` : ''}
                 </span>
               </span>
-              <Button onClick={() => post(a.name, a.diceExpr, a.damageType, a.attackBonus)}>Roll</Button>
+              <Button disabled={!!turnBlocked} onClick={() => post(a.name, a.diceExpr, a.damageType, a.attackBonus)}>
+                {target && target.id !== token?.id ? `Attack ${target.name}` : 'Roll'}
+              </Button>
             </div>
           ))}
         </div>

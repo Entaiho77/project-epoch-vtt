@@ -4,6 +4,7 @@ import { Button } from '../../components/ui/Button';
 import { useSession } from '../../data/realtime';
 import s from '../board/drawers/drawers.module.css';
 import v from './Voice.module.css';
+import { loadSoundPrefs, saveSoundPrefs, type SoundPrefs } from './chime';
 import {
   gmSetMuted,
   joinVoice,
@@ -27,11 +28,20 @@ export function keyLabel(code: string): string {
 export function VoicePanel({
   uid,
   members,
+  inVoice = new Set<string>(),
 }: {
   uid: string;
   members: Record<string, GameMember>;
+  /** Who's in the voice call right now. */
+  inVoice?: ReadonlySet<string>;
 }) {
   const voice = useVoice();
+  const [sounds, setSounds] = useState(loadSoundPrefs);
+  const changeSounds = (p: Partial<SoundPrefs>) => {
+    const next = { ...sounds, ...p };
+    setSounds(next);
+    saveSoundPrefs(next);
+  };
   const session = useSession();
   const [pickingKey, setPickingKey] = useState(false);
   const isGm = session.role === 'gm';
@@ -102,10 +112,12 @@ export function VoicePanel({
                   <span className={v.meta}>
                     {m.role === 'gm' ? 'GM' : 'Player'}
                     {isMe ? ' · you' : ''}
+                    {inVoice.has(id) ? ' · in voice' : ''}
                     {isGm && !isMe && m.role !== 'gm' ? (online.has(id) ? ' · online' : ' · offline') : ''}
                   </span>
                 </span>
-                {!isMe && voice.joined && (
+                {/* Players can't silence the GM — the GM is always heard. */}
+                {!isMe && voice.joined && (isGm || m.role !== 'gm') && (
                   <button
                     type="button"
                     className={`${v.small} ${localMuted ? v.smallOn : ''}`}
@@ -176,6 +188,18 @@ export function VoicePanel({
             </Button>
           </div>
         )}
+      </div>
+
+      <div className={s.section}>
+        <span className={s.label}>Sounds</span>
+        <label className={s.toggleRow}>
+          <span>Chime when someone joins or leaves voice</span>
+          <input type="checkbox" checked={sounds.voiceChimes} onChange={(e) => changeSounds({ voiceChimes: e.target.checked })} />
+        </label>
+        <label className={s.toggleRow}>
+          <span>Ping for new chat messages</span>
+          <input type="checkbox" checked={sounds.chatPing} onChange={(e) => changeSounds({ chatPing: e.target.checked })} />
+        </label>
       </div>
 
       <div className={s.section}>

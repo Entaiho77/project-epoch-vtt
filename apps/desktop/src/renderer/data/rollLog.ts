@@ -12,14 +12,15 @@ import type { RollEntry } from '@epoch/shared-types';
 export type { RollEntry };
 
 /** Keep at most this many entries in Firebase; oldest are trimmed on write. */
-const CAP = 100;
+const CAP = 300;
 
 export async function postRollEntry(
   gameId: string,
   entry: Omit<RollEntry, 'id'>,
-): Promise<void> {
+): Promise<string> {
   const id = newKey(`games/${gameId}/rollLog`);
   await writeValue(`games/${gameId}/rollLog/${id}`, { ...entry, id });
+  return id;
 }
 
 /**

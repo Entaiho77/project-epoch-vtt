@@ -3,6 +3,7 @@ import type { TokenCondition } from '@epoch/shared-types';
 import type { Token } from '@epoch/shared-types';
 import { removeToken, setExclusiveCondition, setTokenCondition, updateToken } from '../../data/board';
 import styles from './TokenContextMenu.module.css';
+import { isDefeated } from '../../data/damage';
 
 /**
  * Right-click menu for board tokens. Positioned at the cursor; dismisses on click-away (the
@@ -23,6 +24,7 @@ export function TokenContextMenu({
   onSetTarget,
   canRemove,
   conditions,
+  initiative,
   onClose,
 }: {
   token: Token;
@@ -39,6 +41,8 @@ export function TokenContextMenu({
   canRemove: boolean;
   /** The active system's token conditions (empty/undefined → no Conditions submenu). */
   conditions?: TokenCondition[];
+  /** GM, during combat: add this token to the initiative order (rolls for it) or take it out. */
+  initiative?: { inOrder: boolean; onAdd: () => void; onRemove: () => void };
   onClose: () => void;
 }) {
   const [showConditions, setShowConditions] = useState(false);
@@ -50,8 +54,10 @@ export function TokenContextMenu({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  // Only attackable tokens can be targeted (traps/party have no defense).
-  const canTarget = targetingEnabled && (token.kind === 'character' || token.kind === 'creature');
+  // Only attackable tokens can be targeted (traps/party have no defense), and a defeated
+  // creature (0 HP) can't be targeted any more.
+  const dead = isDefeated(token);
+  const canTarget = targetingEnabled && (token.kind === 'character' || token.kind === 'creature') && !dead;
   const canCondition = !!conditions?.length && token.kind !== 'party';
   const active = token.conditions ?? {};
 
@@ -118,6 +124,20 @@ export function TokenContextMenu({
         {canTarget && (
           <button className={styles.item} role="menuitem" onClick={setTarget}>
             {isTarget ? 'Clear target' : 'Set as target'}
+          </button>
+        )}
+        {dead && targetingEnabled && <p className={styles.hint}>Defeated — can’t be targeted.</p>}
+
+        {initiative && (
+          <button
+            className={styles.item}
+            role="menuitem"
+            onClick={() => {
+              (initiative.inOrder ? initiative.onRemove : initiative.onAdd)();
+              onClose();
+            }}
+          >
+            {initiative.inOrder ? 'Remove from initiative' : 'Add to initiative (roll)'}
           </button>
         )}
 

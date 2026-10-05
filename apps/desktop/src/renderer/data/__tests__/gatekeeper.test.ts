@@ -92,6 +92,13 @@ describe('gatekeeper: what honest players do is allowed', () => {
     await allowed({ t: 'write', path: `games/${G}/tokens/mine/conditions/poisoned`, value: null });
   });
 
+  it('mark myself in or out of the voice call — but nobody else', async () => {
+    await allowed({ t: 'write', path: `games/${G}/voice/${ME}`, value: true });
+    await allowed({ t: 'write', path: `games/${G}/voice/${ME}`, value: null });
+    await blocked({ t: 'write', path: `games/${G}/voice/${OTHER}`, value: null });
+    await blocked({ t: 'write', path: `games/${G}/voice/${ME}`, value: 'loud' });
+  });
+
   it('place my own character token once', async () => {
     await allowed({
       t: 'write',

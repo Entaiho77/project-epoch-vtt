@@ -1,0 +1,34 @@
+.group {
+  display: inline-flex;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.opt {
+  background: transparent;
+  color: var(--text-muted);
+  border: none;
+  padding: 3px 10px;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+.opt + .opt {
+  border-left: 1px solid var(--border-strong);
+}
+.opt:focus-visible {
+  outline: 2px solid var(--accent-teal);
+  outline-offset: -2px;
+}
+.normal {
+  background: var(--surface-raised);
+  color: var(--text-primary);
+}
+.advantage {
+  background: var(--teal-tint);
+  color: var(--text-primary);
+}
+.disadvantage {
+  background: var(--red-tint);
+  color: var(--text-primary);
+}

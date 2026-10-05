@@ -25,6 +25,10 @@ export interface RollEntry {
   rngId?: string;
   /** Added by the GM's computer: earlier rolls this player made but never showed. */
   skipped?: number;
+  /** Damage this roll deals to the roller's current target (auto-applied by the GM's computer). */
+  hit?: { tokenId: string; amount: number };
+  /** Added by the GM's computer once the damage is applied: "Goblin takes 9 — down!". */
+  applied?: string;
 }
 
 /** How per-level HP is granted on level-up (campaign rule). */
@@ -137,6 +141,13 @@ export interface Combatant {
 
 export interface InitiativeState {
   active: boolean;
+  /**
+   * 'rolling' = combat just started; everyone rolls in and no turn has begun until the GM
+   * clicks Begin. 'running' (or absent, for older saves) = turns are being taken.
+   */
+  phase?: 'rolling' | 'running';
+  /** GM switch: attacks are allowed off-turn (reactions, readied actions). Default off. */
+  allowOffTurn?: boolean;
   round: number;
   turnIndex: number;
   order: Combatant[];
@@ -157,6 +168,8 @@ export interface MapDef {
   /** Pixels per grid square. */
   gridSize: number;
   gridVisible: boolean;
+  /** The square in the middle of the GM's screen (updated as they pan) — new player tokens appear here. */
+  gmView?: { col: number; row: number };
   /** For the "custom" map type: GM-defined square scale. */
   customSquare?: { value: number; unit: string };
   /** Fogged squares, keyed "col,row". */

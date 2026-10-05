@@ -2,9 +2,12 @@ import type { SystemDefinition } from '@epoch/shared-types';
 import type { Character, InitiativeState, Role, Token } from '@epoch/shared-types';
 import {
   addCombatant,
+  beginCombat,
   endCombat,
+  isRolling,
   nextTurn,
   rollInitiative,
+  setAllowOffTurn,
   setTurn,
 } from '../../data/combat';
 import { Button } from '../../components/ui/Button';
@@ -78,13 +81,15 @@ export function InitiativeTracker({
   onSelectToken?: (tokenId: string) => void;
 }) {
   const order = state.order ?? []; // defensive: Firebase can drop an emptied order array
-  const current = order[state.turnIndex];
-  const isMyTurn = current?.ownerUserId === uid;
+  // "Rolling initiative…": everyone rolls in; no turn has started until the GM clicks Begin.
+  const rolling = isRolling(state);
+  const current = rolling ? undefined : order[state.turnIndex];
+  const isMyTurn = !!current && current.ownerUserId === uid;
   const inOrder = character
     ? order.some((o) => o.characterId === character.id)
     : true;
   const canRollIn = role === 'player' && character && activeMapId && !inOrder;
-  const canJump = role === 'gm'; // GM can jump the turn by clicking a combatant
+  const canJump = role === 'gm' && !rolling; // GM can jump the turn by clicking a combatant
 
   function rollMeIn() {
     if (!character || !activeMapId) return;
@@ -110,25 +115,36 @@ export function InitiativeTracker({
   const advance = () => void nextTurn(gameId, state, tokens);
   const jumpTo = (i: number) => void setTurn(gameId, state, i);
 
-  // Slide the track so the active combatant's center sits at the carousel's center.
-  const trackX = -(state.turnIndex * SLOT + SLOT / 2);
+  // Slide the track so the active combatant's center sits at the carousel's center (while
+  // rolling in, the whole order is shown from the top).
+  const trackX = rolling ? -(order.length * SLOT) / 2 : -(state.turnIndex * SLOT + SLOT / 2);
 
   return (
     <div className={t.bar}>
-      <div className={t.round}>
-        <span className={t.roundLabel}>Round</span>
-        <span className={t.roundNum}>{state.round}</span>
-      </div>
+      {rolling ? (
+        <div className={t.round}>
+          <span className={t.roundLabel}>Rolling</span>
+          <span className={t.roundLabel}>initiative…</span>
+        </div>
+      ) : (
+        <div className={t.round}>
+          <span className={t.roundLabel}>Round</span>
+          <span className={t.roundNum}>{state.round}</span>
+        </div>
+      )}
 
       <div className={t.carousel}>
         <div className={t.track} style={{ transform: `translateX(${trackX}px)` }}>
           {order.map((com, i) => {
-            const isCurrent = i === state.turnIndex;
-            const dist = Math.abs(i - state.turnIndex);
+            const isCurrent = !rolling && i === state.turnIndex;
+            const dist = rolling ? 0 : Math.abs(i - state.turnIndex);
             // Shrink + fade with distance from center; the active one is full-size.
             const scale = isCurrent ? 1 : Math.max(0.6, 1 - 0.17 * dist);
             const opacity = isCurrent ? 1 : Math.max(0.25, 1 - 0.3 * dist);
             const tok = com.tokenId ? tokens[com.tokenId] : undefined;
+            // Players don't see a hidden monster's name until the GM reveals it.
+            const masked = role !== 'gm' && com.kind === 'creature' && (!tok || tok.visible === false);
+            const shownName = masked ? '???' : com.name;
             const defeated = com.kind === 'creature' && tok?.defeated;
             // Condition colors for this combatant's token → the spiked-ring overlay on the disk.
             const ringColors = Object.keys(tok?.conditions ?? {})
@@ -136,7 +152,7 @@ export function InitiativeTracker({
               .filter((c): c is string => !!c);
             const canJumpHere = canJump && !isCurrent;
             // A tap selects the token (surfaces its card); GMs also jump the turn.
-            const interactive = canJumpHere || Boolean(tok && onSelectToken);
+            const interactive = !masked && (canJumpHere || Boolean(tok && onSelectToken));
             const activate = () => {
               if (tok && onSelectToken) onSelectToken(tok.id);
               if (canJumpHere) jumpTo(i);
@@ -180,11 +196,11 @@ export function InitiativeTracker({
                       className={t.disk}
                       style={{ background: com.kind === 'character' ? '#5dcaa5' : '#b05a5a', position: 'relative', zIndex: 1 }}
                     >
-                      {com.name[0]?.toUpperCase() ?? '?'}
+                      {shownName[0]?.toUpperCase() ?? '?'}
                     </span>
                     <ConditionRing colors={ringColors} size={50} />
                   </span>
-                  <span className={t.cname}>{com.name}</span>
+                  <span className={t.cname}>{shownName}</span>
                   <span className={t.init}>{com.initiative}</span>
                 </div>
               </div>
@@ -204,11 +220,37 @@ export function InitiativeTracker({
             End turn
           </Button>
         )}
+        {role === 'gm' && rolling && (
+          <Button
+            size="sm"
+            onClick={() => void beginCombat(gameId, state)}
+            disabled={order.length === 0}
+            title={order.length === 0 ? 'Waiting for someone to roll in' : 'Start round 1 with the highest initiative'}
+          >
+            Begin
+          </Button>
+        )}
         {role === 'gm' && (
           <>
-            <Button size="sm" onClick={advance}>
-              Next ›
-            </Button>
+            {!rolling && (
+              <Button size="sm" onClick={advance}>
+                Next ›
+              </Button>
+            )}
+            {!rolling && (
+              <Button
+                size="sm"
+                variant={state.allowOffTurn ? 'primary' : 'ghost'}
+                onClick={() => void setAllowOffTurn(gameId, state, !state.allowOffTurn)}
+                title={
+                  state.allowOffTurn
+                    ? 'Anyone can attack right now (reactions, readied actions). Click to go back to turns only.'
+                    : 'Attacks only on your own turn. Click to let anyone attack now (an opportunity attack, a readied action).'
+                }
+              >
+                {state.allowOffTurn ? 'Off-turn: ON' : 'Off-turn: off'}
+              </Button>
+            )}
             <Button size="sm" variant="danger" onClick={() => void endCombat(gameId)}>
               End
             </Button>

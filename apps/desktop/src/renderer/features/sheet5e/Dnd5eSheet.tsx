@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { TARGET_HINT, useAttackBlocked } from '../board/attackGate';
+import { RollModeSelect } from '../../components/ui/RollModeSelect';
 import type { Dnd5eSpell, SystemDefinition } from '@epoch/shared-types';
 import type { Character } from '@epoch/shared-types';
 import { attackAdvantage, autoCritAgainst, combineAdvantage, describeRoll, effectsFor, getCombatResolver, rollDice } from '@epoch/engine';
@@ -124,6 +126,8 @@ export function Dnd5eSheet({
   const conditionAdvantage = attackAdvantage(attackerEffects, targetEffects, true);
   const autoCrit = autoCritAgainst(targetEffects, true);
   const attackerCantAct = !!attackerEffects.cantAct;
+  // During combat, attacks wait for your turn (the board says whose turn it is).
+  const turnBlocked = useAttackBlocked();
   const targetResists = !!targetEffects.resistAllDamage;
 
   // Great Weapon Master / Sharpshooter: −5 to hit, +10 damage when the toggle is on.
@@ -131,7 +135,7 @@ export function Dnd5eSheet({
   const rollAttack = (atk: (typeof d.attacks)[number]) =>
     void secureRoll(() => rollAttackNow(atk));
   const rollAttackNow = (atk: (typeof d.attacks)[number]) => {
-    const line = resolver.resolveAttack({
+    const res = resolver.resolveAttack({
       label: attackLabel(atk.name),
       dice: pa ? addFlatDamage(atk.dice, pa.damage) : atk.dice,
       damageType: atk.damageType,
@@ -143,8 +147,14 @@ export function Dnd5eSheet({
       ...(critFormulaCustom ? { critFormulaCustom } : {}),
       // Sneak Attack: manual — player enables when it applies (adv / ally adjacent). Doubles on a crit.
       ...(sneak && d.sneakAttackDice ? { bonusDamage: { dice: d.sneakAttackDice, label: 'Sneak Attack' } } : {}),
-    }).logText;
-    postRoll(targetResists ? `${line} · target resists — halve the damage` : line);
+    });
+    const line = res.logText;
+    // A hit on the targeted creature comes off its HP straight away (halved if it resists).
+    const amount = targetResists ? Math.floor(res.damage / 2) : res.damage;
+    postRoll(
+      targetResists ? `${line} · target resists — halved to ${amount}` : line,
+      usingTarget && res.hit && amount > 0 ? { hit: { tokenId: target!.id, amount } } : undefined,
+    );
   };
 
   // Dragonborn breath weapon — plain damage roll + save note, via the same path as monster
@@ -354,16 +364,7 @@ export function Dnd5eSheet({
                 <input type="number" value={targetAc} onChange={(e) => setTargetAc(Number(e.target.value) || 0)} style={{ width: 56 }} />
               </label>
             )}
-            <select
-              className={s.itemMeta}
-              value={advantage ?? 'normal'}
-              onChange={(e) => setAdvantage(e.target.value === 'normal' ? undefined : (e.target.value as 'advantage' | 'disadvantage'))}
-              aria-label="Roll mode"
-            >
-              <option value="normal">Normal</option>
-              <option value="advantage">Advantage</option>
-              <option value="disadvantage">Disadvantage</option>
-            </select>
+            <RollModeSelect value={advantage} onChange={setAdvantage} />
             {d.sneakAttackDice && (
               <label className={s.itemMeta} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }} title="Adds Sneak Attack dice on a hit — enable when it applies (advantage or an ally adjacent).">
                 <input type="checkbox" checked={sneak} onChange={(e) => setSneak(e.target.checked)} />
@@ -378,15 +379,20 @@ export function Dnd5eSheet({
             )}
           </div>
           {!usingTarget && (
-            <p className={s.hint}>Right-click a creature on the board to attack its AC automatically.</p>
+            <p className={s.hint} style={{ color: 'var(--accent-amber)' }}>
+              No target. {TARGET_HINT} Hits then come off its HP automatically.
+            </p>
           )}
           {attackerCantAct && (
             <p className={s.hint} style={{ color: 'var(--accent-red)' }}>Incapacitated — can’t take actions.</p>
           )}
+          {turnBlocked && <p className={s.hint} style={{ color: 'var(--accent-red)' }}>{turnBlocked}</p>}
           {d.attacks.map((atk) => (
             <div key={atk.name} style={row}>
               <span className={s.itemMeta} style={bodyText}>{atk.name}: {sign(atk.attackBonus)} to hit, {atk.dice} {atk.damageType}</span>
-              <Button size="sm" disabled={attackerCantAct} onClick={() => rollAttack(atk)}>Roll</Button>
+              <Button size="sm" disabled={attackerCantAct || !!turnBlocked} onClick={() => rollAttack(atk)}>
+                {usingTarget ? `Attack ${target!.name}` : 'Roll'}
+              </Button>
             </div>
           ))}
 
@@ -444,7 +450,7 @@ export function Dnd5eSheet({
                               ))}
                             </select>
                           )}
-                          <Button size="sm" disabled={noSlot} onClick={() => castSpell(sp, chosen)}>
+                          <Button size="sm" disabled={noSlot || !!turnBlocked} onClick={() => castSpell(sp, chosen)}>
                             {noSlot ? 'No slot' : 'Cast'}
                           </Button>
                         </span>
@@ -607,7 +613,7 @@ export function Dnd5eSheet({
                   <span className={s.itemMeta}>
                     Breath Weapon: {d.breath.dice} {d.breath.damageType}, {d.breath.shape === 'cone' ? `${d.breath.size} ft cone` : `${d.breath.size} ft line`} · DC {d.breath.dc} DEX
                   </span>
-                  <Button size="sm" onClick={rollBreath}>Roll</Button>
+                  <Button size="sm" disabled={!!turnBlocked} onClick={rollBreath}>Roll</Button>
                 </div>
               )}
               {d.lucky && (

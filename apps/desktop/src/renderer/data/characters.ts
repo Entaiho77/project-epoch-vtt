@@ -139,6 +139,17 @@ export function setSkillState(
   return writeValue(`characters/${characterId}/play/skills/${skillId}`, state);
 }
 
+/** Lock in placed skill points: the new skill states and what's left unspent, in one write. */
+export function confirmSkillPoints(
+  characterId: string,
+  skills: Record<string, CharacterSkillState>,
+  unspent: number,
+): Promise<void> {
+  const updates: Record<string, unknown> = { [`/characters/${characterId}/play/unspentSkillPoints`]: unspent };
+  for (const [id, st] of Object.entries(skills)) updates[`/characters/${characterId}/play/skills/${id}`] = st;
+  return multiUpdate(updates);
+}
+
 export function setUnspentSkillPoints(
   characterId: string,
   n: number,

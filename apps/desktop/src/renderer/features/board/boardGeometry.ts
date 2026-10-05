@@ -225,3 +225,49 @@ export function clampCell(
     row: Math.max(0, Math.min(row, rows - 1)),
   };
 }
+
+/**
+ * Pixel center of a token's whole footprint (a 2×2 Large creature's center is the grid
+ * intersection in its middle, not the middle of its top-left square).
+ */
+export function footprintCenter(
+  col: number,
+  row: number,
+  size: number | undefined,
+  gridSize: number,
+): { x: number; y: number } {
+  const n = Math.max(1, size ?? 1);
+  return { x: (col + n / 2) * gridSize, y: (row + n / 2) * gridSize };
+}
+
+/**
+ * Extra pixels a shape grows by when it's anchored to a creature bigger than one square, so
+ * its reach is measured from the creature's EDGE (5e auras/emanations), not its middle.
+ * A one-square token adds nothing, so ordinary shapes are unchanged.
+ * Circles/cones/lines grow by half the extra width on each side; squares by the full extra width.
+ */
+export function edgeAllowance(kind: 'circle' | 'square' | 'cone' | 'line', size: number | undefined, gridSize: number): number {
+  const extra = Math.max(0, (size ?? 1) - 1) * gridSize;
+  return kind === 'square' ? extra : extra / 2;
+}
+
+/**
+ * Where a dragged token's top-left lands when the pointer is over (col,row) and the token was
+ * grabbed `grabDc`/`grabDr` squares in from its top-left — so the square you grabbed stays under
+ * the cursor instead of the token jumping toward it. Kept fully on the board.
+ */
+export function dragTopLeft(
+  col: number,
+  row: number,
+  grabDc: number,
+  grabDr: number,
+  size: number | undefined,
+  cols: number,
+  rows: number,
+): Cell {
+  const n = Math.max(1, size ?? 1);
+  return {
+    col: Math.max(0, Math.min(col - grabDc, cols - n)),
+    row: Math.max(0, Math.min(row - grabDr, rows - n)),
+  };
+}

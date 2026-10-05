@@ -164,7 +164,7 @@ export function GamePage() {
             <span className={styles.systemLabel}>Room {session.roomCode}</span>
           )}
           {session.role !== 'idle' && session.gameId === game.id && (
-            <VoiceButton uid={user.uid} members={game.members} />
+            <VoiceButton uid={user.uid} members={game.members} gameId={game.id} role={role === 'gm' ? 'gm' : 'player'} />
           )}
           <RoleBadge role={role} />
           {!needsCharacter && (

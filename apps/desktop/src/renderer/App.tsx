@@ -1,4 +1,6 @@
-import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { useEffect } from 'react';
+import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { getVoice, leaveVoice } from './features/voice/voiceStore';
 import { AuthProvider, useAuth } from './auth/AuthProvider';
 import { AuthPage } from './features/auth/AuthPage';
 import { LobbyPage } from './features/lobby/LobbyPage';
@@ -20,6 +22,19 @@ function FullScreenMessage({ children }: { children: string }) {
       {children}
     </div>
   );
+}
+
+/**
+ * Leaving the game (to the lobby or the library) ends your voice call too. Opening the game's
+ * own customize screen (still in the game) keeps it.
+ */
+function LeaveVoiceOutsideGames() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    const v = getVoice();
+    if (!pathname.startsWith('/game/') && (v.joined || v.joining)) leaveVoice();
+  }, [pathname]);
+  return null;
 }
 
 function AppRoutes() {
@@ -55,6 +70,7 @@ export function App() {
     <HashRouter>
       <AuthProvider>
         <AppRoutes />
+        <LeaveVoiceOutsideGames />
         <SessionOverlay />
       </AuthProvider>
     </HashRouter>

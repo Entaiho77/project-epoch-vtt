@@ -15,7 +15,7 @@ vi.mock('../BoardShell', () => ({ BoardShell: () => null }));
 vi.mock('../TokenCard', () => ({ TokenCard: () => null }));
 vi.mock('../TokenContextMenu', () => ({ TokenContextMenu: () => null }));
 vi.mock('../InitiativeTracker', () => ({ InitiativeTracker: () => null }));
-vi.mock('../../rolllog/rollLog', () => ({ RollLog: () => null, useRollLog: () => ({ postRoll: vi.fn() }) }));
+vi.mock('../../rolllog/rollLog', () => ({ RollLog: () => null, useRollLog: () => ({ postRoll: vi.fn(), entries: [] }) }));
 
 import { BoardScreen } from '../BoardScreen';
 

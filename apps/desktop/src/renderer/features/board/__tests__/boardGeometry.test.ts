@@ -258,3 +258,27 @@ describe('placing new tokens on free squares', () => {
     expect(Math.max(cell.col, cell.row)).toBe(1); // the next ring out
   });
 });
+
+import { dragTopLeft, edgeAllowance, footprintCenter } from '../boardGeometry';
+
+describe('big tokens (footprint center, grip, edge reach)', () => {
+  it('centers a 2×2 on the grid intersection in its middle, a 1×1 on its square', () => {
+    expect(footprintCenter(3, 3, 2, 50)).toEqual({ x: 200, y: 200 });
+    expect(footprintCenter(3, 3, 1, 50)).toEqual({ x: 175, y: 175 });
+    expect(footprintCenter(3, 3, undefined, 50)).toEqual({ x: 175, y: 175 });
+  });
+  it('keeps the grabbed square under the cursor and the token on the board', () => {
+    // Grabbed a 2×2 by its bottom-right square, pointer now over (6,6) → top-left (5,5).
+    expect(dragTopLeft(6, 6, 1, 1, 2, 20, 20)).toEqual({ col: 5, row: 5 });
+    // Pushed past the edge → stays fully on the board.
+    expect(dragTopLeft(0, 0, 1, 1, 2, 20, 20)).toEqual({ col: 0, row: 0 });
+    expect(dragTopLeft(19, 19, 0, 0, 2, 20, 20)).toEqual({ col: 18, row: 18 });
+    expect(dragTopLeft(4, 7, 0, 0, 1, 20, 20)).toEqual({ col: 4, row: 7 });
+  });
+  it('measures shapes on big creatures from their edge; one-square tokens unchanged', () => {
+    expect(edgeAllowance('circle', 1, 50)).toBe(0);
+    expect(edgeAllowance('circle', 2, 50)).toBe(25);
+    expect(edgeAllowance('square', 3, 50)).toBe(100);
+    expect(edgeAllowance('cone', 2, 50)).toBe(25);
+  });
+});

@@ -120,6 +120,17 @@ export function updateToken(
   );
 }
 
+/** Reveal every hidden creature on one map at once (GM). Traps stay hidden. */
+export function revealAllCreatures(gameId: string, tokens: Token[], mapId: string): Promise<void> {
+  const patch: Record<string, unknown> = {};
+  for (const t of tokens) {
+    if (t.mapId === mapId && t.kind === 'creature' && t.visible === false) {
+      patch[`/games/${gameId}/tokens/${t.id}/visible`] = true;
+    }
+  }
+  return Object.keys(patch).length ? multiUpdate(patch) : Promise.resolve();
+}
+
 export function removeToken(gameId: string, tokenId: string): Promise<void> {
   return writeValue(`games/${gameId}/tokens/${tokenId}`, null);
 }

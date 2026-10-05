@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import type { Combatant, Game, MapDef } from '@epoch/shared-types';
 import type { SystemDefinition } from '@epoch/shared-types';
-import { endCombat, removeCombatantsByToken, rollInitiative, startCombat } from '../../../data/combat';
+import { creatureCombatant, endCombat, isRolling, joinCombat, leaveCombat, removeCombatantsByToken, rollInitiative, startCombat } from '../../../data/combat';
+import { useGameCharacters } from '../../../data/characters';
+import { initiativeModifier } from '../../../data/initiativeModifier';
 import { removeToken } from '../../../data/board';
 import type { BestiaryEntry } from '@epoch/shared-types';
 import type { CampaignRules } from '../../../data/homebrew';
@@ -38,6 +40,7 @@ export function InitiativeDrawer({
   // Pending bulk-clear awaiting confirmation (replaces window.confirm).
   const [confirm, setConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const init = game.initiative;
+  const characters = useGameCharacters(gameId);
   const creatures = activeMap
     ? Object.values(game.tokens ?? {}).filter(
         (t) => t.kind === 'creature' && t.mapId === activeMap.id,
@@ -99,17 +102,25 @@ export function InitiativeDrawer({
   );
 
   function roll() {
-    const monsters: Combatant[] = creatures
-      .filter((t) => selected.has(t.id))
-      .map((t) => ({
-        id: t.id,
-        name: t.name,
-        kind: 'creature' as const,
-        tokenId: t.id,
-        ...rollInitiative(Number(t.stats?.initiativeMod) || 0),
-      }));
+    const monsters: Combatant[] = creatures.filter((t) => selected.has(t.id)).map(creatureCombatant);
     void startCombat(gameId, monsters);
     setSelected(new Set());
+  }
+
+  /** The GM rolls a player's initiative for them (the player can also roll themselves in). */
+  function rollFor(ch: (typeof characters)[number]) {
+    const token = activeMap
+      ? Object.values(game.tokens ?? {}).find((tk) => tk.characterId === ch.id && tk.mapId === activeMap.id)
+      : undefined;
+    void joinCombat(gameId, {
+      id: `char:${ch.id}`,
+      name: ch.name,
+      kind: 'character',
+      characterId: ch.id,
+      ownerUserId: ch.ownerUserId,
+      ...(token ? { tokenId: token.id } : {}),
+      ...rollInitiative(initiativeModifier(system, ch)),
+    });
   }
 
   if (card) {
@@ -125,29 +136,82 @@ export function InitiativeDrawer({
 
   if (init?.active) {
     const order = init.order ?? []; // Firebase drops empty arrays → guard against undefined.
+    const rolling = isRolling(init);
+    const inOrder = new Set(order.map((c) => c.characterId).filter(Boolean));
+    const notIn = characters.filter((ch) => !inOrder.has(ch.id));
+    const outCreatures = creatures.filter((t) => !order.some((c) => c.tokenId === t.id));
     return (
       <div className={s.section}>
-        <span className={s.label}>Combat running</span>
+        <span className={s.label}>{rolling ? 'Rolling initiative' : 'Combat running'}</span>
         <p className={s.hint}>
-          Round {init.round ?? 1} · {order.length} combatants.{' '}
-          {order.length > 0 ? 'Tap a monster to open its card.' : 'No combatants left — end combat.'}
+          {rolling
+            ? `${order.length} rolled in so far. Click Begin on the tracker when everyone's in — round 1 starts with the highest roll.`
+            : `Round ${init.round ?? 1} · ${order.length} combatants. Tap a monster to open its card.`}
         </p>
         <div className={s.list}>
-          {order
-            .filter((c) => c.kind === 'creature')
-            .map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                className={s.item}
-                onClick={() =>
-                  setCard({ name: c.name, creatureId: (c.tokenId ? game.tokens?.[c.tokenId] : undefined)?.creatureId })
-                }
-              >
-                <span className={s.itemName}>{c.name}</span>
+          {order.map((c) => (
+            <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              {c.kind === 'creature' ? (
+                <button
+                  type="button"
+                  className={s.item}
+                  style={{ flex: 1 }}
+                  onClick={() =>
+                    setCard({ name: c.name, creatureId: (c.tokenId ? game.tokens?.[c.tokenId] : undefined)?.creatureId })
+                  }
+                >
+                  <span className={s.itemName}>{c.name}</span>
+                  <span className={s.itemMeta}>{c.initiative}</span>
+                </button>
+              ) : (
+                <div className={s.item} style={{ flex: 1 }}>
+                  <span className={s.itemName}>{c.name}</span>
+                  <span className={s.itemMeta}>{c.initiative}</span>
+                </div>
+              )}
+              <button type="button" className={s.place} onClick={() => void leaveCombat(gameId, c.id)} title="Take out of the initiative order">
+                Remove
               </button>
-            ))}
+            </div>
+          ))}
         </div>
+
+        {notIn.length > 0 && (
+          <>
+            <span className={s.label}>Players not rolled in</span>
+            <p className={s.hint}>They have a pulsing “Roll initiative” button on their tracker, or you can roll for them.</p>
+            <div className={s.list}>
+              {notIn.map((ch) => (
+                <div key={ch.id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                  <span className={s.item} style={{ flex: 1 }}>
+                    <span className={s.itemName}>{ch.name}</span>
+                  </span>
+                  <button type="button" className={s.place} onClick={() => rollFor(ch)}>
+                    Roll for them
+                  </button>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {outCreatures.length > 0 && (
+          <>
+            <span className={s.label}>Creatures not in the fight</span>
+            <div className={s.list}>
+              {outCreatures.map((t) => (
+                <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                  <span className={s.item} style={{ flex: 1 }}>
+                    <span className={s.itemName}>{t.name}</span>
+                  </span>
+                  <button type="button" className={s.place} onClick={() => void joinCombat(gameId, creatureCombatant(t))}>
+                    Add &amp; roll
+                  </button>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
         <Button variant="danger" onClick={() => void endCombat(gameId)}>
           End combat
         </Button>
@@ -162,8 +226,9 @@ export function InitiativeDrawer({
     <div className={s.section}>
       <span className={s.label}>Start combat</span>
       <p className={s.hint}>
-        Select the creatures in this fight, then roll initiative. Players roll
-        themselves in afterward.
+        Pick the creatures in this fight (or none — for a chase or a duel) and start. Their initiative
+        is rolled now; players roll themselves in, then you click <strong>Begin</strong> and the
+        highest roll goes first. Creatures you place during combat join automatically.
       </p>
       {creatures.length === 0 && <p className={s.hint}>No creatures on this map yet.</p>}
       <div className={s.list}>
@@ -185,8 +250,8 @@ export function InitiativeDrawer({
           </div>
         ))}
       </div>
-      <Button onClick={roll} disabled={selected.size === 0} full>
-        Roll initiative ({selected.size})
+      <Button onClick={roll} full>
+        {selected.size === 0 ? 'Start combat (no creatures)' : `Start combat · roll for ${selected.size}`}
       </Button>
       {cleanup}
     </div>

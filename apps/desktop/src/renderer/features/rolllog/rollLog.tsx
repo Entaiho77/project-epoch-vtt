@@ -1,6 +1,9 @@
-import { createContext, useCallback, useContext, useMemo, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import { clearRollLog, postRollEntry, trimRollLog, type RollEntry } from '../../data/rollLog';
 import { takeProof } from '../../data/secureDice';
+import { multiUpdate, readValue } from '../../data/realtime';
+import { hitFollowUps } from '../../data/gatekeeper';
+import type { Hit } from '../../data/damage';
 import s from '../board/drawers/drawers.module.css';
 import r from './RollLog.module.css';
 
@@ -17,7 +20,8 @@ export type { RollEntry };
 
 interface RollLogValue {
   entries: RollEntry[];
-  postRoll: (text: string) => void;
+  /** Post a roll. `hit` = damage to the roller's target, taken off its HP automatically. */
+  postRoll: (text: string, opts?: { hit?: Hit }) => void;
   clear: () => void;
   /** GM-only: the Clear button is hidden otherwise. */
   canClear: boolean;
@@ -25,8 +29,10 @@ interface RollLogValue {
 
 const RollLogContext = createContext<RollLogValue | null>(null);
 
-/** How many entries to render (the DB keeps up to CAP=100; we show the newest slice). */
-const RENDER_LIMIT = 50;
+/** How many entries are kept for the log (the DB keeps up to its CAP). */
+const RENDER_LIMIT = 300;
+/** Newest rolls shown before "Show older rolls". */
+export const SHOWN_AT_FIRST = 10;
 
 export function RollLogProvider({
   gameId,
@@ -54,7 +60,7 @@ export function RollLogProvider({
   );
 
   const postRoll = useCallback(
-    (text: string) => {
+    (text: string, opts?: { hit?: Hit }) => {
       // Only the GM trims old entries (players can't delete rolls during a session).
       // Rolled inside secureRoll: attach the dice so the GM's computer can check them.
       const proof = takeProof();
@@ -65,10 +71,18 @@ export function RollLogProvider({
         by: byName,
         ...(proof ? { dice: proof.dice } : {}),
         ...(proof?.rngId ? { rngId: proof.rngId } : {}),
+        // Damage only rides on a roll with dice behind it (the GM's computer checks them).
+        ...(opts?.hit && proof ? { hit: opts.hit } : {}),
       };
-      void postRollEntry(gameId, entry).then(() =>
-        canClear ? trimRollLog(gameId, log) : undefined,
-      );
+      void postRollEntry(gameId, entry).then(async (id) => {
+        if (!canClear) return; // players: the GM's computer applies the hit after checking it
+        // The GM's own roll: apply the hit here, the same way a checked player hit is applied.
+        if (entry.hit) {
+          const changes = await hitFollowUps(id, entry.hit, { gameId, read: (p) => readValue(p) });
+          if (Object.keys(changes).length) await multiUpdate(changes);
+        }
+        await trimRollLog(gameId, log);
+      });
     },
     [gameId, uid, byName, log, canClear],
   );
@@ -93,13 +107,21 @@ export function useRollLog(): RollLogValue {
 /** The shared log window. Drop it anywhere inside a RollLogProvider. */
 export function RollLog() {
   const { entries, clear, canClear } = useRollLog();
+  const [showAll, setShowAll] = useState(false);
   if (entries.length === 0) {
     return <p className={s.hint}>No rolls yet. Attacks, dice, and monster rolls land here.</p>;
   }
+  const older = Math.max(0, entries.length - SHOWN_AT_FIRST);
+  const shown = showAll ? entries : entries.slice(0, SHOWN_AT_FIRST);
   return (
     <div className={s.section}>
+      {canClear && (
+        <button type="button" className={s.place} onClick={clear} style={{ alignSelf: 'flex-end' }} title="Clear the roll log for everyone">
+          Clear log
+        </button>
+      )}
       <div className={s.list}>
-        {entries.map((e) => (
+        {shown.map((e) => (
           <div
             key={e.id}
             className={s.preview}
@@ -114,13 +136,14 @@ export function RollLog() {
           >
             {e.by ? <strong>{e.by} — </strong> : null}
             {e.text}
+            {e.applied && <span className={r.applied}> · {e.applied}</span>}
             <RollCheck entry={e} />
           </div>
         ))}
       </div>
-      {canClear && (
-        <button type="button" className={s.place} onClick={clear} style={{ alignSelf: 'flex-start' }}>
-          Clear log
+      {older > 0 && (
+        <button type="button" className={s.place} onClick={() => setShowAll((v) => !v)} style={{ alignSelf: 'flex-start' }}>
+          {showAll ? 'Show only the newest rolls' : `Show older rolls (${older})`}
         </button>
       )}
     </div>

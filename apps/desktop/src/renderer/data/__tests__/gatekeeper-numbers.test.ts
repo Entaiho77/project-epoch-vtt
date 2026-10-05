@@ -131,6 +131,54 @@ describe('dice-log entries', () => {
   });
 });
 
+describe('auto-damage on the target', () => {
+  const goblin = { id: 'gob', kind: 'creature', name: 'Goblin', mapId: 'm', col: 0, row: 0, color: '#f00', hp: { current: 7, max: 7 } };
+  const entry = (extra: Record<string, unknown>) => ({ id: 'r9', text: 'Brannoc → Goblin — Axe: 5', byUid: ME, by: 'Brannoc', at: 9, ...extra });
+  function rolled(game: Record<string, unknown> = {}) {
+    const s = setup(solrynChar(), { tokens: { gob: goblin }, initiative: null, ...game });
+    const { rngId, values } = s.ledger.issue(ME);
+    const dice = [{ s: 8, f: faceFor(8, uniformFor(values[0])) }];
+    return { ...s, rngId, dice };
+  }
+
+  it('a checked hit takes HP off the target and notes it on the roll', async () => {
+    const { check, rngId, dice } = rolled();
+    const v = await check(write(`games/${G}/rollLog/r9`, entry({ rngId, dice, hit: { tokenId: 'gob', amount: 3 } })));
+    expect(v).toEqual({
+      ok: true,
+      followUps: {
+        [`/games/${G}/tokens/gob/hp/current`]: 4,
+        [`/games/${G}/rollLog/r9/applied`]: 'Goblin takes 3',
+      },
+    });
+  });
+
+  it('dropping it to 0 marks it defeated; a defeated target takes nothing more', async () => {
+    const { check, rngId, dice } = rolled();
+    const v = await check(write(`games/${G}/rollLog/r9`, entry({ rngId, dice, hit: { tokenId: 'gob', amount: 9 } })));
+    expect(v).toMatchObject({ ok: true, followUps: { [`/games/${G}/tokens/gob/defeated`]: true, [`/games/${G}/rollLog/r9/applied`]: 'Goblin takes 9 — down!' } });
+    const dead = rolled({ tokens: { gob: { ...goblin, hp: { current: 0, max: 7 } } } });
+    await expect(dead.check(write(`games/${G}/rollLog/r9`, entry({ rngId: dead.rngId, dice: dead.dice, hit: { tokenId: 'gob', amount: 2 } })))).resolves.toEqual(ok);
+  });
+
+  it('damage without checked dice, or far beyond the dice, is refused', async () => {
+    const { check, rngId, dice } = rolled();
+    await expect(check(write(`games/${G}/rollLog/r9`, entry({ hit: { tokenId: 'gob', amount: 3 } })))).resolves.toMatchObject(no);
+    await expect(check(write(`games/${G}/rollLog/r9`, entry({ rngId, dice, hit: { tokenId: 'gob', amount: 500 } })))).resolves.toMatchObject(no);
+    await expect(check(write(`games/${G}/rollLog/r9`, entry({ rngId, dice, hit: { tokenId: 'gob', amount: -4 } })))).resolves.toMatchObject(no);
+  });
+
+  it("in combat, attacks wait for your turn unless the GM allows off-turn attacks", async () => {
+    const order = [{ id: 'gob', kind: 'creature', tokenId: 'gob', initiative: 15, tieBreak: 0 }, { id: 'char:c-me', kind: 'character', ownerUserId: ME, initiative: 9, tieBreak: 0 }];
+    const notMine = rolled({ initiative: { active: true, phase: 'running', round: 1, turnIndex: 0, order } });
+    await expect(notMine.check(write(`games/${G}/rollLog/r9`, entry({ rngId: notMine.rngId, dice: notMine.dice, hit: { tokenId: 'gob', amount: 2 } })))).resolves.toMatchObject(no);
+    const mine = rolled({ initiative: { active: true, phase: 'running', round: 1, turnIndex: 1, order } });
+    await expect(mine.check(write(`games/${G}/rollLog/r9`, entry({ rngId: mine.rngId, dice: mine.dice, hit: { tokenId: 'gob', amount: 2 } })))).resolves.toMatchObject({ ok: true });
+    const allowed = rolled({ initiative: { active: true, phase: 'running', round: 1, turnIndex: 0, order, allowOffTurn: true } });
+    await expect(allowed.check(write(`games/${G}/rollLog/r9`, entry({ rngId: allowed.rngId, dice: allowed.dice, hit: { tokenId: 'gob', amount: 2 } })))).resolves.toMatchObject({ ok: true });
+  });
+});
+
 describe('initiative', () => {
   async function rollIn(over: (c: Record<string, unknown>, face: number) => Record<string, unknown> = (c) => c) {
     const s = setup(solrynChar());
@@ -169,6 +217,19 @@ describe('initiative', () => {
     await expect(
       rollIn((c, face) => ({ ...c, tieBreak: 15, initiative: face + 15 })),
     ).resolves.toMatchObject(no);
+  });
+
+  it('rolling in during the "Rolling initiative" phase works; starting combat or ending a turn does not', async () => {
+    const s = setup(solrynChar(), {
+      initiative: { active: true, phase: 'rolling', round: 1, turnIndex: 0, order: [{ id: 'b', kind: 'creature', initiative: 10, tieBreak: 0 }] },
+    });
+    const init = (s.data.games as any)[G].initiative;
+    // A player can't flip the phase to start combat themselves.
+    await expect(s.check(write(`games/${G}/initiative`, { ...init, phase: 'running' }))).resolves.toMatchObject(no);
+    // Nor "end a turn" before turns start (even one that's somehow theirs).
+    const mine = { ...init, order: [{ id: 'char:c-me', kind: 'character', ownerUserId: ME, initiative: 9, tieBreak: 0 }] };
+    (s.data.games as any)[G].initiative = mine;
+    await expect(s.check(write(`games/${G}/initiative`, { ...mine, turnIndex: 0, round: 2 }))).resolves.toMatchObject(no);
   });
 
   it('a d20 that was not the GM’s is refused', async () => {
@@ -215,6 +276,31 @@ describe("a player's own character (Solryn)", () => {
     const { check } = setup(solrynChar());
     await expect(check(write(path('definition/coreScores/STR'), 8))).resolves.toMatchObject(no);
     await expect(check(write(path('play/unspentSkillPoints'), 10))).resolves.toMatchObject(no);
+  });
+
+  it('confirmed skill points must be paid for out of the unspent points', async () => {
+    const withPoints = solrynChar({
+      play: { ...solrynChar().play, unspentSkillPoints: 2, skills: { stealth: { investedPoints: 1, realizedPoints: 1 } } },
+    });
+    const confirm = (skills: Record<string, unknown>, unspent: number) =>
+      multi({
+        ...Object.fromEntries(Object.entries(skills).map(([id, st]) => [`/${path(`play/skills/${id}`)}`, st])),
+        [`/${path('play/unspentSkillPoints')}`]: unspent,
+      });
+    const s1 = setup(withPoints);
+    await expect(
+      s1.check(confirm({ stealth: { investedPoints: 2, realizedPoints: 1 }, climb: { investedPoints: 1, realizedPoints: 0 } }, 0)),
+    ).resolves.toEqual(ok);
+    const s2 = setup(withPoints);
+    // Placing 3 points while only paying 2.
+    await expect(s2.check(confirm({ stealth: { investedPoints: 4, realizedPoints: 1 } }, 0))).resolves.toMatchObject(no);
+    // Free points without spending any.
+    await expect(s2.check(confirm({ stealth: { investedPoints: 2, realizedPoints: 1 } }, 2))).resolves.toMatchObject(no);
+    // Taking a placed point back after it was locked in.
+    await expect(s2.check(write(path('play/skills/stealth'), { investedPoints: 0, realizedPoints: 0 }))).resolves.toMatchObject(no);
+    // Training (realized catches up to invested) is fine.
+    const trained = setup(solrynChar({ play: { ...solrynChar().play, skills: { stealth: { investedPoints: 3, realizedPoints: 1 } } } }));
+    await expect(trained.check(write(path('play/skills/stealth'), { investedPoints: 3, realizedPoints: 3 }))).resolves.toEqual(ok);
   });
 
   it('a new character must have scores the creation dice can roll', async () => {

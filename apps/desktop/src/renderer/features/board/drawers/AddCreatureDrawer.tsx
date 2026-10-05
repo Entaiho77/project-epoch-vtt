@@ -2,7 +2,8 @@ import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { SystemDefinition } from '@epoch/shared-types';
 import type { MapDef, Token } from '@epoch/shared-types';
-import { addToken } from '../../../data/board';
+import { addToken, revealAllCreatures } from '../../../data/board';
+import { creatureCombatant, joinCombat } from '../../../data/combat';
 import {
   deleteCreature,
   saveCreature,
@@ -111,7 +112,11 @@ export function AddCreatureDrawer({
       recentlyPlaced.current.add(key);
       setTimeout(() => recentlyPlaced.current.delete(key), 3000);
     }
-    void addToken(gameId, { ...token, mapId: activeMap.id, col: cell.col, row: cell.row });
+    void addToken(gameId, { ...token, mapId: activeMap.id, col: cell.col, row: cell.row }).then((id) => {
+      // During combat a new creature rolls initiative and joins the order right away
+      // (reinforcements, summons, ambushes) without changing whose turn it is.
+      if (token.kind === 'creature') void joinCombat(gameId, creatureCombatant({ id, name: token.name, stats: token.stats }));
+    });
   }
 
   function placeStatBlock(
@@ -131,7 +136,9 @@ export function AddCreatureDrawer({
       kind: isTrap ? 'trap' : 'creature',
       name: blockName,
       color: isTrap ? TRAP_COLOR : CREATURE_COLOR,
-      visible: !isTrap, // traps start hidden until the GM reveals/springs them
+      // Everything arrives hidden so the GM can set up an encounter without spoiling it: reveal
+      // creatures from their right-click menu (or "Reveal all"); traps when sprung.
+      visible: false,
       stats,
       ...(creatureId ? { creatureId } : {}),
       ...(squares > 1 ? { size: squares } : {}),
@@ -160,8 +167,26 @@ export function AddCreatureDrawer({
     setName('');
   }
 
+  const hiddenHere = activeMap
+    ? tokens.filter((t) => t.mapId === activeMap.id && t.kind === 'creature' && t.visible === false).length
+    : 0;
+
   return (
     <div>
+      <p className={s.hint} style={{ margin: '0 0 var(--space-2)' }}>
+        New creatures arrive <strong>hidden</strong> (faded for you, invisible to players). Reveal one from its
+        right-click menu, or all at once here.
+      </p>
+      {hiddenHere > 0 && activeMap && (
+        <button
+          type="button"
+          className={s.place}
+          style={{ marginBottom: 'var(--space-2)' }}
+          onClick={() => void revealAllCreatures(gameId, tokens, activeMap.id)}
+        >
+          Reveal all {hiddenHere} hidden creature{hiddenHere === 1 ? '' : 's'}
+        </button>
+      )}
       <div className={s.tabs}>
         {(['bestiary', 'homebrew', 'mine', 'build'] as const).map((t) => (
           <button

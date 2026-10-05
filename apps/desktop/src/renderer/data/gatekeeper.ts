@@ -35,12 +35,13 @@
  */
 
 import { computeDerived, dieForLevel, parseDice } from '@epoch/engine';
-import type { Character, SystemDefinition } from '@epoch/shared-types';
+import type { Character, SystemDefinition, Token } from '@epoch/shared-types';
 import { getSystem, isClassAndLevel } from '@epoch/systems/registry';
 import { pcDerived } from '@epoch/systems/dnd5e/character';
 import { levelForXp } from '@epoch/systems/dnd5e/xp';
 import type { ProofVerdict } from './diceLedger';
 import { withHomebrewOptions } from './homebrew';
+import { hitChanges, hitNote, isDefeated, maxClaimableDamage, mayAttackNow, type Hit } from './damage';
 import { initiativeModifier } from './initiativeModifier';
 
 export type SyncWrite = { t: 'write'; path: string; value: unknown };
@@ -214,6 +215,10 @@ async function checkAssignment(
       return c && rest.length === 0 ? checkShape(c, value, uid, ctx) : deny('GM only');
     case 'initiative':
       return c === undefined ? checkInitiative(value, uid, ctx) : deny('GM only');
+    case 'voice':
+      // games/{id}/voice/{uid} = true while you're in the voice call; only your own mark.
+      if (c !== uid || rest.length !== 0) return deny('you can only mark yourself in voice');
+      return value === true || value === null ? OK : deny('bad voice mark');
     default:
       void all;
       return deny('GM only');
@@ -405,6 +410,20 @@ async function checkCharacterNumbers(before: Obj | null, after: Obj, ctx: GateCo
     const ub = num(pb.unspentSkillPoints) ?? 0;
     const perLevel = system.modes.progression.skillPointsPerLevel ?? 2;
     if (ua > ub + (leveledUp ? perLevel : 0)) return deny('skill points come from levels');
+    // Points placed in skills must be paid for out of unspent points, and never taken back.
+    const skillsA = isObj(pa.skills) ? pa.skills : {};
+    const skillsB = isObj(pb.skills) ? pb.skills : {};
+    let placed = 0;
+    for (const id of new Set([...Object.keys(skillsA), ...Object.keys(skillsB)])) {
+      const a = isObj(skillsA[id]) ? (skillsA[id] as Obj) : {};
+      const b = isObj(skillsB[id]) ? (skillsB[id] as Obj) : {};
+      const ia = num(a.investedPoints) ?? 0;
+      const ib = num(b.investedPoints) ?? 0;
+      if (ia < ib) return deny('placed skill points stay placed');
+      if ((num(a.realizedPoints) ?? 0) > ia) return deny("training can't go past the points placed");
+      placed += ia - ib;
+    }
+    if (placed > 0 && ub - ua !== placed) return deny("skill points placed don't match the points spent");
   }
 
   // --- Pools (HP etc.): never above the maximum ---
@@ -476,7 +495,7 @@ async function checkChat(id: string, value: unknown, uid: string, ctx: GateConte
   return OK;
 }
 
-const ROLL_FIELDS = new Set(['id', 'text', 'at', 'byUid', 'by', 'rngId', 'dice']);
+const ROLL_FIELDS = new Set(['id', 'text', 'at', 'byUid', 'by', 'rngId', 'dice', 'hit']);
 
 async function checkRoll(id: string, value: unknown, uid: string, ctx: GateContext): Promise<Verdict> {
   const existing = await ctx.read(`games/${ctx.gameId}/rollLog/${id}`);
@@ -485,14 +504,57 @@ async function checkRoll(id: string, value: unknown, uid: string, ctx: GateConte
   if (value.byUid !== uid) return deny('you can only roll as yourself');
   if (value.id !== id || !isStr(value.text, 1000) || !isStr(value.by, 64)) return deny('bad roll');
   if (Object.keys(value).some((k) => !ROLL_FIELDS.has(k))) return deny('bad roll');
-  if (value.dice === undefined && value.rngId === undefined) return OK; // a plain line, not a checked roll
+  const hit = value.hit;
+  if (hit !== undefined) {
+    if (!isObj(hit) || !isStr(hit.tokenId, 64) || typeof hit.amount !== 'number' || !Number.isInteger(hit.amount) || hit.amount < 0) {
+      return deny('bad roll');
+    }
+    // Attacks only on your own turn during combat (unless the GM allows off-turn attacks).
+    if (!mayAttackNow(asInitiative(await ctx.read(`games/${ctx.gameId}/initiative`)), { uid })) {
+      return deny("it isn't your turn");
+    }
+  }
+  if (value.dice === undefined && value.rngId === undefined) {
+    // A plain line, not a checked roll — and so it can't deal damage.
+    return hit === undefined ? OK : deny('damage needs checked dice');
+  }
   // Claimed dice must be the numbers the GM handed out.
   if (!ctx.dice) return deny('dice cannot be checked');
   const verdict = ctx.dice.verify(uid, { rngId: value.rngId, dice: value.dice });
   if (!verdict.ok) return deny(verdict.reason);
-  return verdict.skipped > 0
-    ? { ok: true, followUps: { [`/games/${ctx.gameId}/rollLog/${id}/skipped`]: verdict.skipped } }
-    : OK;
+  const followUps: Record<string, unknown> = {};
+  if (verdict.skipped > 0) followUps[`/games/${ctx.gameId}/rollLog/${id}/skipped`] = verdict.skipped;
+  if (isObj(hit)) {
+    const h = hit as unknown as Hit;
+    if (h.amount > maxClaimableDamage(value.dice as { s: number; f: number }[])) return deny('more damage than those dice can do');
+    Object.assign(followUps, await hitFollowUps(id, h, ctx));
+  }
+  return Object.keys(followUps).length ? { ok: true, followUps } : OK;
+}
+
+/**
+ * The GM's copy applies a checked hit: HP off the target (0 → defeated) plus a note on the roll.
+ * A target that's gone, already down, or has no HP tracked just gets no damage.
+ */
+export async function hitFollowUps(
+  rollId: string,
+  hit: Hit,
+  ctx: Pick<GateContext, 'gameId' | 'read'>,
+): Promise<Record<string, unknown>> {
+  const token = (await ctx.read(`games/${ctx.gameId}/tokens/${hit.tokenId}`)) as Token | null;
+  if (!isObj(token) || isDefeated(token)) return {};
+  let charHp: number | undefined;
+  if (token.kind === 'character' && token.characterId) {
+    const v = await ctx.read(`characters/${token.characterId}/play/pools/hp/current`);
+    charHp = typeof v === 'number' ? v : undefined;
+  }
+  const changes = hitChanges(ctx.gameId, token, hit.amount, charHp);
+  if (!changes) return {};
+  const after = token.kind === 'character' ? Math.max(0, (charHp ?? 0) - hit.amount) : Math.max(0, (token.hp?.current ?? 0) - hit.amount);
+  return {
+    ...changes,
+    [`/games/${ctx.gameId}/rollLog/${rollId}/applied`]: hitNote(token.name, hit.amount, after === 0),
+  };
 }
 
 async function checkShape(id: string, value: unknown, uid: string, ctx: GateContext): Promise<Verdict> {
@@ -517,6 +579,8 @@ interface CombatantLike {
 }
 interface InitiativeLike {
   active: boolean;
+  phase?: string;
+  allowOffTurn?: boolean;
   round: number;
   turnIndex: number;
   order: CombatantLike[];
@@ -525,8 +589,11 @@ interface InitiativeLike {
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 
 function asInitiative(v: unknown): InitiativeLike | null {
-  if (!isObj(v) || !Array.isArray(v.order)) return null;
+  if (!isObj(v)) return null;
   if (typeof v.round !== 'number' || typeof v.turnIndex !== 'number') return null;
+  // An empty order can come back missing (empty arrays aren't stored); that's an empty fight.
+  if (v.order === undefined) return { ...(v as unknown as InitiativeLike), order: [] };
+  if (!Array.isArray(v.order)) return null;
   return v as unknown as InitiativeLike;
 }
 
@@ -536,6 +603,8 @@ async function checkInitiative(value: unknown, uid: string, ctx: GateContext): P
   const after = asInitiative(value);
   if (!before || !after || !before.active || !after.active) return deny('only the GM starts or ends combat');
   if (after.order.length > 200) return deny('bad initiative');
+  if ((after.phase ?? 'running') !== (before.phase ?? 'running')) return deny('only the GM begins combat');
+  if (!!after.allowOffTurn !== !!before.allowOffTurn) return deny('only the GM allows off-turn attacks');
 
   const beforeIds = new Set(before.order.map((c) => c.id));
   const added = after.order.filter((c) => !beforeIds.has(c.id));
@@ -577,8 +646,9 @@ async function checkInitiative(value: unknown, uid: string, ctx: GateContext): P
   }
   if (added.length > 1) return deny('you can only add yourself');
 
-  // Same combatants: must be ending your own turn.
+  // Same combatants: must be ending your own turn (once turns have begun).
   if (!same(after.order, before.order)) return deny('only the GM reorders combat');
+  if (before.phase === 'rolling') return deny("turns haven't started yet");
   const current = before.order[before.turnIndex];
   if (!current || current.ownerUserId !== uid) return deny("it isn't your turn");
   if (after.turnIndex === before.turnIndex && after.round === before.round) return deny('nothing changed');
