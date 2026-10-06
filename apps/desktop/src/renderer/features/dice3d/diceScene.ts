@@ -21,7 +21,7 @@ import {
   Vector3,
   WebGLRenderer,
 } from 'three';
-import { diePlan, dieShape, faceBasis, landingQuaternion } from './diceShapes';
+import { diePlan, dieShape, faceBasis, landingQuaternion, preloadCarvedSurfaceDetail } from './diceShapes';
 import { DICE_SKINS, DEFAULT_DICE_SKIN, type DiceSkin } from './diceSkins';
 
 /**
@@ -39,9 +39,7 @@ export interface DieToShow {
 
 const MAX_DICE = 10;
 const ROLL_MS = 1300;
-// TEMP: stretched way out so Matthew can screenshot the d20's carved bevel before it fades —
-// revert to 1100 once we're done diagnosing the "looks like clay" texture report.
-const HOLD_MS = 15000;
+const HOLD_MS = 1100;
 const FADE_MS = 400;
 
 const labelCache = new Map<string, CanvasTexture>();
@@ -149,6 +147,9 @@ export function showDice(
   // untouched white so the texture's own contrast isn't flattened toward one hue.
   const skin = DICE_SKINS[skinId] ?? DICE_SKINS[DEFAULT_DICE_SKIN];
   const tex = getSkinTextures(skin);
+  // One-time (idempotent) kick-off for the d20's carved surface-bump displacement — it reads
+  // this same albedo image's own pixels, not a separate asset.
+  preloadCarvedSurfaceDetail(skin.albedo);
   const tint = (skin.tintable ? new Color(0xffffff).lerp(new Color(color), 0.18) : new Color(0xffffff)).multiplyScalar(
     1 - skin.baseDarken,
   );

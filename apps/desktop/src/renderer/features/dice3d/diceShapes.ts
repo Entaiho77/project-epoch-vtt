@@ -427,11 +427,62 @@ function glyphAlphaAt(dc: DigitCanvas, u: number, v: number): number {
   return dc.data.data[(y * w + x) * 4 + 3] / 255;
 }
 
+interface HeightMap {
+  data: Uint8ClampedArray;
+  width: number;
+  height: number;
+}
+
+let heightMap: HeightMap | null = null;
+let heightMapRequested = false;
+
+/**
+ * Kicks off loading the skin's own albedo image so its pixel luminance can drive a real
+ * geometric surface bump on the d20's carved caps — not just a flat decal color. Idempotent
+ * (safe to call every roll); diceScene.ts calls this once it knows which skin is active. The
+ * image decodes asynchronously, so the first d20 ever rolled before it finishes just renders
+ * without the extra bump — once loaded, the d20's cached shape is invalidated so every roll
+ * after that picks it up.
+ */
+export function preloadCarvedSurfaceDetail(albedoUrl: string): void {
+  if (heightMapRequested || typeof document === 'undefined') return;
+  heightMapRequested = true;
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    const c = document.createElement('canvas');
+    c.width = img.width;
+    c.height = img.height;
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(img, 0, 0);
+    const imgData = ctx.getImageData(0, 0, c.width, c.height);
+    heightMap = { data: imgData.data, width: c.width, height: c.height };
+    cache.delete(20);
+  };
+  img.src = albedoUrl;
+}
+
+/** Tiling luminance sample (0-1) of the loaded height map at (u, v) — wraps like a repeated
+ * texture would, matching how the albedo map itself tiles across the die. */
+function sampleHeight(u: number, v: number): number {
+  if (!heightMap) return 0.55; // neutral (no bump either way) until the real map is loaded
+  const { data, width, height } = heightMap;
+  const uu = ((u % 1) + 1) % 1;
+  const vv = ((v % 1) + 1) % 1;
+  const x = Math.min(width - 1, Math.floor(uu * (width - 1)));
+  const y = Math.min(height - 1, Math.floor((1 - vv) * (height - 1)));
+  const idx = (y * width + x) * 4;
+  return (data[idx] * 0.299 + data[idx + 1] * 0.587 + data[idx + 2] * 0.114) / 255;
+}
+
 export interface CarvedIcosahedronOptions {
   /** How far each face's corners inset toward its centroid before the bevel strip bridges the gap. */
   bevel: number;
   /** 0 = flat chamfer facet, 1 = fully rounded fillet bulging out to the real edge. */
   bevelRoundness: number;
+  /** How far the real stone texture's own light/dark pixels push the surface in/out. */
+  dispStrength: number;
   /** How deep the dish cut into the middle of each face goes. */
   faceRecess: number;
   /** Radius (in "closeness to center," 0-1) of the flat pad the recess leaves under the number. */
@@ -444,6 +495,7 @@ export interface CarvedIcosahedronOptions {
 export const D20_CARVE_SETTINGS: CarvedIcosahedronOptions = {
   bevel: 0.12,
   bevelRoundness: 0.7,
+  dispStrength: 0.008,
   faceRecess: 0.022,
   recessPlateauSize: 0.57,
   engraveDepth: 0.014,
@@ -534,6 +586,10 @@ function buildCarvedIcosahedron(opts: CarvedIcosahedronOptions): { geometry: Buf
           ring = Math.sin(Math.PI * r); // 0 at the rim, 0 again at the plateau boundary, peak between
         }
         if (opts.faceRecess > 0) p.addScaledVector(n, -opts.faceRecess * ring);
+        if (opts.dispStrength > 0) {
+          const h = sampleHeight(u, v);
+          p.addScaledVector(n, (h - 0.55) * opts.dispStrength);
+        }
 
         // Map this point into the glyph's local 0.4 x 0.4 square and read its alpha mask —
         // ink where alpha > 0 — to cut the numeral straight into the (already recessed) cap.
