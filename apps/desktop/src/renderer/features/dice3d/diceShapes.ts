@@ -31,6 +31,13 @@ export interface DieShape {
   faces: DieFace[];
   /** Roughly how big the number label on each face should be (die units). */
   labelSize: number;
+  /**
+   * True when the face numbers are carved directly into the geometry (the bevel/recess/chisel
+   * pipeline below) rather than drawn as a flat decal on top. diceScene.ts skips building the
+   * per-face label plane and the crisp edge-line overlay for these — the geometry already
+   * carries both a real rounded bevel and the engraved numerals.
+   */
+  carvedNumerals?: boolean;
 }
 
 /** Real polyhedral dice we can draw. */
@@ -205,6 +212,353 @@ export function facesOf(geometry: BufferGeometry): { normal: Vector3; center: Ve
   }));
 }
 
+// ---------------------------------------------------------------------------------------------
+// Carved-bevel geometry for the d20 — a real rounded bevel, a dished face recess, and numerals
+// engraved straight into the stone, instead of a sharp-edged shape with a flat decal on top.
+// Ported 1:1 from the dice-realism sandbox (an Artifact used to dial in the look live before
+// touching this file) — see that tool's math for the full derivation/debugging history.
+// ---------------------------------------------------------------------------------------------
+
+function v3key(v: Vector3): string {
+  return `${v.x.toFixed(4)},${v.y.toFixed(4)},${v.z.toFixed(4)}`;
+}
+
+/** Quadratic Bezier point at t, between p0 and p2, pulled toward control point p1. */
+function quadBezier(p0: Vector3, p1: Vector3, p2: Vector3, t: number): Vector3 {
+  const u = 1 - t;
+  return new Vector3(
+    u * u * p0.x + 2 * u * t * p1.x + t * t * p2.x,
+    u * u * p0.y + 2 * u * t * p1.y + t * t * p2.y,
+    u * u * p0.z + 2 * u * t * p1.z + t * t * p2.z,
+  );
+}
+
+interface ChamferResult {
+  tris: [Vector3, Vector3, Vector3][];
+  insetFaces: [Vector3, Vector3, Vector3][];
+}
+
+/**
+ * Insets each face's 3 corners toward its own centroid by `amount`, then bridges the gap
+ * between adjacent faces with a bevel strip. At `roundness` 0 that strip is a single flat
+ * facet (a plain chamfer); above that, it's a multi-segment ruled surface between two Bezier
+ * arcs that bulge out toward the die's real (un-inset) edge, giving a true rounded fillet.
+ */
+function chamferFaces(faces: Vector3[][], amount: number, roundness: number): ChamferResult {
+  const vertUses = new Map<string, [number, number][]>();
+  faces.forEach((f, fi) =>
+    f.forEach((v, ci) => {
+      const k = v3key(v);
+      if (!vertUses.has(k)) vertUses.set(k, []);
+      vertUses.get(k)!.push([fi, ci]);
+    }),
+  );
+  const insetFaces: [Vector3, Vector3, Vector3][] = faces.map((f) => {
+    const c = f[0].clone().add(f[1]).add(f[2]).divideScalar(3);
+    return [f[0].clone().lerp(c, amount), f[1].clone().lerp(c, amount), f[2].clone().lerp(c, amount)];
+  });
+  const tris: [Vector3, Vector3, Vector3][] = [];
+  const done = new Set<string>();
+  const segs = roundness > 0.001 && amount > 0.001 ? 6 : 1;
+  faces.forEach((f, fi) => {
+    for (let i = 0; i < 3; i++) {
+      const j = (i + 1) % 3;
+      const v0 = f[i];
+      const v1 = f[j];
+      const k0 = v3key(v0);
+      const k1 = v3key(v1);
+      const uses0 = vertUses.get(k0)!;
+      let neighborFace = -1;
+      for (const [ofi] of uses0) {
+        if (ofi === fi) continue;
+        const usesV1 = vertUses.get(k1)!;
+        if (usesV1.some(([p]) => p === ofi)) {
+          neighborFace = ofi;
+          break;
+        }
+      }
+      if (neighborFace === -1) continue;
+      const dk = `${[fi, neighborFace].sort().join('-')}|${[k0, k1].sort().join('|')}`;
+      if (done.has(dk)) continue;
+      done.add(dk);
+      const nf = faces[neighborFace];
+      const ci0 = nf.findIndex((v) => v3key(v) === k0);
+      const ci1 = nf.findIndex((v) => v3key(v) === k1);
+      const t0 = insetFaces[fi][i];
+      const t1 = insetFaces[fi][j];
+      const o0 = insetFaces[neighborFace][ci0];
+      const o1 = insetFaces[neighborFace][ci1];
+
+      if (segs === 1) {
+        tris.push([t0, t1, o1]);
+        tris.push([t0, o1, o0]);
+        continue;
+      }
+
+      const ctrlNear = t0.clone().add(o0).multiplyScalar(0.5).lerp(v0, roundness);
+      const ctrlFar = t1.clone().add(o1).multiplyScalar(0.5).lerp(v1, roundness);
+      let prevNear = t0;
+      let prevFar = t1;
+      for (let s = 1; s <= segs; s++) {
+        const tt = s / segs;
+        const curNear = s === segs ? o0 : quadBezier(t0, ctrlNear, o0, tt);
+        const curFar = s === segs ? o1 : quadBezier(t1, ctrlFar, o1, tt);
+        tris.push([prevNear, prevFar, curFar]);
+        tris.push([prevNear, curFar, curNear]);
+        prevNear = curNear;
+        prevFar = curFar;
+      }
+    }
+  });
+  return { tris, insetFaces };
+}
+
+/**
+ * Fan-fills the pentagon-shaped gap where several edges meet at one original vertex (an
+ * icosahedron vertex has 5) — beveling the edges alone leaves that point stranded with an open
+ * hole, right where it's most visible.
+ */
+function vertexCaps(faces: Vector3[][], insetFaces: [Vector3, Vector3, Vector3][]): [Vector3, Vector3, Vector3][] {
+  const vertMap = new Map<string, { point: Vector3; normal: Vector3 }[]>();
+  faces.forEach((f, fi) => {
+    const n = new Vector3().subVectors(f[1], f[0]).cross(new Vector3().subVectors(f[2], f[0])).normalize();
+    const mid = f[0].clone().add(f[1]).add(f[2]).divideScalar(3);
+    if (n.dot(mid) < 0) n.negate();
+    f.forEach((v, ci) => {
+      const k = v3key(v);
+      if (!vertMap.has(k)) vertMap.set(k, []);
+      vertMap.get(k)!.push({ point: insetFaces[fi][ci], normal: n });
+    });
+  });
+  const caps: [Vector3, Vector3, Vector3][] = [];
+  vertMap.forEach((items) => {
+    if (items.length < 3) return;
+    const avgN = new Vector3();
+    items.forEach((it) => avgN.add(it.normal));
+    avgN.normalize();
+    const basis = faceBasis(avgN);
+    const sorted = items
+      .slice()
+      .sort((p, q) => Math.atan2(p.point.dot(basis.v), p.point.dot(basis.u)) - Math.atan2(q.point.dot(basis.v), q.point.dot(basis.u)));
+    const centroid = new Vector3();
+    sorted.forEach((it) => centroid.add(it.point));
+    centroid.divideScalar(sorted.length);
+    for (let i = 0; i < sorted.length; i++) {
+      caps.push([centroid, sorted[i].point, sorted[(i + 1) % sorted.length].point]);
+    }
+  });
+  return caps;
+}
+
+type Bary = [number, number, number];
+
+/**
+ * Subdivides a triangle's barycentric weights (not its points) `levels` times. Level 6 (not a
+ * lower number) matters: the recess/engrave math below keys off "closeness to center," and a
+ * coarser grid's sample points land only on a few discrete values — too coarse to ever fall
+ * inside a narrow plateau band, which silently makes the whole effect a no-op. Verified
+ * numerically while building the sandbox, not just by eye.
+ */
+function subdivideBary(levels: number): Bary[][] {
+  let tris: Bary[][] = [
+    [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ],
+  ];
+  const mid = (p: Bary, q: Bary): Bary => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2, (p[2] + q[2]) / 2];
+  for (let lvl = 0; lvl < levels; lvl++) {
+    const next: Bary[][] = [];
+    tris.forEach((t) => {
+      const [a, b, c] = t;
+      const ab = mid(a, b);
+      const bc = mid(b, c);
+      const ca = mid(c, a);
+      next.push([a, ab, ca], [ab, b, bc], [ca, bc, c], [ab, bc, ca]);
+    });
+    tris = next;
+  }
+  return tris;
+}
+
+interface DigitCanvas {
+  canvas: HTMLCanvasElement;
+  data: ImageData;
+}
+
+const digitCanvasCache = new Map<number, DigitCanvas>();
+
+/** A small canvas with just the glyph for `n` drawn on it (dark ink, transparent elsewhere) —
+ * its alpha channel doubles as an "is this pixel ink" mask for carving the glyph into stone. */
+function digitCanvasFor(n: number): DigitCanvas {
+  const hit = digitCanvasCache.get(n);
+  if (hit) return hit;
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const ctx = c.getContext('2d');
+  let data: ImageData;
+  if (ctx) {
+    ctx.fillStyle = '#15130c';
+    ctx.font = 'bold 78px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(n), 64, 70);
+    data = ctx.getImageData(0, 0, c.width, c.height);
+  } else {
+    // No real 2D canvas backend (e.g. a unit-test environment without a canvas polyfill, and
+    // no ImageData global either) — degrade to "no ink anywhere" instead of crashing; the
+    // geometry/numbering logic the tests check doesn't depend on the engraving being visible.
+    data = { data: new Uint8ClampedArray(c.width * c.height * 4), width: c.width, height: c.height } as ImageData;
+  }
+  const entry: DigitCanvas = { canvas: c, data };
+  digitCanvasCache.set(n, entry);
+  return entry;
+}
+
+/** Glyph alpha (0-1) at (u, v) in [0,1] — outside that range is "off the glyph's local plane,"
+ * i.e. 0, not wrapped around like a tiling texture would be. */
+function glyphAlphaAt(dc: DigitCanvas, u: number, v: number): number {
+  if (u < 0 || u > 1 || v < 0 || v > 1) return 0;
+  const w = dc.canvas.width;
+  const h = dc.canvas.height;
+  const x = Math.min(w - 1, Math.max(0, Math.floor(u * (w - 1))));
+  const y = Math.min(h - 1, Math.max(0, Math.floor((1 - v) * (h - 1))));
+  return dc.data.data[(y * w + x) * 4 + 3] / 255;
+}
+
+export interface CarvedIcosahedronOptions {
+  /** How far each face's corners inset toward its centroid before the bevel strip bridges the gap. */
+  bevel: number;
+  /** 0 = flat chamfer facet, 1 = fully rounded fillet bulging out to the real edge. */
+  bevelRoundness: number;
+  /** How deep the dish cut into the middle of each face goes. */
+  faceRecess: number;
+  /** Radius (in "closeness to center," 0-1) of the flat pad the recess leaves under the number. */
+  recessPlateauSize: number;
+  /** How deep the numeral itself is cut, on top of the recess. */
+  engraveDepth: number;
+}
+
+/** Settings tuned live in the dice-realism sandbox and confirmed by Matthew; ports 1:1 here. */
+export const D20_CARVE_SETTINGS: CarvedIcosahedronOptions = {
+  bevel: 0.12,
+  bevelRoundness: 0.7,
+  faceRecess: 0.022,
+  recessPlateauSize: 0.57,
+  engraveDepth: 0.014,
+};
+
+/**
+ * Builds a d20 with a real rounded bevel, a dished face recess (protected under each number by
+ * a flat plateau), and numerals engraved straight into the stone — plus the per-face normal/
+ * center/value data needed for numbering and roll orientation, numbered in the same order a
+ * plain `IcosahedronGeometry` would be (so re-numbering logic elsewhere doesn't need to change).
+ */
+function buildCarvedIcosahedron(opts: CarvedIcosahedronOptions): { geometry: BufferGeometry; faces: DieFace[] } {
+  const base = new IcosahedronGeometry(1, 0).toNonIndexed();
+  const pos = base.getAttribute('position');
+  const rawFaces: Vector3[][] = [];
+  for (let i = 0; i < pos.count; i += 3) {
+    rawFaces.push([
+      new Vector3().fromBufferAttribute(pos, i),
+      new Vector3().fromBufferAttribute(pos, i + 1),
+      new Vector3().fromBufferAttribute(pos, i + 2),
+    ]);
+  }
+
+  const chamfered = chamferFaces(rawFaces, opts.bevel, opts.bevelRoundness);
+  const positions: number[] = [];
+  const uvs: number[] = [];
+  const colors: number[] = [];
+
+  // Edge strips + vertex-corner fans: flat, generic per-normal UV bucketing. These are
+  // untouched by the recess/engrave below, which only ever displaces a face's own interior cap.
+  const buckets: { normal: Vector3; basis: { u: Vector3; v: Vector3 } }[] = [];
+  const findBucket = (n: Vector3) => buckets.find((b) => b.normal.dot(n) > 0.999) ?? null;
+  const flatTris: [Vector3, Vector3, Vector3][] = [...chamfered.tris, ...vertexCaps(rawFaces, chamfered.insetFaces)];
+  flatTris.forEach(([a, b, c]) => {
+    const n = new Vector3().subVectors(b, a).cross(new Vector3().subVectors(c, a));
+    if (n.lengthSq() < 1e-10) return; // degenerate (zero-bevel edge strips) — skip
+    n.normalize();
+    const mid = a.clone().add(b).add(c).divideScalar(3);
+    if (n.dot(mid) < 0) n.negate();
+    let bucket = findBucket(n);
+    if (!bucket) {
+      bucket = { normal: n, basis: faceBasis(n) };
+      buckets.push(bucket);
+    }
+    [a, b, c].forEach((p) => {
+      positions.push(p.x, p.y, p.z);
+      uvs.push(p.dot(bucket!.basis.u), p.dot(bucket!.basis.v));
+      colors.push(1, 1, 1);
+    });
+  });
+
+  // Face caps: the recess dish and the chiseled numeral both live here.
+  const baryTris = subdivideBary(6);
+  const faces: DieFace[] = [];
+  chamfered.insetFaces.forEach((capTri, idx) => {
+    const [a0, b0, c0] = capTri;
+    const n = new Vector3().subVectors(b0, a0).cross(new Vector3().subVectors(c0, a0)).normalize();
+    const centroid = a0.clone().add(b0).add(c0).divideScalar(3);
+    if (n.dot(centroid) < 0) n.negate();
+    const basis = faceBasis(n);
+    const value = idx + 1;
+    faces.push({ normal: n.clone(), center: centroid.clone(), value });
+
+    // The glyph's own frame, anchored to this triangle's own shape (not a generic world-up
+    // reference): the bottom of the number sits flush along one edge (rawFace[0]->rawFace[1])
+    // and the top points at the opposite corner — the standard way a real d20 is numbered.
+    // Confirmed against the reference art in the realism sandbox.
+    const rawFace = rawFaces[idx];
+    const edgeDir = rawFace[1].clone().sub(rawFace[0]).normalize();
+    const up = new Vector3().crossVectors(n, edgeDir).normalize();
+    const apexMid = rawFace[0].clone().add(rawFace[1]).multiplyScalar(0.5);
+    if (up.dot(rawFace[2].clone().sub(apexMid)) < 0) up.negate();
+    const textCentroid = rawFace[0].clone().add(rawFace[1]).add(rawFace[2]).divideScalar(3);
+    const dc = digitCanvasFor(value);
+
+    baryTris.forEach((triW) => {
+      triW.forEach((w) => {
+        const p = a0.clone().multiplyScalar(w[0]).add(b0.clone().multiplyScalar(w[1])).add(c0.clone().multiplyScalar(w[2]));
+        const u = p.dot(basis.u);
+        const v = p.dot(basis.v);
+        // The smallest barycentric weight is proportional to true distance from the NEAREST
+        // edge — zero along the whole rim, not just the 3 corners — so the dish's rim sits
+        // flush with the bevel strip all the way around instead of leaving a step.
+        const centerness = 3 * Math.min(w[0], w[1], w[2]);
+        let ring = 0;
+        if (opts.faceRecess > 0 && centerness < opts.recessPlateauSize) {
+          const r = centerness / opts.recessPlateauSize;
+          ring = Math.sin(Math.PI * r); // 0 at the rim, 0 again at the plateau boundary, peak between
+        }
+        if (opts.faceRecess > 0) p.addScaledVector(n, -opts.faceRecess * ring);
+
+        // Map this point into the glyph's local 0.4 x 0.4 square and read its alpha mask —
+        // ink where alpha > 0 — to cut the numeral straight into the (already recessed) cap.
+        const rel = p.clone().sub(textCentroid);
+        const lu = (rel.dot(edgeDir) / 0.2) * 0.5 + 0.5;
+        const lv = (rel.dot(up) / 0.2) * 0.5 + 0.5;
+        const glyphAlpha = glyphAlphaAt(dc, lu, lv);
+        if (glyphAlpha > 0) p.addScaledVector(n, -opts.engraveDepth * glyphAlpha);
+
+        positions.push(p.x, p.y, p.z);
+        uvs.push(u, v);
+        const shade = 1 - glyphAlpha * 0.96; // darken toward near-black exactly where the glyph's ink is
+        colors.push(shade, shade, shade);
+      });
+    });
+  });
+
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
+  geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
+  geometry.computeVertexNormals();
+  return { geometry, faces };
+}
+
 const cache = new Map<number, DieShape>();
 
 /** The shape of an N-sided die with its numbered faces (cached). */
@@ -212,6 +566,14 @@ export function dieShape(sides: number): DieShape {
   const n = (DRAWN_SIDES as readonly number[]).includes(sides) ? sides : drawnSides(sides);
   const hit = cache.get(n);
   if (hit) return hit;
+
+  if (n === 20) {
+    const { geometry, faces } = buildCarvedIcosahedron(D20_CARVE_SETTINGS);
+    const shape: DieShape = { sides: n, geometry, faces, labelSize: 0.5, carvedNumerals: true };
+    cache.set(n, shape);
+    return shape;
+  }
+
   const geometry = baseGeometry(n);
   assignPlanarUVs(geometry);
   const raw = facesOf(geometry);

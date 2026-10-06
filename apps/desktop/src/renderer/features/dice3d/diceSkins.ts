@@ -35,6 +35,12 @@ export interface DiceSkin {
   /** Edge line opacity (0-1) — kept a little short of fully solid so it reads as a soft
    * shaded crease rather than a hard graphic outline. */
   edgeOpacity: number;
+  /**
+   * How much to darken the body uniformly (0 = texture's own color, 1 = black), independent
+   * of the tint-with-accent-color blend above. Tuned live in the dice-realism sandbox so the
+   * stone reads a bit deeper/weathered instead of washed out under the scene lighting.
+   */
+  baseDarken: number;
 }
 
 export const DICE_SKINS: Record<string, DiceSkin> = {
@@ -48,6 +54,7 @@ export const DICE_SKINS: Record<string, DiceSkin> = {
     tintable: false,
     edgeColor: 0x1c1a10, // dark mossy-shadow groove, sampled from the texture's own cracks
     edgeOpacity: 0.85,
+    baseDarken: 0.36,
   },
 };
 

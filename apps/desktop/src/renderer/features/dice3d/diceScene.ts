@@ -146,7 +146,9 @@ export function showDice(
   // untouched white so the texture's own contrast isn't flattened toward one hue.
   const skin = DICE_SKINS[skinId] ?? DICE_SKINS[DEFAULT_DICE_SKIN];
   const tex = getSkinTextures(skin);
-  const tint = skin.tintable ? new Color(0xffffff).lerp(new Color(color), 0.18) : new Color(0xffffff);
+  const tint = (skin.tintable ? new Color(0xffffff).lerp(new Color(color), 0.18) : new Color(0xffffff)).multiplyScalar(
+    1 - skin.baseDarken,
+  );
   const body = new MeshStandardMaterial({
     color: tint,
     map: tex.albedo,
@@ -165,6 +167,18 @@ export function showDice(
     metalness: skin.metalness,
     flatShading: true,
   });
+  // The d20's carved geometry (diceShapes.ts) carries its own per-vertex darkening for the
+  // engraved numerals, which needs vertexColors on — kept as its own material rather than
+  // flipping that on for every die, since a plain geometry has no 'color' attribute to read.
+  const carvedBody = new MeshStandardMaterial({
+    color: tint,
+    map: tex.albedo,
+    normalMap: tex.normal,
+    roughnessMap: tex.roughnessMap,
+    roughness: 1,
+    metalness: skin.metalness,
+    vertexColors: true,
+  });
   // A thin seam line along every edge — otherwise the low-poly facets blend into one soft
   // rounded blob instead of reading as distinct cut faces.
   const edgeMaterial = new LineBasicMaterial({
@@ -176,25 +190,30 @@ export function showDice(
   const rows = Math.ceil(list.length / perRow);
   const dice3 = list.map((d, i) => {
     const shape = dieShape(d.draw);
-    const mesh = new Mesh(shape.geometry, d.variant === 'tens' ? tensBody : body);
-    for (const face of shape.faces) {
-      const label = new Mesh(
-        new PlaneGeometry(shape.labelSize, shape.labelSize),
-        new MeshBasicMaterial({ map: labelTexture(d.label(face.value), shape.sides), transparent: true, depthWrite: false }),
-      );
-      label.position.copy(face.center).addScaledVector(face.normal, 0.012);
-      // setFromUnitVectors only pins which way the label faces — it leaves the twist around
-      // that axis free, so every face would otherwise get its number at a different, arbitrary
-      // rotation. Building the full basis (the same one the tiling texture's own UV projection
-      // uses) pins "up" too, so numbers read upright and consistently across every face.
-      const { u, v } = faceBasis(face.normal);
-      label.quaternion.setFromRotationMatrix(new Matrix4().makeBasis(u, v, face.normal));
-      mesh.add(label);
+    const mesh = new Mesh(shape.geometry, shape.carvedNumerals ? carvedBody : d.variant === 'tens' ? tensBody : body);
+    // A carved shape (currently the d20) already has its numerals engraved into the geometry
+    // itself and a real rounded bevel baked in — a flat decal on top would double the number,
+    // and the crisp seam overlay would fight with the bevel it already reads as.
+    if (!shape.carvedNumerals) {
+      for (const face of shape.faces) {
+        const label = new Mesh(
+          new PlaneGeometry(shape.labelSize, shape.labelSize),
+          new MeshBasicMaterial({ map: labelTexture(d.label(face.value), shape.sides), transparent: true, depthWrite: false }),
+        );
+        label.position.copy(face.center).addScaledVector(face.normal, 0.012);
+        // setFromUnitVectors only pins which way the label faces — it leaves the twist around
+        // that axis free, so every face would otherwise get its number at a different, arbitrary
+        // rotation. Building the full basis (the same one the tiling texture's own UV projection
+        // uses) pins "up" too, so numbers read upright and consistently across every face.
+        const { u, v } = faceBasis(face.normal);
+        label.quaternion.setFromRotationMatrix(new Matrix4().makeBasis(u, v, face.normal));
+        mesh.add(label);
+      }
+      // Scaled up a hair so the line sits just outside the surface (no z-fighting flicker).
+      const edgeLines = new LineSegments(new EdgesGeometry(shape.geometry), edgeMaterial);
+      edgeLines.scale.setScalar(1.015);
+      mesh.add(edgeLines);
     }
-    // Scaled up a hair so the line sits just outside the surface (no z-fighting flicker).
-    const edgeLines = new LineSegments(new EdgesGeometry(shape.geometry), edgeMaterial);
-    edgeLines.scale.setScalar(1.015);
-    mesh.add(edgeLines);
     const row = Math.floor(i / perRow);
     const inRow = Math.min(perRow, list.length - row * perRow);
     const col = i % perRow;
@@ -240,6 +259,7 @@ export function showDice(
             renderer.dispose();
             body.dispose();
             tensBody.dispose();
+            carvedBody.dispose();
             edgeMaterial.dispose();
             for (const d of dice3) d.mesh.children.forEach((c) => ((c as Mesh).geometry as PlaneGeometry).dispose());
             canvas.remove();
