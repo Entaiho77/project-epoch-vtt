@@ -39,7 +39,9 @@ export interface DieToShow {
 
 const MAX_DICE = 10;
 const ROLL_MS = 1300;
-const HOLD_MS = 1100;
+// TEMP: stretched way out so Matthew can screenshot the d20's carved bevel before it fades —
+// revert to 1100 once we're done diagnosing the "looks like clay" texture report.
+const HOLD_MS = 15000;
 const FADE_MS = 400;
 
 const labelCache = new Map<string, CanvasTexture>();
