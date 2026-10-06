@@ -719,6 +719,35 @@ function edgeDistance(p: Vector3, a: Vector3, b: Vector3): number {
   return p.clone().sub(a).cross(d).length();
 }
 
+/**
+ * A square, regular pentagon, or equilateral triangle has full edge symmetry — every edge is
+ * geometrically equivalent to every other, so picking "the face's first boundary edge" (whichever
+ * one `orderBoundary` happened to start tracing from) as the numeral's text axis always gives the
+ * same-looking result no matter which edge that turns out to be. The d10's kite faces are NOT
+ * edge-symmetric: a kite has only one line of symmetry, through its two "point" corners (where a
+ * short and a long edge meet on each side), and its four edges come in two genuinely different
+ * lengths. Starting the text axis from an arbitrary edge of a kite sometimes lands on a short edge
+ * and sometimes a long one, so the engraved numeral comes out at a different size/rotation
+ * relative to the face's own true axis from one face to the next — the "wrong orientation on the
+ * d10 (and d100, which is two d10s)" symptom (2026-10-06 playtest). This finds the kite's real
+ * symmetry diagonal (through its two equal-adjacent-edge corners) so every face can use the same,
+ * intrinsic axis instead of an arbitrary one. Returns null for a square (or any quad where both
+ * diagonals qualify) so callers fall back to the existing edge-based method, which is already
+ * correct there.
+ */
+function quadSymmetryAxis(corners: Vector3[]): { tip: Vector3; base: Vector3 } | null {
+  if (corners.length !== 4) return null;
+  const e = [0, 1, 2, 3].map((k) => corners[(k + 1) % 4].clone().sub(corners[k]).length());
+  const close = (x: number, y: number) => Math.abs(x - y) < 1e-3 * Math.max(x, y, 1e-6);
+  // corners[0] meets edges e[3] (incoming) and e[0] (outgoing); corners[2] meets e[1] and e[2].
+  const pair02 = close(e[3], e[0]) && close(e[1], e[2]) && !close(e[0], e[1]);
+  // corners[1] meets e[0] and e[1]; corners[3] meets e[2] and e[3].
+  const pair13 = close(e[0], e[1]) && close(e[2], e[3]) && !close(e[1], e[2]);
+  if (pair02) return e[0] < e[1] ? { tip: corners[0], base: corners[2] } : { tip: corners[2], base: corners[0] };
+  if (pair13) return e[1] < e[0] ? { tip: corners[1], base: corners[3] } : { tip: corners[3], base: corners[1] };
+  return null;
+}
+
 /** Generalizes the d20's "3 * min(barycentric weight)" trick — distance from the nearest edge,
  * 0 on the rim and 1 at the face's own center — to an N-gon via real geometric edge distance,
  * normalized by the face's inradius (its centroid's own distance to its nearest edge). Works
@@ -909,13 +938,23 @@ function buildCarvedPolyhedron(
 
     // Text frame generalizing the d20's own-edge convention: flush along the face's first edge,
     // "up" pointing from that edge toward the face's own center (for a triangle this is
-    // exactly "toward the opposite corner"; for a square/kite/pentagon it's the same idea).
+    // exactly "toward the opposite corner"; for a square/pentagon it's the same idea). The d10's
+    // kite faces aren't edge-symmetric, so they use their own intrinsic symmetry axis instead —
+    // see quadSymmetryAxis.
     const rawCorners = polyFaces[idx].corners;
-    const edgeDir = rawCorners[1].clone().sub(rawCorners[0]).normalize();
-    const up = new Vector3().crossVectors(n, edgeDir).normalize();
-    const edgeMid = rawCorners[0].clone().add(rawCorners[1]).multiplyScalar(0.5);
     const rawCentroid = rawCorners.reduce((s, p) => s.add(p), new Vector3()).divideScalar(rawCorners.length);
-    if (up.dot(rawCentroid.clone().sub(edgeMid)) < 0) up.negate();
+    const kiteAxis = quadSymmetryAxis(rawCorners);
+    let edgeDir: Vector3;
+    let up: Vector3;
+    if (kiteAxis) {
+      up = kiteAxis.tip.clone().sub(kiteAxis.base).normalize();
+      edgeDir = new Vector3().crossVectors(up, n).normalize();
+    } else {
+      edgeDir = rawCorners[1].clone().sub(rawCorners[0]).normalize();
+      up = new Vector3().crossVectors(n, edgeDir).normalize();
+      const edgeMid = rawCorners[0].clone().add(rawCorners[1]).multiplyScalar(0.5);
+      if (up.dot(rawCentroid.clone().sub(edgeMid)) < 0) up.negate();
+    }
     const dc = digitCanvasFor(value);
 
     const m = capCorners.length;
