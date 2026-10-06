@@ -164,9 +164,13 @@ export function showDice(
     metalness: skin.metalness,
     flatShading: true,
   });
-  // A thin highlighted line along every edge — otherwise the low-poly facets blend into
-  // one soft rounded blob instead of reading as a cut gem with distinct flat faces.
-  const edgeMaterial = new LineBasicMaterial({ color: skin.edgeColor });
+  // A thin seam line along every edge — otherwise the low-poly facets blend into one soft
+  // rounded blob instead of reading as distinct cut faces.
+  const edgeMaterial = new LineBasicMaterial({
+    color: skin.edgeColor,
+    transparent: true,
+    opacity: skin.edgeOpacity,
+  });
   const perRow = 5;
   const rows = Math.ceil(list.length / perRow);
   const dice3 = list.map((d, i) => {

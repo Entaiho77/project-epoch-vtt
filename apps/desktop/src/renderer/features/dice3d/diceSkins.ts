@@ -26,11 +26,15 @@ export interface DiceSkin {
    */
   tintable: boolean;
   /**
-   * Color of the thin highlighted line traced along every edge of the die, the way a real
-   * cut-gem die has a visible seam between faces. Without this the low-poly facets blend
-   * into one soft rounded blob instead of reading as flat cut faces.
+   * Color of the thin seam line traced along every edge of the die, the way real cut
+   * facets have a visible crease between faces. For stone this should be a carved GROOVE
+   * (dark shadow, maybe mossy) the way the reference art shows — not a bright polished
+   * trim, which reads as a jeweled/metal die instead of ancient weathered stone.
    */
   edgeColor: number;
+  /** Edge line opacity (0-1) — kept a little short of fully solid so it reads as a soft
+   * shaded crease rather than a hard graphic outline. */
+  edgeOpacity: number;
 }
 
 export const DICE_SKINS: Record<string, DiceSkin> = {
@@ -42,7 +46,8 @@ export const DICE_SKINS: Record<string, DiceSkin> = {
     metalness: 0.03,
     repeat: 1,
     tintable: false,
-    edgeColor: 0xd8d2bf, // worn pale limestone trim
+    edgeColor: 0x1c1a10, // dark mossy-shadow groove, sampled from the texture's own cracks
+    edgeOpacity: 0.85,
   },
 };
 
