@@ -27,6 +27,7 @@ export function TokenContextMenu({
   conditions,
   initiative,
   onGiveLoot,
+  onLootCorpse,
   onClose,
 }: {
   token: Token;
@@ -47,6 +48,10 @@ export function TokenContextMenu({
   initiative?: { inOrder: boolean; onAdd: () => void; onRemove: () => void };
   /** GM, on a player's token: open "Give loot" for that character. */
   onGiveLoot?: () => void;
+  /** Any player, on a defeated creature once combat has ended: open "Loot corpse" (Investigation
+   * check, 5e only). 2026-10-06 playtest: "players right-click a corpse and make an Investigation
+   * roll to loot it, rather than only the GM's Give loot." */
+  onLootCorpse?: () => void;
   onClose: () => void;
 }) {
   const [showConditions, setShowConditions] = useState(false);
@@ -207,6 +212,19 @@ export function TokenContextMenu({
             }}
           >
             Give loot…
+          </button>
+        )}
+
+        {onLootCorpse && (
+          <button
+            className={styles.item}
+            role="menuitem"
+            onClick={() => {
+              onLootCorpse();
+              onClose();
+            }}
+          >
+            Loot corpse (Investigation)…
           </button>
         )}
 

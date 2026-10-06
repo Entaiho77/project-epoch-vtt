@@ -23,6 +23,7 @@ import { isPartyScale } from './partyMode';
 import { useGridPrefs } from './gridPrefs';
 import { GridDrawer } from './drawers/GridDrawer';
 import { GiveLootModal } from './drawers/GiveLootModal';
+import { LootCorpseModal } from './drawers/LootCorpseModal';
 import { BoardShell, type BarItem } from './BoardShell';
 import { BoardCanvas, type BoardTool, type ShapeDraft } from './BoardCanvas';
 import { TokenCard } from './TokenCard';
@@ -54,7 +55,7 @@ import { BoardToasts, useArrivals, useToasts, type Toast } from './BoardToasts';
 import { rollsToShow, summarizeRoll, unreadMessages } from './toastSummaries';
 import { canSeeMonsterStats } from '../../permissions';
 import { isClassAndLevel } from '@epoch/systems/registry';
-import { pcTokenStats } from '@epoch/systems/dnd5e/character';
+import { pcDerived, pcTokenStats } from '@epoch/systems/dnd5e/character';
 import styles from './BoardScreen.module.css';
 
 // Slate icon tiles — the image is the full button face, no separate label.
@@ -152,6 +153,8 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
   const gameCharacters = useGameCharacters(role === 'gm' ? gameId : null);
   // GM "Give loot" (open or secret); null = closed, '' = no player picked yet.
   const [giveLootFor, setGiveLootFor] = useState<string | null>(null);
+  // Player "Loot corpse" (playtest #6): the defeated creature token being searched; null = closed.
+  const [lootCorpseFor, setLootCorpseFor] = useState<string | null>(null);
   // GM right-click token menu (board cleanup): the token + cursor position, null when closed.
   const [ctxMenu, setCtxMenu] = useState<{ token: Token; x: number; y: number } | null>(null);
   const [measuring, setMeasuring] = useState(false);
@@ -342,15 +345,20 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
     setSelectedId(null);
     setOpenLeft((o) => (o === MONSTER_PANEL ? null : o));
   }
-  // The homebrew loot the selected spawned monster carries, resolved from the game's equipment
-  // library (drives the GM "Distribute Loot" button on the stat card).
-  const selectedLoot = useMemo(() => {
-    const hb = selected?.creatureId ? library?.monsters?.[selected.creatureId] : undefined;
+  // The homebrew loot a spawned monster carries, resolved from the game's equipment library.
+  // Shared by the GM's "Distribute Loot" panel (the selected monster) and a player's "Loot
+  // corpse" check (whichever creature they right-clicked) — same lookup, any creature id.
+  const lootFor = (creatureId: string | undefined) => {
+    const hb = creatureId ? library?.monsters?.[creatureId] : undefined;
     const eq = library?.equipment ?? {};
     return Object.keys(hb?.loot ?? {})
       .map((id) => eq[id])
       .filter((x): x is NonNullable<typeof x> => !!x);
-  }, [selected?.creatureId, library?.monsters, library?.equipment]);
+  };
+  const selectedLoot = useMemo(
+    () => lootFor(selected?.creatureId),
+    [selected?.creatureId, library?.monsters, library?.equipment],
+  );
   const monsterPanel =
     showMonsterPanel && selected
       ? {
@@ -737,9 +745,37 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
                 ? () => setGiveLootFor(ctxMenu.token.characterId!)
                 : undefined
             }
+            onLootCorpse={
+              role !== 'gm' &&
+              is5e &&
+              character &&
+              ctxMenu.token.kind === 'creature' &&
+              isDefeated(ctxMenu.token) &&
+              !combatActive
+                ? () => setLootCorpseFor(ctxMenu.token.id)
+                : undefined
+            }
             onClose={() => setCtxMenu(null)}
           />
         )}
+
+        {lootCorpseFor !== null && character && (() => {
+          const corpse = tokens.find((t) => t.id === lootCorpseFor);
+          if (!corpse) return null;
+          const investigationMod = pcDerived(system, character).allSkills.find((s) => s.id === 'investigation')?.mod ?? 0;
+          return (
+            <LootCorpseModal
+              gameId={gameId}
+              token={corpse}
+              characterId={character.id}
+              characterName={character.name}
+              investigationMod={investigationMod}
+              lootItems={lootFor(corpse.creatureId)}
+              postRoll={postRollText}
+              onClose={() => setLootCorpseFor(null)}
+            />
+          );
+        })()}
 
         {giveLootFor !== null && role === 'gm' && (
           <GiveLootModal
