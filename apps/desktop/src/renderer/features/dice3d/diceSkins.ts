@@ -25,6 +25,12 @@ export interface DiceSkin {
    * washes the whole thing toward one hue and flattens the contrast the texture provides.
    */
   tintable: boolean;
+  /**
+   * Color of the thin highlighted line traced along every edge of the die, the way a real
+   * cut-gem die has a visible seam between faces. Without this the low-poly facets blend
+   * into one soft rounded blob instead of reading as flat cut faces.
+   */
+  edgeColor: number;
 }
 
 export const DICE_SKINS: Record<string, DiceSkin> = {
@@ -36,6 +42,7 @@ export const DICE_SKINS: Record<string, DiceSkin> = {
     metalness: 0.03,
     repeat: 1,
     tintable: false,
+    edgeColor: 0xd8d2bf, // worn pale limestone trim
   },
 };
 

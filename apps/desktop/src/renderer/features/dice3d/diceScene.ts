@@ -2,7 +2,10 @@ import {
   CanvasTexture,
   Color,
   DirectionalLight,
+  EdgesGeometry,
   HemisphereLight,
+  LineBasicMaterial,
+  LineSegments,
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
@@ -161,6 +164,9 @@ export function showDice(
     metalness: skin.metalness,
     flatShading: true,
   });
+  // A thin highlighted line along every edge — otherwise the low-poly facets blend into
+  // one soft rounded blob instead of reading as a cut gem with distinct flat faces.
+  const edgeMaterial = new LineBasicMaterial({ color: skin.edgeColor });
   const perRow = 5;
   const rows = Math.ceil(list.length / perRow);
   const dice3 = list.map((d, i) => {
@@ -175,6 +181,10 @@ export function showDice(
       label.quaternion.setFromUnitVectors(new Vector3(0, 0, 1), face.normal);
       mesh.add(label);
     }
+    // Scaled up a hair so the line sits just outside the surface (no z-fighting flicker).
+    const edgeLines = new LineSegments(new EdgesGeometry(shape.geometry), edgeMaterial);
+    edgeLines.scale.setScalar(1.015);
+    mesh.add(edgeLines);
     const row = Math.floor(i / perRow);
     const inRow = Math.min(perRow, list.length - row * perRow);
     const col = i % perRow;
@@ -220,6 +230,7 @@ export function showDice(
             renderer.dispose();
             body.dispose();
             tensBody.dispose();
+            edgeMaterial.dispose();
             for (const d of dice3) d.mesh.children.forEach((c) => ((c as Mesh).geometry as PlaneGeometry).dispose());
             canvas.remove();
           }, FADE_MS + 50);
