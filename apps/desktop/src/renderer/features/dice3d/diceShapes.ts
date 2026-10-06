@@ -352,12 +352,14 @@ interface DigitCanvas {
 
 /**
  * Half-width (world units) of the square the glyph canvas is mapped onto when engraving a
- * numeral into a cap. Smaller = the same glyph artwork covers less of the face = reads bigger
- * on the die. 0.1 makes numbers read about 2x the size they did at the original 0.2 (Matthew's
- * call, 2026-10-06) — if a number starts bleeding past its face's flat plateau into the
- * recessed ring, that plateau (recessPlateauSize) is the dial to widen, not this one.
+ * numeral into a cap. BIGGER = the glyph's fixed canvas footprint is stretched across more of
+ * the face = reads bigger on the die (easy to get backwards — the canvas's own ink doesn't
+ * change, only how much face area that ink gets spread over). 0.4 makes numbers read about 2x
+ * the size they did at the original 0.2 (Matthew's call, 2026-10-06) — if a number starts
+ * bleeding past its face's flat plateau into the recessed ring, widen recessPlateauSize to give
+ * it more flat room, rather than shrinking this back down.
  */
-const GLYPH_HALF_WIDTH = 0.1;
+const GLYPH_HALF_WIDTH = 0.4;
 
 const digitCanvasCache = new Map<number, DigitCanvas>();
 
