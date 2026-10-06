@@ -358,8 +358,26 @@ interface DigitCanvas {
  * the size they did at the original 0.2 (Matthew's call, 2026-10-06) — if a number starts
  * bleeding past its face's flat plateau into the recessed ring, widen recessPlateauSize to give
  * it more flat room, rather than shrinking this back down.
+ *
+ * This is an ABSOLUTE world-unit size, so it only reads as "the same size" across dice whose
+ * faces are themselves close to the same physical size. The d20's 20 triangular faces are much
+ * smaller than, say, the d4/d8's triangular faces (same base circumradius, way more faces to
+ * fit), so the same absolute half-width covered a much bigger fraction of the d20's tiny face —
+ * numbers read "massively bigger" there specifically (2026-10-06 playtest). Fixed by scaling the
+ * d20's own half-width by its face's actual inradius via GLYPH_WIDTH_FRACTION below, instead of
+ * using this absolute constant directly, for that one shape. The generalized polyhedron path
+ * (d4/d6/d8/d10/d12) keeps using this constant as-is — those all read correctly sized already.
  */
 const GLYPH_HALF_WIDTH = 0.4;
+
+/**
+ * Used only by the d20 (buildCarvedIcosahedron) to turn its face's own inradius into a glyph
+ * half-width that's proportional to that face's actual size, rather than a flat world-unit
+ * constant — see GLYPH_HALF_WIDTH's comment for why the d20 needs this and the others don't.
+ * Chosen to land the d20's numeral size in the same range the other carved dice already read at
+ * (their effective fraction, GLYPH_HALF_WIDTH / their own face inradius, spans roughly 0.64–0.93).
+ */
+const GLYPH_WIDTH_FRACTION = 0.8;
 
 const digitCanvasCache = new Map<number, DigitCanvas>();
 
@@ -556,6 +574,15 @@ function buildCarvedIcosahedron(opts: CarvedIcosahedronOptions): { geometry: Buf
     if (up.dot(rawFace[2].clone().sub(apexMid)) < 0) up.negate();
     const textCentroid = rawFace[0].clone().add(rawFace[1]).add(rawFace[2]).divideScalar(3);
     const dc = digitCanvasFor(value);
+    // This face's own "radius" (centroid to nearest edge) — the d20's faces are much smaller
+    // than the other carved dice's, so the glyph window has to shrink to match (see
+    // GLYPH_WIDTH_FRACTION's comment).
+    const textInradius = Math.min(
+      edgeDistance(textCentroid, rawFace[0], rawFace[1]),
+      edgeDistance(textCentroid, rawFace[1], rawFace[2]),
+      edgeDistance(textCentroid, rawFace[2], rawFace[0]),
+    );
+    const glyphHalfWidth = GLYPH_WIDTH_FRACTION * textInradius;
 
     baryTris.forEach((triW) => {
       triW.forEach((w) => {
@@ -580,8 +607,8 @@ function buildCarvedIcosahedron(opts: CarvedIcosahedronOptions): { geometry: Buf
         // Map this point into the glyph's local square and read its alpha mask — ink where
         // alpha > 0 — to cut the numeral straight into the (already recessed) cap.
         const rel = p.clone().sub(textCentroid);
-        const lu = (rel.dot(edgeDir) / GLYPH_HALF_WIDTH) * 0.5 + 0.5;
-        const lv = (rel.dot(up) / GLYPH_HALF_WIDTH) * 0.5 + 0.5;
+        const lu = (rel.dot(edgeDir) / glyphHalfWidth) * 0.5 + 0.5;
+        const lv = (rel.dot(up) / glyphHalfWidth) * 0.5 + 0.5;
         const glyphAlpha = glyphAlphaAt(dc, lu, lv);
         if (glyphAlpha > 0) p.addScaledVector(n, -opts.engraveDepth * glyphAlpha);
 
