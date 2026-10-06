@@ -19,6 +19,12 @@ export interface DiceSkin {
   metalness: number;
   /** Texture repeats per face, tuned per skin so the grain reads at the right scale. */
   repeat: number;
+  /**
+   * Whether the die body blends in the caller's accent color on top of the texture. A
+   * realistic material skin (stone, metal) should show its own true colors — tinting it
+   * washes the whole thing toward one hue and flattens the contrast the texture provides.
+   */
+  tintable: boolean;
 }
 
 export const DICE_SKINS: Record<string, DiceSkin> = {
@@ -29,6 +35,7 @@ export const DICE_SKINS: Record<string, DiceSkin> = {
     roughness: stoneMossRoughness,
     metalness: 0.03,
     repeat: 1,
+    tintable: false,
   },
 };
 

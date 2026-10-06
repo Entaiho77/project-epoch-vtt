@@ -137,11 +137,12 @@ export function showDice(
   const halfW = halfH * (w / h);
 
   // The skin's roughness map carries the real roughness detail (moss duller, bare stone
-  // smoother); `color` stays a soft accent tint rather than a full party-color wash, so the
-  // stone-and-moss look from the reference art survives instead of being dyed solid teal.
+  // smoother). A tintable skin gets a soft accent wash instead of full party-color dye; a
+  // non-tintable one (stone, metal — anything meant to show its own true colors) stays
+  // untouched white so the texture's own contrast isn't flattened toward one hue.
   const skin = DICE_SKINS[skinId] ?? DICE_SKINS[DEFAULT_DICE_SKIN];
   const tex = getSkinTextures(skin);
-  const tint = new Color(0xffffff).lerp(new Color(color), 0.18);
+  const tint = skin.tintable ? new Color(0xffffff).lerp(new Color(color), 0.18) : new Color(0xffffff);
   const body = new MeshStandardMaterial({
     color: tint,
     map: tex.albedo,
