@@ -54,7 +54,7 @@ export const DICE_SKINS: Record<string, DiceSkin> = {
     tintable: false,
     edgeColor: 0x1c1a10, // dark mossy-shadow groove, sampled from the texture's own cracks
     edgeOpacity: 0.85,
-    baseDarken: 0.36,
+    baseDarken: 0.26,
   },
 };
 
