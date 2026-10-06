@@ -883,10 +883,16 @@ function buildCarvedPolyhedron(
   });
 
   // Face caps, fan-triangulated from each face's own centroid into N triangles (one per edge)
-  // so a square/kite/pentagon cap can be subdivided the same way a triangle's is. A lower
-  // subdivision level than the d20's (4 vs 6) keeps build time reasonable now that most faces
-  // fan out into several sub-triangles instead of just one.
-  const fanBary = subdivideBary(4);
+  // so a square/kite/pentagon cap can be subdivided the same way a triangle's is. Originally
+  // kept one level coarser than the d20's (4 vs 6) to save build time, since most faces fan out
+  // into several sub-triangles instead of just one — but the carved numeral's edge is only ever
+  // as crisp as the vertex grid it's sampled onto (each vertex gets one glyph-alpha sample, then
+  // the GPU linearly interpolates color across the triangle between them), and these dice's
+  // faces are themselves bigger in world units than the d20's 20-way-split ones. At level 4 that
+  // grid was coarse enough, relative to face size, to blur the numeral into a soft smear instead
+  // of a readable digit (2026-10-06 playtest: "fuzzy, not distinct"). Level 6 matches the d20's
+  // own sample density and reads crisp again.
+  const fanBary = subdivideBary(6);
   const faces: DieFace[] = [];
   chamfered.insetFaces.forEach((capCorners, idx) => {
     const n = polyFaces[idx].normal;
