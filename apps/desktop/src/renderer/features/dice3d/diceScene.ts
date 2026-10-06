@@ -2,6 +2,7 @@ import {
   CanvasTexture,
   Color,
   DirectionalLight,
+  DoubleSide,
   EdgesGeometry,
   HemisphereLight,
   LineBasicMaterial,
@@ -178,6 +179,12 @@ export function showDice(
     roughness: 1,
     metalness: skin.metalness,
     vertexColors: true,
+    // The bevel/vertex-cap strips are built edge-by-edge rather than carried over from a single
+    // consistently-wound base mesh, so a few of them end up wound the "wrong" way relative to
+    // the default front-face convention. With only FrontSide drawn, those read as invisible
+    // holes (you see the background through the die) instead of the stone surface. Matches the
+    // sandbox's material, which uses DoubleSide for the same reason.
+    side: DoubleSide,
   });
   // A thin seam line along every edge — otherwise the low-poly facets blend into one soft
   // rounded blob instead of reading as distinct cut faces.
