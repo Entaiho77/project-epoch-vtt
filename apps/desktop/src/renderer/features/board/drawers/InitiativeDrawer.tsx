@@ -169,7 +169,19 @@ export function InitiativeDrawer({
                   <span className={s.itemMeta}>{c.initiative}</span>
                 </div>
               )}
-              <button type="button" className={s.place} onClick={() => void leaveCombat(gameId, c.id)} title="Take out of the initiative order">
+              <button
+                type="button"
+                className={s.place}
+                onClick={() => {
+                  void leaveCombat(gameId, c.id);
+                  // A monster's token and its fight are meant to stay in sync — taking it out of
+                  // the tracker here removes the token too. A player combatant keeps their token
+                  // (it's their character, not a disposable monster) when just taken out of the
+                  // order. 2026-10-06 playtest.
+                  if (c.kind === 'creature' && c.tokenId) void removeToken(gameId, c.tokenId);
+                }}
+                title={c.kind === 'creature' ? 'Remove from the fight and the board' : 'Take out of the initiative order'}
+              >
                 Remove
               </button>
             </div>

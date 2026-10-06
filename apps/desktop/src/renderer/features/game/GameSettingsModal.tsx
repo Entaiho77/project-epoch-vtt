@@ -11,6 +11,7 @@ import {
   updateGameName,
 } from '../../data/games';
 import { setLevelUpPending, setXp, useGameCharacters } from '../../data/characters';
+import { removeCombatantsByOwner } from '../../data/combat';
 import { monsterXp } from '@epoch/systems/dnd5e/xp';
 import { Modal } from '../../components/ui/Modal';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
@@ -140,6 +141,7 @@ export function GameSettingsModal({
     try {
       if (session.players.some((p) => p.playerId === uid)) await kickPlayer(uid);
       await removeMember(game.id, uid);
+      if (game.initiative?.active) await removeCombatantsByOwner(game.id, game.initiative, uid);
       const code = await regenerateInviteCode(game.id, game.inviteCode);
       await changeRoomCode(game.id, code);
     } finally {

@@ -6,7 +6,8 @@ import type { Token } from '@epoch/shared-types';
 import type { CampaignRules, HomebrewEquipment } from '../../../data/homebrew';
 import { attackAdvantage, autoCritAgainst, combineAdvantage, computeModifier, describeRoll, effectsFor, getCombatResolver, resolveCheck, rollDice } from '@epoch/engine';
 import { resolveSolrynAttack } from '@epoch/systems/solryn/combat';
-import { removeToken, updateToken, setTokenHp, setDefeated } from '../../../data/board';
+import { updateToken, setTokenHp, setDefeated } from '../../../data/board';
+import { removeTokenAndCombatant } from '../../../data/combat';
 import { setCreatureArt, useCreatureArt } from '../../../data/creatures';
 import { Button } from '../../../components/ui/Button';
 import { TokenArtUpload } from '../../../components/ui/TokenArtUpload';
@@ -418,7 +419,7 @@ export function MonsterStatCard({
             variant="danger"
             size="sm"
             onClick={() => {
-              void removeToken(gameId, token.id);
+              void removeTokenAndCombatant(gameId, token.id);
               onClose?.();
             }}
           >

@@ -3,7 +3,8 @@ import { useRollLog } from '../rolllog/rollLog';
 import { isClassAndLevel } from '@epoch/systems/registry';
 import type { SystemDefinition } from '@epoch/shared-types';
 import type { Character, Role, Token } from '@epoch/shared-types';
-import { removeToken, updateToken, setTokenHp, setDefeated } from '../../data/board';
+import { updateToken, setTokenHp, setDefeated } from '../../data/board';
+import { removeTokenAndCombatant } from '../../data/combat';
 import { canSeeMonsterStats, tokenVisibility } from '../../permissions';
 import { ResourceTracker } from '../sheet/ResourceTracker';
 import { Button } from '../../components/ui/Button';
@@ -90,7 +91,7 @@ export function TokenCard({
               variant="danger"
               size="sm"
               onClick={() => {
-                void removeToken(gameId, token.id);
+                void removeTokenAndCombatant(gameId, token.id);
                 onClose();
               }}
             >
@@ -137,7 +138,7 @@ export function TokenCard({
             variant="danger"
             size="sm"
             onClick={() => {
-              void removeToken(gameId, token.id);
+              void removeTokenAndCombatant(gameId, token.id);
               onClose();
             }}
           >

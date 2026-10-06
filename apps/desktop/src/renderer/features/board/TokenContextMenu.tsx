@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { TokenCondition } from '@epoch/shared-types';
 import type { Token } from '@epoch/shared-types';
-import { removeToken, setExclusiveCondition, setTokenCondition, updateToken } from '../../data/board';
+import { setExclusiveCondition, setTokenCondition, updateToken } from '../../data/board';
+import { removeTokenAndCombatant } from '../../data/combat';
 import styles from './TokenContextMenu.module.css';
 import { isDefeated } from '../../data/damage';
 
@@ -80,7 +81,7 @@ export function TokenContextMenu({
     onClose();
   };
   const remove = () => {
-    void removeToken(gameId, token.id);
+    void removeTokenAndCombatant(gameId, token.id);
     onClose();
   };
   // GM visibility toggle: hidden tokens are dimmed for the GM and not rendered for players.

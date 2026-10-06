@@ -1,6 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Combatant, InitiativeState } from '@epoch/shared-types';
-import { beginCombat, creatureInitiativeMod, joinCombat, leaveCombat, setTurn, sortOrder, startCombat, withCombatant } from '../combat';
+import {
+  beginCombat,
+  creatureInitiativeMod,
+  joinCombat,
+  leaveCombat,
+  removeCombatantsByOwner,
+  removeTokenAndCombatant,
+  setTurn,
+  sortOrder,
+  startCombat,
+  withCombatant,
+} from '../combat';
 
 // setTurn writes through realtime; mock it so we can assert the guard logic without Firebase.
 const { writeValueMock, readValueMock } = vi.hoisted(() => ({
@@ -8,6 +19,11 @@ const { writeValueMock, readValueMock } = vi.hoisted(() => ({
   readValueMock: vi.fn((_p: string): Promise<unknown> => Promise.resolve(null)),
 }));
 vi.mock('../realtime', () => ({ writeValue: writeValueMock, readValue: readValueMock }));
+
+// removeTokenAndCombatant also deletes the token itself; mock board.ts's removeToken so this
+// stays a pure unit test (no Firebase/Tauri asset-store dependency).
+const { removeTokenMock } = vi.hoisted(() => ({ removeTokenMock: vi.fn((_g: string, _id: string) => Promise.resolve()) }));
+vi.mock('../board', () => ({ removeToken: removeTokenMock }));
 
 const c = (
   id: string,
@@ -68,6 +84,7 @@ describe('rolling phase, joining and leaving', () => {
   beforeEach(() => {
     writeValueMock.mockClear();
     readValueMock.mockReset();
+    removeTokenMock.mockClear();
   });
 
   it('combat opens in a rolling phase, even with no monsters', () => {
@@ -127,5 +144,55 @@ describe('rolling phase, joining and leaving', () => {
     expect(creatureInitiativeMod({ dex: 9 })).toBe(-1);
     expect(creatureInitiativeMod({})).toBe(0);
     expect(creatureInitiativeMod(undefined)).toBe(0);
+  });
+
+  it('removeTokenAndCombatant deletes the token and drops its combatant row from initiative', async () => {
+    readValueMock.mockResolvedValueOnce({
+      active: true, phase: 'running', round: 1, turnIndex: 1,
+      order: [
+        { ...c('a', 'character', 20), tokenId: 'tok-a' },
+        { ...c('b', 'creature', 15), tokenId: 'tok-b' },
+        { ...c('hero', 'character', 10), tokenId: 'tok-hero' },
+      ],
+    });
+    await removeTokenAndCombatant('g', 'tok-b');
+    expect(removeTokenMock).toHaveBeenCalledWith('g', 'tok-b');
+    const written = writeValueMock.mock.calls[0][1] as InitiativeState;
+    expect(written.order.map((o) => o.id)).toEqual(['a', 'hero']);
+  });
+
+  it("removeTokenAndCombatant still deletes the token when there's no active combat", async () => {
+    readValueMock.mockResolvedValueOnce(null);
+    await removeTokenAndCombatant('g', 'tok-b');
+    expect(removeTokenMock).toHaveBeenCalledWith('g', 'tok-b');
+    expect(writeValueMock).not.toHaveBeenCalled();
+  });
+
+  it('removeCombatantsByOwner drops every combatant owned by that player, keeping the current turn', () => {
+    const state: InitiativeState = {
+      active: true, phase: 'running', round: 1, turnIndex: 2,
+      order: [
+        { ...c('a', 'character', 20), ownerUserId: 'uid-1' },
+        { ...c('b', 'creature', 15) },
+        { ...c('hero', 'character', 10), ownerUserId: 'uid-2' },
+      ],
+    };
+    void removeCombatantsByOwner('g', state, 'uid-1');
+    const written = writeValueMock.mock.calls[0][1] as InitiativeState;
+    expect(written.order.map((o) => o.id)).toEqual(['b', 'hero']);
+    expect(written.order[written.turnIndex].id).toBe('hero'); // same combatant stayed current
+  });
+
+  it('removeCombatantsByOwner ends combat when it empties the order, and no-ops when the owner has no combatant', () => {
+    const solo: InitiativeState = {
+      active: true, phase: 'running', round: 1, turnIndex: 0,
+      order: [{ ...c('a', 'creature', 10), ownerUserId: 'uid-1' }],
+    };
+    void removeCombatantsByOwner('g', solo, 'uid-1');
+    expect(writeValueMock.mock.calls[0][1]).toBeNull();
+
+    writeValueMock.mockClear();
+    void removeCombatantsByOwner('g', solo, 'nobody-here');
+    expect(writeValueMock).not.toHaveBeenCalled();
   });
 });

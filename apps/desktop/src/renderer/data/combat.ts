@@ -1,6 +1,7 @@
 import type { Combatant, InitiativeState, Token } from '@epoch/shared-types';
 import { rollDice } from '@epoch/engine';
 import { readValue, writeValue } from './realtime';
+import { removeToken } from './board';
 
 /** Initiative tracker state lives at game.initiative (§4.13). */
 
@@ -180,6 +181,41 @@ export function removeCombatantsByToken(
   const removedBefore = state.order
     .slice(0, state.turnIndex)
     .filter((c) => c.tokenId && tokenIds.has(c.tokenId)).length;
+  let turnIndex = state.turnIndex - removedBefore;
+  if (turnIndex >= order.length) turnIndex = 0;
+  if (turnIndex < 0) turnIndex = 0;
+  return writeValue(`games/${gameId}/initiative`, { ...state, order, turnIndex });
+}
+
+/**
+ * Single entry point for "delete this token," used by every remove button on the board
+ * (token right-click menu, the tapped-token card, the GM monster stat card) — it also drops
+ * the matching combatant row from initiative in the same call, so none of those callers need
+ * their own copy of that bookkeeping or even have the initiative state in scope. Mirrors
+ * `removeCombatantsByToken`, just self-contained (reads the live state itself) for callers that
+ * only have a token id. 2026-10-06 playtest: "removing a token from the board should remove it
+ * from the initiative tracker too."
+ */
+export async function removeTokenAndCombatant(gameId: string, tokenId: string): Promise<void> {
+  await removeToken(gameId, tokenId);
+  const state = await readValue<InitiativeState>(`games/${gameId}/initiative`);
+  if (state?.active) await removeCombatantsByToken(gameId, state, new Set([tokenId]));
+}
+
+/** Drop any combatants owned by the given player account (used when a player is removed from
+ * the game) so they can't still be mid-fight, or sitting in the roll-in pool, for a game they
+ * were just kicked from. Keeps the active actor where possible, exactly like
+ * `removeCombatantsByToken`. 2026-10-06 playtest: "if a player is removed from the game, take
+ * them out of the pool of potential initiative rolls too." */
+export function removeCombatantsByOwner(
+  gameId: string,
+  state: InitiativeState,
+  uid: string,
+): Promise<void> {
+  const order = (state.order ?? []).filter((c) => c.ownerUserId !== uid);
+  if (order.length === (state.order?.length ?? 0)) return Promise.resolve();
+  if (order.length === 0) return writeValue(`games/${gameId}/initiative`, null);
+  const removedBefore = state.order.slice(0, state.turnIndex).filter((c) => c.ownerUserId === uid).length;
   let turnIndex = state.turnIndex - removedBefore;
   if (turnIndex >= order.length) turnIndex = 0;
   if (turnIndex < 0) turnIndex = 0;
