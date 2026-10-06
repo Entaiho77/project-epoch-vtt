@@ -1,3 +1,4 @@
+import { useEffect, useReducer } from 'react';
 import type { SystemDefinition } from '@epoch/shared-types';
 import type { Character, InitiativeState, Role, Token } from '@epoch/shared-types';
 import {
@@ -13,6 +14,8 @@ import {
 import { Button } from '../../components/ui/Button';
 import { initiativeModifier } from '../../data/initiativeModifier';
 import { secureRoll } from '../../data/secureDice';
+import { onAssetStored } from '../../data/assetSync';
+import { imageSrc } from '../../data/images';
 import t from './InitiativeTracker.module.css';
 
 /** Width (px) of one combatant slot in the carousel — must match `.slot` in the CSS. */
@@ -80,6 +83,12 @@ export function InitiativeTracker({
   activeMapId?: string;
   onSelectToken?: (tokenId: string) => void;
 }) {
+  // Re-mount an avatar <img> when its image arrives from another player (or finishes an
+  // upload), so a load that failed because the asset wasn't there yet retries instead of
+  // staying broken — same pattern TokenArtUpload uses.
+  const [assetVersion, bumpAssetVersion] = useReducer((v: number) => v + 1, 0);
+  useEffect(() => onAssetStored(() => bumpAssetVersion()), []);
+
   const order = state.order ?? []; // defensive: Firebase can drop an emptied order array
   // "Rolling initiative…": everyone rolls in; no turn has started until the GM clicks Begin.
   const rolling = isRolling(state);
@@ -194,9 +203,25 @@ export function InitiativeTracker({
                   <span style={{ position: 'relative', display: 'inline-flex' }}>
                     <span
                       className={t.disk}
-                      style={{ background: com.kind === 'character' ? '#5dcaa5' : '#b05a5a', position: 'relative', zIndex: 1 }}
+                      style={{
+                        background: com.kind === 'character' ? '#5dcaa5' : '#b05a5a',
+                        position: 'relative',
+                        zIndex: 1,
+                        overflow: 'hidden',
+                      }}
                     >
-                      {shownName[0]?.toUpperCase() ?? '?'}
+                      {/* A hidden monster shows no portrait either — its art would give away who
+                          it is just as much as its real name would. */}
+                      {!masked && tok?.imageUrl ? (
+                        <img
+                          key={assetVersion}
+                          src={imageSrc(tok.imageUrl)}
+                          alt=""
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        shownName[0]?.toUpperCase() ?? '?'
+                      )}
                     </span>
                     <ConditionRing colors={ringColors} size={50} />
                   </span>
