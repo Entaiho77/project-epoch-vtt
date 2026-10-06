@@ -10,6 +10,7 @@ import {
   releasePartyToken,
   setGridVisible,
   removeToken,
+  setTokenCondition,
   toggleFogSquare,
   updateToken,
 } from '../../data/board';
@@ -303,6 +304,19 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
   const myConditions = character
     ? tokens.find((t) => t.characterId === character.id)?.conditions
     : undefined;
+
+  // 2026-10-06 playtest: "a player who's down and making death saves should automatically show a
+  // visible indicator of that condition, not just a number somewhere." Mirror it as the existing
+  // 'unconscious' ring — on/off tracks 0 HP (iAmDown), so it appears the instant HP hits 0 and
+  // clears itself the instant they're healed, with no one having to tag it by hand. 5e only:
+  // Solryn has no death-save state to show (it just goes "down," no separate ring to add).
+  useEffect(() => {
+    if (!is5e || role !== 'player' || !character) return;
+    const myToken = tokens.find((t) => t.characterId === character.id);
+    if (!myToken) return;
+    const alreadyShown = !!myToken.conditions?.unconscious;
+    if (iAmDown !== alreadyShown) void setTokenCondition(gameId, myToken.id, 'unconscious', iAmDown);
+  }, [is5e, role, character, tokens, iAmDown, gameId]);
 
   // Library monsters (from the GM's account) as BestiaryEntry[], so the stat card + combat resolver
   // read them exactly like SRD creatures — no special-casing in the resolver.
