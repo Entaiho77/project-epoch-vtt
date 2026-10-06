@@ -6,6 +6,7 @@ import {
   HemisphereLight,
   LineBasicMaterial,
   LineSegments,
+  Matrix4,
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
@@ -19,7 +20,7 @@ import {
   Vector3,
   WebGLRenderer,
 } from 'three';
-import { diePlan, dieShape, landingQuaternion } from './diceShapes';
+import { diePlan, dieShape, faceBasis, landingQuaternion } from './diceShapes';
 import { DICE_SKINS, DEFAULT_DICE_SKIN, type DiceSkin } from './diceSkins';
 
 /**
@@ -182,7 +183,12 @@ export function showDice(
         new MeshBasicMaterial({ map: labelTexture(d.label(face.value), shape.sides), transparent: true, depthWrite: false }),
       );
       label.position.copy(face.center).addScaledVector(face.normal, 0.012);
-      label.quaternion.setFromUnitVectors(new Vector3(0, 0, 1), face.normal);
+      // setFromUnitVectors only pins which way the label faces — it leaves the twist around
+      // that axis free, so every face would otherwise get its number at a different, arbitrary
+      // rotation. Building the full basis (the same one the tiling texture's own UV projection
+      // uses) pins "up" too, so numbers read upright and consistently across every face.
+      const { u, v } = faceBasis(face.normal);
+      label.quaternion.setFromRotationMatrix(new Matrix4().makeBasis(u, v, face.normal));
       mesh.add(label);
     }
     // Scaled up a hair so the line sits just outside the surface (no z-fighting flicker).

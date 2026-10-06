@@ -128,6 +128,19 @@ function baseGeometry(sides: number): BufferGeometry {
 }
 
 /**
+ * A stable (u, v) tangent frame for a face with the given outward normal — any seed vector not
+ * parallel to the normal gives one. Shared by the planar UV projection below and by label
+ * placement (diceScene.ts), so a face's texture orientation and its printed number agree on
+ * which way is "up" instead of each picking an arbitrary twist around the normal.
+ */
+export function faceBasis(normal: Vector3): { u: Vector3; v: Vector3 } {
+  const seed = Math.abs(normal.y) < 0.99 ? new Vector3(0, 1, 0) : new Vector3(1, 0, 0);
+  const u = new Vector3().crossVectors(seed, normal).normalize();
+  const v = new Vector3().crossVectors(normal, u).normalize();
+  return { u, v };
+}
+
+/**
  * Give a geometry planar per-face UVs so a tileable material (stone, metal, etc.) maps cleanly
  * across every facet, at a consistent world-space scale shared by every die. Triangles sharing
  * a face normal (e.g. a d12 pentagon, built from 3 triangles) share one projection so the
@@ -151,10 +164,7 @@ function assignPlanarUVs(geometry: BufferGeometry, texelsPerUnit = 1): void {
     if (normal.dot(mid) < 0) normal.negate();
     let basis = bases.find((x) => x.normal.dot(normal) > 0.999);
     if (!basis) {
-      // Any seed vector not parallel to normal gives a stable (u, v) tangent frame.
-      const seed = Math.abs(normal.y) < 0.99 ? new Vector3(0, 1, 0) : new Vector3(1, 0, 0);
-      const u = new Vector3().crossVectors(seed, normal).normalize();
-      const v = new Vector3().crossVectors(normal, u).normalize();
+      const { u, v } = faceBasis(normal);
       basis = { normal, u, v };
       bases.push(basis);
     }
