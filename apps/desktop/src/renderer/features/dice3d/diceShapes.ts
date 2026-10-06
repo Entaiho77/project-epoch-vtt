@@ -396,6 +396,12 @@ function digitCanvasFor(n: number): DigitCanvas {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(String(n), 64, 70);
+    // Every carved die (d6, d8, d10, d12, d20) lands with a random twist around its own face
+    // normal for realism (landingQuaternion's `twist`) — a 6 can genuinely rotate to where it
+    // reads as a 9, and vice versa, with nothing else on the face to tell them apart. Real forged
+    // dice solve this with an underline; bake the same mark into the ink mask here so it's carved
+    // in right alongside the digit, consistent across every die that can roll a 6 or a 9.
+    if (n === 6 || n === 9) ctx.fillRect(40, 104, 48, 7);
     data = ctx.getImageData(0, 0, c.width, c.height);
   } else {
     // No real 2D canvas backend (e.g. a unit-test environment without a canvas polyfill, and
