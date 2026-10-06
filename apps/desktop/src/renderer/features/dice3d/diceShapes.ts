@@ -350,6 +350,15 @@ interface DigitCanvas {
   data: ImageData;
 }
 
+/**
+ * Half-width (world units) of the square the glyph canvas is mapped onto when engraving a
+ * numeral into a cap. Smaller = the same glyph artwork covers less of the face = reads bigger
+ * on the die. 0.1 makes numbers read about 2x the size they did at the original 0.2 (Matthew's
+ * call, 2026-10-06) — if a number starts bleeding past its face's flat plateau into the
+ * recessed ring, that plateau (recessPlateauSize) is the dial to widen, not this one.
+ */
+const GLYPH_HALF_WIDTH = 0.1;
+
 const digitCanvasCache = new Map<number, DigitCanvas>();
 
 /** A small canvas with just the glyph for `n` drawn on it (dark ink, transparent elsewhere) —
@@ -566,11 +575,11 @@ function buildCarvedIcosahedron(opts: CarvedIcosahedronOptions): { geometry: Buf
           p.addScaledVector(n, (h - 0.55) * opts.dispStrength);
         }
 
-        // Map this point into the glyph's local 0.4 x 0.4 square and read its alpha mask —
-        // ink where alpha > 0 — to cut the numeral straight into the (already recessed) cap.
+        // Map this point into the glyph's local square and read its alpha mask — ink where
+        // alpha > 0 — to cut the numeral straight into the (already recessed) cap.
         const rel = p.clone().sub(textCentroid);
-        const lu = (rel.dot(edgeDir) / 0.2) * 0.5 + 0.5;
-        const lv = (rel.dot(up) / 0.2) * 0.5 + 0.5;
+        const lu = (rel.dot(edgeDir) / GLYPH_HALF_WIDTH) * 0.5 + 0.5;
+        const lv = (rel.dot(up) / GLYPH_HALF_WIDTH) * 0.5 + 0.5;
         const glyphAlpha = glyphAlphaAt(dc, lu, lv);
         if (glyphAlpha > 0) p.addScaledVector(n, -opts.engraveDepth * glyphAlpha);
 
@@ -897,8 +906,8 @@ function buildCarvedPolyhedron(
           }
 
           const rel = p.clone().sub(rawCentroid);
-          const lu = (rel.dot(edgeDir) / 0.2) * 0.5 + 0.5;
-          const lv = (rel.dot(up) / 0.2) * 0.5 + 0.5;
+          const lu = (rel.dot(edgeDir) / GLYPH_HALF_WIDTH) * 0.5 + 0.5;
+          const lv = (rel.dot(up) / GLYPH_HALF_WIDTH) * 0.5 + 0.5;
           const glyphAlpha = glyphAlphaAt(dc, lu, lv);
           if (glyphAlpha > 0) p.addScaledVector(n, -opts.engraveDepth * glyphAlpha);
 
