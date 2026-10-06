@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { TARGET_HINT } from '../attackGate';
 import { RollModeSelect } from '../../../components/ui/RollModeSelect';
-import type { BestiaryEntry, CreatureSave, SystemDefinition } from '@epoch/shared-types';
+import type { BestiaryEntry, CreatureSave, ShapeKind, SystemDefinition } from '@epoch/shared-types';
 import type { Token } from '@epoch/shared-types';
 import type { CampaignRules, HomebrewEquipment } from '../../../data/homebrew';
 import { attackAdvantage, autoCritAgainst, combineAdvantage, computeModifier, describeRoll, effectsFor, getCombatResolver, resolveCheck, rollDice } from '@epoch/engine';
@@ -47,6 +47,24 @@ function abilityDice(text: string): string | null {
   return m ? m[1].replace(/\s+/g, '') : null;
 }
 
+/**
+ * The area-of-effect shape + size a free-text ability describes ("...a 60-foot cone...",
+ * "20-foot-radius sphere", "a 100-foot line"), when it names one — SRD stat blocks have no
+ * structured AoE field, so this reads the same prose the GM already reads. 2026-10-06
+ * playtest: "have the cone populate centered on the monster token from the stat block."
+ */
+function abilityAoe(text: string): { kind: ShapeKind; sizeFt: number } | null {
+  let m = /(\d+)-foot(?:-radius)? cone/i.exec(text);
+  if (m) return { kind: 'cone', sizeFt: Number(m[1]) };
+  m = /(\d+)-foot line/i.exec(text);
+  if (m) return { kind: 'line', sizeFt: Number(m[1]) };
+  m = /(\d+)-foot[- ]radius/i.exec(text);
+  if (m) return { kind: 'circle', sizeFt: Number(m[1]) };
+  m = /(\d+)-foot cube/i.exec(text);
+  if (m) return { kind: 'square', sizeFt: Number(m[1]) };
+  return null;
+}
+
 const ABILITIES = ['str', 'dex', 'con', 'int', 'wis', 'cha'] as const;
 type AbilityId = (typeof ABILITIES)[number];
 
@@ -85,6 +103,7 @@ export function MonsterStatCard({
   target,
   rules,
   turnBlocked,
+  onPlaceAoe,
   onClose,
 }: {
   system: SystemDefinition;
@@ -106,6 +125,10 @@ export function MonsterStatCard({
   rules?: CampaignRules;
   /** During combat: why this creature can't attack now ("It's Thorn's turn"), else null. */
   turnBlocked?: string | null;
+  /** GM only: place an AoE shape anchored to this creature's own token (e.g. a breath weapon's
+   * cone), parsed straight from the ability's text. 2026-10-06 playtest: "have the cone
+   * populate centered on the monster token from the stat block." */
+  onPlaceAoe?: (kind: ShapeKind, sizeFt: number) => void;
   onClose?: () => void;
 }) {
   const { postRoll } = useRollLog();
@@ -353,6 +376,7 @@ export function MonsterStatCard({
           <span className={s.label}>Abilities</span>
           {entry.abilities.map((ab, i) => {
             const dice = abilityDice(ab);
+            const aoe = abilityAoe(ab);
             const label = ab.split(':')[0];
             const sv = saveByName.get(label.replace(' (Legendary)', '').trim());
             return (
@@ -365,11 +389,18 @@ export function MonsterStatCard({
                     </span>
                   )}
                 </span>
-                {dice && (
-                  <Button variant="secondary" onClick={() => postAbility(label, dice, sv)}>
-                    Roll
-                  </Button>
-                )}
+                <span style={{ display: 'flex', gap: 'var(--space-1)', flexShrink: 0 }}>
+                  {aoe && onPlaceAoe && (
+                    <Button variant="ghost" size="sm" onClick={() => onPlaceAoe(aoe.kind, aoe.sizeFt)} title={`Place a ${aoe.sizeFt} ft ${aoe.kind} centered on ${entry.name}'s token`}>
+                      Place {aoe.sizeFt}ft {aoe.kind}
+                    </Button>
+                  )}
+                  {dice && (
+                    <Button variant="secondary" onClick={() => postAbility(label, dice, sv)}>
+                      Roll
+                    </Button>
+                  )}
+                </span>
               </div>
             );
           })}

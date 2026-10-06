@@ -264,8 +264,11 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
   }, [role, activeMap, partyScale, game.tokens, gameId]);
 
   function toggle(side: 'left' | 'right', id: string) {
-    setMeasuring(false); // opening a drawer exits measure mode
-    setShapeDraft(null); // …and disarms any armed shape
+    // 2026-10-06 playtest: measuring is exempt from the one-panel-per-side rule — a drawer
+    // opening/closing no longer cancels an active measurement, so both stay open and
+    // functional together. Arming a shape is still mutually exclusive with a drawer, since
+    // the shape tool and a drawer both want the canvas click.
+    setShapeDraft(null);
     if (side === 'left') setOpenLeft((o) => (o === id ? null : id));
     else setOpenRight((o) => (o === id ? null : id));
   }
@@ -380,6 +383,18 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
               rules={rules}
               turnBlocked={
                 isDefeated(selected) ? `${selected.name} is down and can't act.` : turnBlockReason(initState, { tokenId: selected.id })
+              }
+              onPlaceAoe={
+                role === 'gm' && activeMap
+                  ? (kind, sizeFt) =>
+                      void addShape(gameId, {
+                        mapId: activeMap.id,
+                        kind,
+                        sizeFt,
+                        anchor: { tokenId: selected.id },
+                        ownerUid: uid,
+                      })
+                  : undefined
               }
               onClose={closeMonsterPanel}
             />

@@ -16,6 +16,10 @@ const row: React.CSSProperties = { display: 'flex', alignItems: 'center', justif
  * HP math the checked-roll pipeline already uses (`hitChanges`) — this just applies it to
  * several tokens in one GM-authoritative write instead of going through the roll-proof pipeline,
  * the same trust level "Give loot" and "Set HP" already use.
+ *
+ * Each caught token has its own checkbox so the GM can leave anyone out before applying (a
+ * breath weapon shouldn't damage the dragon breathing it — the shape's own anchor token, when
+ * it's token-anchored, starts unchecked for exactly that reason; everyone else starts checked).
  */
 export function AoeDamageModal({
   gameId,
@@ -38,6 +42,8 @@ export function AoeDamageModal({
 }) {
   const [amount, setAmount] = useState(0);
   const [applied, setApplied] = useState(false);
+  const sourceTokenId = 'tokenId' in shape.anchor ? shape.anchor.tokenId : undefined;
+  const [overrides, setOverrides] = useState<Record<string, boolean>>({});
 
   const caught = useMemo(() => {
     const anchor = shapeAnchorCenter(shape.anchor, tokens, gridSize);
@@ -47,10 +53,13 @@ export function AoeDamageModal({
     );
   }, [shape, tokens, gridSize, ftPerSquare]);
 
+  const included = (t: Token) => overrides[t.id] ?? t.id !== sourceTokenId;
+  const selected = caught.filter(included);
+
   const apply = async () => {
     const updates: Record<string, unknown> = {};
     const notes: string[] = [];
-    for (const t of caught) {
+    for (const t of selected) {
       const charHp = t.kind === 'character' && t.characterId
         ? characters.find((c) => c.id === t.characterId)?.play.pools?.hp?.current
         : undefined;
@@ -61,7 +70,7 @@ export function AoeDamageModal({
       notes.push(hitNote(t.name, amount, after === 0));
     }
     if (Object.keys(updates).length) await multiUpdate(updates);
-    postRoll(`${shape.kind} AoE hits ${caught.length} for ${amount} each — ${notes.join('; ') || 'nothing to apply'}`);
+    postRoll(`${shape.kind} AoE hits ${selected.length} for ${amount} each — ${notes.join('; ') || 'nothing to apply'}`);
     setApplied(true);
   };
 
@@ -71,12 +80,21 @@ export function AoeDamageModal({
         {caught.length === 0 && <p className={s.hint}>Nobody's caught in this shape right now.</p>}
         {caught.length > 0 && (
           <>
-            <p className={s.hint}>Caught in the shape:</p>
+            <p className={s.hint}>Caught in the shape — untick anyone who shouldn't take this (the source, an ally who saved, etc.):</p>
             {caught.map((t) => (
-              <div key={t.id} style={row}>
-                <span className={s.itemName}>{t.name}</span>
+              <label key={t.id} style={row}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                  <input
+                    type="checkbox"
+                    checked={included(t)}
+                    disabled={applied}
+                    onChange={(e) => setOverrides((o) => ({ ...o, [t.id]: e.target.checked }))}
+                  />
+                  <span className={s.itemName}>{t.name}</span>
+                  {t.id === sourceTokenId && <span className={s.itemMeta}>source</span>}
+                </span>
                 <span className={s.itemMeta}>{t.kind}</span>
-              </div>
+              </label>
             ))}
             <span className={s.label}>Damage (to each)</span>
             <input
@@ -87,8 +105,8 @@ export function AoeDamageModal({
               disabled={applied}
               onChange={(e) => setAmount(Math.max(0, Number(e.target.value) || 0))}
             />
-            <Button disabled={applied} onClick={() => void apply()}>
-              {applied ? 'Applied' : `Apply to all ${caught.length}`}
+            <Button disabled={applied || selected.length === 0} onClick={() => void apply()}>
+              {applied ? 'Applied' : `Apply to ${selected.length} selected`}
             </Button>
           </>
         )}
