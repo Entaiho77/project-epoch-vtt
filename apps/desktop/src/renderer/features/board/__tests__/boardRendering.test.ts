@@ -262,4 +262,44 @@ describe('Board Rendering', () => {
       expect(condIds[condIds.length - 1]).toBe('cond5'); // Most recent is last
     });
   });
+
+  // BoardCanvas's right-click-to-delete (2026-10-06 playtest #10) reuses the exact same
+  // ownership rule its move-handle grab already uses, keyed off the shape's grid-anchored
+  // cell — this is that rule in isolation, since the real hit-test lives inside the canvas's
+  // pointer-event closure and isn't itself exported.
+  describe('Right-click shape deletion (ownership rule)', () => {
+    const findDeletable = (shapes: BoardShape[], col: number, row: number, role: 'gm' | 'player', uid: string) =>
+      shapes.find((sh) => 'col' in sh.anchor && sh.anchor.col === col && sh.anchor.row === row && (role === 'gm' || sh.ownerUid === uid));
+
+    const shape = (over: Partial<BoardShape>): BoardShape => ({
+      id: 's1',
+      mapId: 'm1',
+      kind: 'circle',
+      ownerUid: 'uid-a',
+      sizeFt: 10,
+      anchor: { col: 3, row: 3 },
+      createdAt: 0,
+      ...over,
+    });
+
+    it('the owner can delete their own shape', () => {
+      const hit = findDeletable([shape({})], 3, 3, 'player', 'uid-a');
+      expect(hit?.id).toBe('s1');
+    });
+
+    it("another player can't delete someone else's shape", () => {
+      const hit = findDeletable([shape({})], 3, 3, 'player', 'uid-b');
+      expect(hit).toBeUndefined();
+    });
+
+    it('the GM can delete anyone\'s shape', () => {
+      const hit = findDeletable([shape({})], 3, 3, 'gm', 'uid-gm');
+      expect(hit?.id).toBe('s1');
+    });
+
+    it('no shape at that cell → nothing to delete', () => {
+      const hit = findDeletable([shape({})], 9, 9, 'gm', 'uid-gm');
+      expect(hit).toBeUndefined();
+    });
+  });
 });

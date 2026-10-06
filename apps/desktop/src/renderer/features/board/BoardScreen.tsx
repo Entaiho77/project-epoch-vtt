@@ -13,7 +13,7 @@ import {
   toggleFogSquare,
   updateToken,
 } from '../../data/board';
-import { addShape } from '../../data/shapes';
+import { addShape, removeShape } from '../../data/shapes';
 import { clearAllMeasures, moveShape, rotateShape, setMyMeasure } from '../../data/measures';
 import { useCreatureArt, useMyCreatures } from '../../data/creatures';
 import { useGameCharacterArt } from '../../data/characters';
@@ -633,6 +633,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
             shapes={visibleShapes}
             onMoveShape={(id, col, row) => void moveShape(gameId, id, col, row)}
             onRotateShape={(id, deg) => void rotateShape(gameId, id, deg)}
+            onDeleteShape={(id) => void removeShape(gameId, id)}
             measures={Object.values(game.measures ?? {}).filter((m) => m.mapId === activeMap?.id)}
             onCommitMeasure={(seg) =>
               activeMap && void setMyMeasure(gameId, uid, { ...seg, ownerUid: uid, ownerName: character?.name ?? myName, mapId: activeMap.id })

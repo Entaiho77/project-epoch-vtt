@@ -91,6 +91,10 @@ interface BoardCanvasProps {
   onMoveShape?: (shapeId: string, col: number, row: number) => void;
   /** Turn a cone / line / square to a new direction (degrees, 0 = east). */
   onRotateShape?: (shapeId: string, angleDeg: number) => void;
+  /** Right-click a placed shape → delete it immediately (same reach as its move/rotate handles,
+   * same ownership rule: yours, or any of them for the GM). Absent → right-click does nothing
+   * to shapes (falls through to the token context menu). */
+  onDeleteShape?: (shapeId: string) => void;
   /** Measuring lines everyone has left on this map. */
   measures?: SharedMeasure[];
   /** Leave my measuring line on the board for everyone. */
@@ -222,6 +226,7 @@ export function BoardCanvas({
   measureScale,
   onMoveShape,
   onRotateShape,
+  onDeleteShape,
   measures,
   onCommitMeasure,
   onClearMeasures,
@@ -1008,6 +1013,31 @@ export function BoardCanvas({
       setMeasure(null);
       onClearMeasures?.();
       return;
+    }
+    // A placed shape (cone/line/square/circle) you're allowed to move/rotate deletes with a
+    // right-click, at the same reach as its own move/rotate handles — no need to reopen the
+    // shape tool to clean one up. Same two hit-tests handleDown already uses to grab a shape
+    // (its handle center, then its grid-anchored center cell), so "right-click it" works
+    // wherever "drag it" already does. 2026-10-06 playtest.
+    if (onDeleteShape) {
+      const w = screenToWorld(camera.current, e.nativeEvent.offsetX, e.nativeEvent.offsetY);
+      const reach = 12 / camera.current.zoom;
+      const near = (x: number, y: number) => Math.hypot(w.x - x, w.y - y) <= reach;
+      const handleHit = shapeHandles().find((hd) => near(hd.cx, hd.cy));
+      if (handleHit) {
+        e.preventDefault();
+        onDeleteShape(handleHit.id);
+        return;
+      }
+      const { col, row } = eventCell(e);
+      const cellHit = (shapes ?? []).find(
+        (sh) => 'col' in sh.anchor && sh.anchor.col === col && sh.anchor.row === row && (role === 'gm' || sh.ownerUid === uid),
+      );
+      if (cellHit) {
+        e.preventDefault();
+        onDeleteShape(cellHit.id);
+        return;
+      }
     }
     if (!onContextToken) return;
     const { col, row } = eventCell(e);
