@@ -5,6 +5,7 @@ import {
   creatureInitiativeMod,
   joinCombat,
   leaveCombat,
+  mayMoveNow,
   removeCombatantsByOwner,
   removeTokenAndCombatant,
   setTurn,
@@ -194,5 +195,50 @@ describe('rolling phase, joining and leaving', () => {
     writeValueMock.mockClear();
     void removeCombatantsByOwner('g', solo, 'nobody-here');
     expect(writeValueMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('mayMoveNow (playtest #2: turn-gate movement)', () => {
+  const running: InitiativeState = {
+    active: true,
+    phase: 'running',
+    round: 1,
+    turnIndex: 1,
+    order: [
+      { ...c('a', 'character', 20), tokenId: 'tok-a', ownerUserId: 'uid-a' },
+      { ...c('b', 'creature', 15), tokenId: 'tok-b' },
+      { ...c('hero', 'character', 10), tokenId: 'tok-hero', ownerUserId: 'uid-hero' },
+    ],
+  };
+
+  it('no active combat → always true', () => {
+    expect(mayMoveNow(null, { uid: 'uid-a', tokenId: 'tok-a' })).toBe(true);
+    expect(mayMoveNow(undefined, { tokenId: 'tok-a' })).toBe(true);
+  });
+
+  it('rolling phase → always true (nobody has a turn yet)', () => {
+    expect(mayMoveNow({ ...running, phase: 'rolling' }, { tokenId: 'tok-a' })).toBe(true);
+  });
+
+  it('GM allowOffTurn switch → always true', () => {
+    expect(mayMoveNow({ ...running, allowOffTurn: true }, { tokenId: 'tok-a' })).toBe(true);
+  });
+
+  it("a token that isn't an active combatant at all is never turn-gated", () => {
+    expect(mayMoveNow(running, { tokenId: 'tok-scenery' })).toBe(true);
+    expect(mayMoveNow(running, {})).toBe(true);
+  });
+
+  it("the current combatant's own token may move", () => {
+    expect(mayMoveNow(running, { tokenId: 'tok-b' })).toBe(true);
+  });
+
+  it("the current combatant's owner may move it by uid, even without matching tokenId logic", () => {
+    expect(mayMoveNow(running, { uid: undefined, tokenId: 'tok-b' })).toBe(true);
+  });
+
+  it('a different combatant on someone else\'s turn may not move', () => {
+    expect(mayMoveNow(running, { uid: 'uid-a', tokenId: 'tok-a' })).toBe(false);
+    expect(mayMoveNow(running, { uid: 'uid-hero', tokenId: 'tok-hero' })).toBe(false);
   });
 });

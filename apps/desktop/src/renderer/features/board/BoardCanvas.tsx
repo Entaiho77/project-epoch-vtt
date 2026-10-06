@@ -105,6 +105,10 @@ interface BoardCanvasProps {
   shapeDraft?: ShapeDraft | null;
   onCommitShape?: (shape: ShapeCommit) => void;
   onMoveToken: (tokenId: string, col: number, row: number) => void;
+  /** Whether `tokenId` may be moved right now (turn gate during combat). Absent → never gated,
+   * same as outside combat. 2026-10-06 playtest: "players can only move their token on their own
+   * turn; same restriction for monsters (GM) on the monster's turn." */
+  mayMoveToken?: (tokenId: string) => boolean;
   onToggleFog: (col: number, row: number, fogged: boolean) => void;
   onSelectToken: (token: Token | null) => void;
   /** Right-click a token → raise a context menu at (clientX, clientY). Absent → no menu. */
@@ -237,6 +241,7 @@ export function BoardCanvas({
   shapeDraft,
   onCommitShape,
   onMoveToken,
+  mayMoveToken,
   onToggleFog,
   onSelectToken,
   onContextToken,
@@ -861,7 +866,7 @@ export function BoardCanvas({
     const isParty = hit?.kind === 'party';
     const lockedByOther = !!hit && isParty && partyLockHeldByOther(hit, uid, Date.now());
 
-    if (hit && canControlToken(hit, uid, role) && !lockedByOther) {
+    if (hit && canControlToken(hit, uid, role) && !lockedByOther && (!mayMoveToken || mayMoveToken(hit.id))) {
       if (isParty) onGrabParty(hit.id);
       // Remember which square of the token was grabbed so a big token doesn't jump.
       tokenDrag.current = { id: hit.id, party: isParty, dc: col - hit.col, dr: row - hit.row, size: hit.size ?? 1 };
@@ -990,7 +995,9 @@ export function BoardCanvas({
         const canLand =
           drag.party ||
           canLandOn(mover, ghost.col, ghost.row, occupiedCells(onMap, mover.id));
-        if (canLand) onMoveToken(mover.id, ghost.col, ghost.row);
+        // Defense in depth: re-check the turn gate here too, in case combat's turn changed
+        // mid-drag (grab was allowed, but it's no longer this token's turn by drop time).
+        if (canLand && (!mayMoveToken || mayMoveToken(mover.id))) onMoveToken(mover.id, ghost.col, ghost.row);
       }
     }
     if (drag?.party) onReleaseParty(drag.id); // release the soft-lock however the drag ended

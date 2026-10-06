@@ -44,7 +44,7 @@ import { AttackGateContext } from './attackGate';
 import { playChime } from '../voice/chime';
 import { dice3dEnabled, playDice } from '../dice3d/dice3d';
 import { isDefeated } from '../../data/damage';
-import { creatureCombatant, joinCombat, leaveCombat, rollInitiative, turnBlockReason } from '../../data/combat';
+import { creatureCombatant, joinCombat, leaveCombat, mayMoveNow, rollInitiative, turnBlockReason } from '../../data/combat';
 import { initiativeModifier } from '../../data/initiativeModifier';
 import { useGameCharacters } from '../../data/characters';
 import { canSeeMessage, useChat } from '../../data/chat';
@@ -133,6 +133,8 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
   const highlightTokenId = combatActive && !rollingIn
     ? initState!.order?.[initState!.turnIndex]?.tokenId
     : undefined;
+  // Playtest #2: moving a token during combat follows the same turn gate attacks already do.
+  const mayMoveToken = (tokenId: string) => mayMoveNow(initState, { uid, tokenId });
 
   const [openLeft, setOpenLeft] = useState<string | null>(null);
   const [openRight, setOpenRight] = useState<string | null>(
@@ -644,6 +646,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
               activeMap && void addShape(gameId, { ...shape, mapId: activeMap.id, ownerUid: uid })
             }
             onMoveToken={(id, col, row) => void moveToken(gameId, id, col, row)}
+            mayMoveToken={mayMoveToken}
             onToggleFog={(col, row, f) =>
               activeMap && void toggleFogSquare(gameId, activeMap.id, col, row, f)
             }

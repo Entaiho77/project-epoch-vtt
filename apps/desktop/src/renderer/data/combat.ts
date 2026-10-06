@@ -243,3 +243,25 @@ export function turnBlockReason(
   if (actor.uid && current.ownerUserId === actor.uid) return null;
   return `It's ${nameOf(current)}'s turn — attacks wait for your turn (the GM can allow off-turn attacks).`;
 }
+
+/**
+ * Whether `actor` may move the given token right now. Mirrors `mayAttackNow` (data/damage.ts) —
+ * same no-active-combat / rolling-phase / allowOffTurn carve-outs, same actor-matching rule — but
+ * adds one the attack gate doesn't need: a token that isn't an active combatant at all (scenery,
+ * a trap, the shared party token, or a player who hasn't rolled initiative in yet) is never
+ * turn-gated, since there's no "its turn" for a token that isn't in the fight. 2026-10-06
+ * playtest: "players can only move their token on their own turn; same restriction for monsters
+ * (GM) on the monster's turn."
+ */
+export function mayMoveNow(
+  state: InitiativeState | null | undefined,
+  actor: { uid?: string; tokenId?: string },
+): boolean {
+  if (!state?.active || state.phase === 'rolling' || state.allowOffTurn) return true;
+  const order = state.order ?? [];
+  if (!actor.tokenId || !order.some((c) => c.tokenId === actor.tokenId)) return true;
+  const current = order[state.turnIndex];
+  if (!current) return true;
+  if (current.tokenId === actor.tokenId) return true;
+  return !!actor.uid && current.ownerUserId === actor.uid;
+}
