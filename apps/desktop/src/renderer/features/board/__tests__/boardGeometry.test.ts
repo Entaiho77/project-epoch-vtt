@@ -259,7 +259,7 @@ describe('placing new tokens on free squares', () => {
   });
 });
 
-import { dragTopLeft, edgeAllowance, footprintCenter } from '../boardGeometry';
+import { dragTopLeft, edgeAllowance, footprintCenter, shapeAnchorCenter, tokensInShape } from '../boardGeometry';
 
 describe('big tokens (footprint center, grip, edge reach)', () => {
   it('centers a 2×2 on the grid intersection in its middle, a 1×1 on its square', () => {
@@ -280,5 +280,42 @@ describe('big tokens (footprint center, grip, edge reach)', () => {
     expect(edgeAllowance('circle', 2, 50)).toBe(25);
     expect(edgeAllowance('square', 3, 50)).toBe(100);
     expect(edgeAllowance('cone', 2, 50)).toBe(25);
+  });
+});
+
+describe('tokensInShape (playtest #8/#9: AoE catches everyone inside)', () => {
+  const gridSize = 50; // px/square
+  const ftPerSquare = 5; // 1 square = 5 ft, so 1 ft = 10px — easy round numbers below
+  const tok = (over: Partial<Token>): Token => ({
+    id: 't1', mapId: 'm1', kind: 'creature', name: 't1', col: 0, row: 0, ...over,
+  });
+
+  it('a grid-anchored circle catches tokens within its radius, not past it', () => {
+    const anchor = shapeAnchorCenter({ col: 2, row: 2 }, [], gridSize)!; // center (125,125)
+    const inside = tok({ id: 'a', col: 2, row: 2 }); // same square — distance 0
+    const edge = tok({ id: 'b', col: 2, row: 3 }); // one square down — distance 50px = 25ft
+    const outside = tok({ id: 'c', col: 2, row: 6 }); // four squares down — 200px = 100ft
+    const hits = tokensInShape({ kind: 'circle', sizeFt: 15 }, anchor, [inside, edge, outside], gridSize, ftPerSquare);
+    expect(hits.map((t) => t.id)).toEqual(['a', 'b']);
+  });
+
+  it('a cone only catches what is in front of it, within its spread', () => {
+    const anchor = shapeAnchorCenter({ col: 0, row: 2 }, [], gridSize)!;
+    const inFront = tok({ id: 'front', col: 2, row: 2 }); // straight ahead (angle 0 = east)
+    const behind = tok({ id: 'behind', col: -2, row: 2 });
+    const hits = tokensInShape({ kind: 'cone', sizeFt: 15, angleDeg: 0 }, anchor, [inFront, behind], gridSize, ftPerSquare);
+    expect(hits.map((t) => t.id)).toEqual(['front']);
+  });
+
+  it('the shared party token is never a valid AoE target', () => {
+    const anchor = shapeAnchorCenter({ col: 2, row: 2 }, [], gridSize)!;
+    const party = tok({ id: 'party', kind: 'party', col: 2, row: 2 });
+    expect(tokensInShape({ kind: 'circle', sizeFt: 25 }, anchor, [party], gridSize, ftPerSquare)).toEqual([]);
+  });
+
+  it('shapeAnchorCenter resolves a token-anchored shape to that token\'s footprint center', () => {
+    const caster = tok({ id: 'caster', col: 4, row: 4 });
+    expect(shapeAnchorCenter({ tokenId: 'caster' }, [caster], gridSize)).toEqual(footprintCenter(4, 4, undefined, gridSize));
+    expect(shapeAnchorCenter({ tokenId: 'missing' }, [caster], gridSize)).toBeNull();
   });
 });

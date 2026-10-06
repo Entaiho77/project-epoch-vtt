@@ -251,6 +251,70 @@ export function edgeAllowance(kind: 'circle' | 'square' | 'cone' | 'line', size:
   return kind === 'square' ? extra : extra / 2;
 }
 
+/** Feet → pixels at a map's scale. Mirrors BoardCanvas's own `ftToPx` so shape math stays
+ * identical whether it's drawing the outline or testing who's caught inside it. */
+export function ftToPx(ft: number, ftPerSquare: number, gridSize: number): number {
+  return (ft / (ftPerSquare || 1)) * gridSize;
+}
+
+/** The pixel point a shape is drawn from — a token's footprint center if token-anchored,
+ * otherwise the grid cell's center. Matches BoardCanvas's own anchor resolution. */
+export function shapeAnchorCenter(
+  anchor: { col: number; row: number } | { tokenId: string },
+  tokens: Token[],
+  gridSize: number,
+): { x: number; y: number } | null {
+  if ('tokenId' in anchor) {
+    const t = tokens.find((tk) => tk.id === anchor.tokenId);
+    return t ? footprintCenter(t.col, t.row, t.size, gridSize) : null;
+  }
+  return cellCenter(anchor.col, anchor.row, gridSize);
+}
+
+/**
+ * Every non-party token whose footprint overlaps a placed AoE shape, tested against the exact
+ * circle/square/cone/line math BoardCanvas's `shapePath` already draws (same anchor point, same
+ * angle convention — 0 = east), just evaluated as a point-in-shape test instead of a canvas path.
+ * A big token counts once its footprint EDGE crosses the line, not just its exact middle (the
+ * same `edgeAllowance` idea already used for aura/emanation shapes). 2026-10-06 playtest: "make
+ * everyone caught in an area-of-effect shape a valid target, not just one."
+ */
+export function tokensInShape(
+  shape: { kind: 'circle' | 'square' | 'cone' | 'line'; sizeFt: number; angleDeg?: number },
+  anchor: { x: number; y: number },
+  tokens: Token[],
+  gridSize: number,
+  ftPerSquare: number,
+): Token[] {
+  const px = ftToPx(shape.sizeFt, ftPerSquare, gridSize);
+  const angle = ((shape.angleDeg ?? 0) * Math.PI) / 180;
+  const dx = Math.cos(angle);
+  const dy = Math.sin(angle);
+  return tokens.filter((t) => {
+    if (t.kind === 'party') return false;
+    const c = footprintCenter(t.col, t.row, t.size, gridSize);
+    const reach = edgeAllowance(shape.kind, t.size, gridSize);
+    const rx = c.x - anchor.x;
+    const ry = c.y - anchor.y;
+    if (shape.kind === 'circle') return Math.hypot(rx, ry) <= px + reach;
+    // Local frame: u = along the aim direction, v = perpendicular to it.
+    const u = rx * dx + ry * dy;
+    const v = -rx * dy + ry * dx;
+    if (shape.kind === 'square') {
+      const h = px / 2 + reach;
+      return Math.abs(u) <= h && Math.abs(v) <= h;
+    }
+    if (shape.kind === 'line') {
+      const hw = gridSize / 2 + reach;
+      return u >= -reach && u <= px + reach && Math.abs(v) <= hw;
+    }
+    // cone: apex at the anchor, half-width grows linearly from 0 to px/2 at the far edge.
+    if (u < -reach || u > px + reach) return false;
+    const halfWidthAt = px > 0 ? (Math.min(Math.max(u, 0), px) / px) * (px / 2) : 0;
+    return Math.abs(v) <= halfWidthAt + reach;
+  });
+}
+
 /**
  * Where a dragged token's top-left lands when the pointer is over (col,row) and the token was
  * grabbed `grabDc`/`grabDr` squares in from its top-left — so the square you grabbed stays under

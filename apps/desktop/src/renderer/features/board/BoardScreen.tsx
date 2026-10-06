@@ -24,6 +24,7 @@ import { useGridPrefs } from './gridPrefs';
 import { GridDrawer } from './drawers/GridDrawer';
 import { GiveLootModal } from './drawers/GiveLootModal';
 import { LootCorpseModal } from './drawers/LootCorpseModal';
+import { AoeDamageModal } from './drawers/AoeDamageModal';
 import { BoardShell, type BarItem } from './BoardShell';
 import { BoardCanvas, type BoardTool, type ShapeDraft } from './BoardCanvas';
 import { TokenCard } from './TokenCard';
@@ -155,6 +156,8 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
   const [giveLootFor, setGiveLootFor] = useState<string | null>(null);
   // Player "Loot corpse" (playtest #6): the defeated creature token being searched; null = closed.
   const [lootCorpseFor, setLootCorpseFor] = useState<string | null>(null);
+  // GM "Apply AoE damage" (playtest #8): the placed shape being resolved; null = closed.
+  const [aoeShapeFor, setAoeShapeFor] = useState<string | null>(null);
   // GM right-click token menu (board cleanup): the token + cursor position, null when closed.
   const [ctxMenu, setCtxMenu] = useState<{ token: Token; x: number; y: number } | null>(null);
   const [measuring, setMeasuring] = useState(false);
@@ -481,6 +484,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
         shapes={game.shapes ?? {}}
         draft={shapeDraft}
         onChangeDraft={setShapeDraft}
+        onAoeDamage={setAoeShapeFor}
       />
     ),
   };
@@ -773,6 +777,23 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
               lootItems={lootFor(corpse.creatureId)}
               postRoll={postRollText}
               onClose={() => setLootCorpseFor(null)}
+            />
+          );
+        })()}
+
+        {aoeShapeFor !== null && role === 'gm' && activeMap && (() => {
+          const shape = (game.shapes ?? {})[aoeShapeFor];
+          if (!shape) return null;
+          return (
+            <AoeDamageModal
+              gameId={gameId}
+              shape={shape}
+              tokens={tokens}
+              characters={gameCharacters}
+              gridSize={activeMap.gridSize}
+              ftPerSquare={measureScale?.value ?? 1}
+              postRoll={postRollText}
+              onClose={() => setAoeShapeFor(null)}
             />
           );
         })()}

@@ -28,6 +28,7 @@ export function ShapesDrawer({
   shapes,
   draft,
   onChangeDraft,
+  onAoeDamage,
 }: {
   gameId: string;
   uid: string;
@@ -36,6 +37,10 @@ export function ShapesDrawer({
   shapes: Record<string, BoardShape>;
   draft: ShapeDraft | null;
   onChangeDraft: (next: ShapeDraft | null) => void;
+  /** GM only: open "Apply AoE damage" for a placed shape, hitting everyone caught inside it at
+   * once. 2026-10-06 playtest: "make everyone caught in an area-of-effect shape a valid target,
+   * not just one." */
+  onAoeDamage?: (shapeId: string) => void;
 }) {
   const [sizeFt, setSizeFt] = useState(20);
   const [color, setColor] = useState('#5dcaa5');
@@ -175,15 +180,22 @@ export function ShapesDrawer({
                   {sh.hidden ? ' · hidden' : ''}
                 </span>
               </span>
-              {canRemove && (
-                <button
-                  className={s.place}
-                  onClick={() => void removeShape(gameId, sh.id)}
-                  aria-label={`Dismiss ${sh.kind}`}
-                >
-                  ×
-                </button>
-              )}
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                {onAoeDamage && role === 'gm' && (
+                  <Button size="sm" variant="ghost" onClick={() => onAoeDamage(sh.id)}>
+                    Apply damage…
+                  </Button>
+                )}
+                {canRemove && (
+                  <button
+                    className={s.place}
+                    onClick={() => void removeShape(gameId, sh.id)}
+                    aria-label={`Dismiss ${sh.kind}`}
+                  >
+                    ×
+                  </button>
+                )}
+              </span>
             </div>
           );
         })}
