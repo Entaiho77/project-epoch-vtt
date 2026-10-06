@@ -540,10 +540,18 @@ function buildCarvedIcosahedron(opts: CarvedIcosahedronOptions): { geometry: Buf
       bucket = { normal: n, basis: faceBasis(n) };
       buckets.push(bucket);
     }
+    // Without this, the bevel strip is just more stone-colored surface with no line marking
+    // where one face ends and the next begins — other (uncarved) dice get that definition from
+    // a separate dark seam overlay, which a carved shape skips since the real bevel is supposed
+    // to read as the edge on its own. In practice the bevel's own shading wasn't enough: it
+    // blended smoothly into each face instead of reading as a cut line, which is a big part of
+    // why the whole die looked soft/uniform ("clay") rather than faceted. Darkening the strip
+    // itself bakes in the same shadowed-groove look the flat dice get from their edge overlay.
+    const STRIP_SHADE = 0.45;
     [a, b, c].forEach((p) => {
       positions.push(p.x, p.y, p.z);
       uvs.push(p.dot(bucket!.basis.u), p.dot(bucket!.basis.v));
-      colors.push(1, 1, 1);
+      colors.push(STRIP_SHADE, STRIP_SHADE, STRIP_SHADE);
     });
   });
 
