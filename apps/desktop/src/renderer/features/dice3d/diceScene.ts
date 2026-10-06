@@ -9,11 +9,15 @@ import {
   PerspectiveCamera,
   PlaneGeometry,
   Quaternion,
+  RepeatWrapping,
   Scene,
+  Texture,
+  TextureLoader,
   Vector3,
   WebGLRenderer,
 } from 'three';
 import { diePlan, dieShape, landingQuaternion } from './diceShapes';
+import { DICE_SKINS, DEFAULT_DICE_SKIN, type DiceSkin } from './diceSkins';
 
 /**
  * The 3D dice animation: dice tumble in from the side of the board, bounce and settle with the
@@ -53,6 +57,24 @@ function labelTexture(text: string, sides: number): CanvasTexture {
   return tex;
 }
 
+// Skin textures are loaded once and kept for the app's life (small, reused every roll) —
+// only the per-roll materials that reference them get created and disposed each time.
+const skinTextureCache = new Map<string, { albedo: Texture; normal: Texture; roughnessMap: Texture }>();
+const textureLoader = new TextureLoader();
+function getSkinTextures(skin: DiceSkin) {
+  const hit = skinTextureCache.get(skin.id);
+  if (hit) return hit;
+  const load = (url: string) => {
+    const tex = textureLoader.load(url);
+    tex.wrapS = tex.wrapT = RepeatWrapping;
+    if (skin.repeat !== 1) tex.repeat.set(skin.repeat, skin.repeat);
+    return tex;
+  };
+  const result = { albedo: load(skin.albedo), normal: load(skin.normal), roughnessMap: load(skin.roughness) };
+  skinTextureCache.set(skin.id, result);
+  return result;
+}
+
 const ease = (t: number) => 1 - Math.pow(1 - t, 3);
 
 /** True when this computer can draw 3D (WebGL). */
@@ -69,7 +91,12 @@ export function canShow3d(): boolean {
  * Roll the dice across `container` (an element positioned over the board). Resolves when the
  * dice have landed (the result is on screen) — the fade-out continues after.
  */
-export function showDice(container: HTMLElement, dice: DieToShow[], color = '#2a9d8f'): Promise<void> {
+export function showDice(
+  container: HTMLElement,
+  dice: DieToShow[],
+  color = '#2a9d8f',
+  skinId: string = DEFAULT_DICE_SKIN,
+): Promise<void> {
   // A d100 is two d10s, so plan first, then cap how many are drawn.
   const list = dice.flatMap((d) => diePlan(d.s, d.f)).slice(0, MAX_DICE);
   if (list.length === 0 || !canShow3d()) return Promise.resolve();
@@ -109,8 +136,30 @@ export function showDice(container: HTMLElement, dice: DieToShow[], color = '#2a
   const halfH = Math.tan((35 * Math.PI) / 360) * 20;
   const halfW = halfH * (w / h);
 
-  const body = new MeshStandardMaterial({ color: new Color(color), roughness: 0.42, metalness: 0.08, flatShading: true });
-  const tensBody = new MeshStandardMaterial({ color: new Color(color).multiplyScalar(0.6), roughness: 0.42, metalness: 0.08, flatShading: true });
+  // The skin's roughness map carries the real roughness detail (moss duller, bare stone
+  // smoother); `color` stays a soft accent tint rather than a full party-color wash, so the
+  // stone-and-moss look from the reference art survives instead of being dyed solid teal.
+  const skin = DICE_SKINS[skinId] ?? DICE_SKINS[DEFAULT_DICE_SKIN];
+  const tex = getSkinTextures(skin);
+  const tint = new Color(0xffffff).lerp(new Color(color), 0.18);
+  const body = new MeshStandardMaterial({
+    color: tint,
+    map: tex.albedo,
+    normalMap: tex.normal,
+    roughnessMap: tex.roughnessMap,
+    roughness: 1,
+    metalness: skin.metalness,
+    flatShading: true,
+  });
+  const tensBody = new MeshStandardMaterial({
+    color: tint.clone().multiplyScalar(0.6),
+    map: tex.albedo,
+    normalMap: tex.normal,
+    roughnessMap: tex.roughnessMap,
+    roughness: 1,
+    metalness: skin.metalness,
+    flatShading: true,
+  });
   const perRow = 5;
   const rows = Math.ceil(list.length / perRow);
   const dice3 = list.map((d, i) => {
