@@ -39,7 +39,9 @@ export interface DieToShow {
 
 const MAX_DICE = 10;
 const ROLL_MS = 1300;
-const HOLD_MS = 1100;
+// TEMP: stretched out again so Matthew can screenshot both a d20 and a non-carved die (d6/d8)
+// to compare texture visibility — revert to 1100 once that's done.
+const HOLD_MS = 20000;
 const FADE_MS = 400;
 
 const labelCache = new Map<string, CanvasTexture>();
