@@ -156,9 +156,11 @@ export function TokenCard({
           <Button
             variant="ghost"
             size="sm"
+            disabled={!!token.permaDead}
+            title={token.permaDead ? 'Dead — permanent, no resurrection.' : undefined}
             onClick={() => void setDefeated(gameId, token, !token.defeated)}
           >
-            {token.defeated ? 'Revive' : 'Defeat'}
+            {token.permaDead ? 'Dead' : token.defeated ? 'Revive' : 'Defeat'}
           </Button>
           <Button
             variant="danger"

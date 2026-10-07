@@ -133,19 +133,31 @@ export function revealAllCreatures(gameId: string, tokens: Token[], mapId: strin
 
 /**
  * Set a token's HP. For creatures, 0 HP marks it defeated and anything above 0 brings it back
- * (so a healed monster is targetable and takes turns again).
+ * (so a healed monster is targetable and takes turns again) — UNLESS the token is `permaDead`
+ * (Solryn exhaustion level 3: "Death. Permanent. No resurrection."), in which case HP is forced
+ * to stay at 0 no matter what value was requested; nothing heals that back.
  */
-export function setTokenHp(gameId: string, token: Pick<Token, 'id' | 'kind' | 'hp'>, current: number): Promise<void> {
+export function setTokenHp(
+  gameId: string,
+  token: Pick<Token, 'id' | 'kind' | 'hp' | 'permaDead'>,
+  current: number,
+): Promise<void> {
   const max = token.hp?.max ?? current;
-  const hp = Math.max(0, Math.min(Math.round(current), max));
+  const hp = token.permaDead ? 0 : Math.max(0, Math.min(Math.round(current), max));
   return multiUpdate({
     [`/games/${gameId}/tokens/${token.id}/hp`]: { current: hp, max },
     ...(token.kind === 'creature' ? { [`/games/${gameId}/tokens/${token.id}/defeated`]: hp === 0 ? true : null } : {}),
   });
 }
 
-/** Mark a creature defeated, or bring it back (at least 1 HP so it's really back in the fight). */
-export function setDefeated(gameId: string, token: Pick<Token, 'id' | 'hp'>, defeated: boolean): Promise<void> {
+/**
+ * Mark a creature defeated, or bring it back (at least 1 HP so it's really back in the fight) —
+ * UNLESS the token is `permaDead`, in which case a revive attempt (defeated: false) is silently
+ * refused; `permaDead` itself is never cleared here (nothing short of the GM editing it directly
+ * undoes "no resurrection").
+ */
+export function setDefeated(gameId: string, token: Pick<Token, 'id' | 'hp' | 'permaDead'>, defeated: boolean): Promise<void> {
+  if (!defeated && token.permaDead) return Promise.resolve();
   return multiUpdate({
     [`/games/${gameId}/tokens/${token.id}/defeated`]: defeated ? true : null,
     ...(!defeated && token.hp && token.hp.current <= 0
@@ -160,32 +172,49 @@ export function removeToken(gameId: string, tokenId: string): Promise<void> {
 
 // --- Token conditions (applied/removed by any game member) ---
 
-/** Toggle a single condition on a token (writing null removes it). */
+/**
+ * Toggle a single condition on a token (writing null removes it). Pass `fatal: true` (from the
+ * condition's own `effects.fatal`) when turning one ON to also mark the token `defeated` +
+ * `permaDead` in the same write — e.g. Solryn exhaustion level 3 ("Death. Permanent. No
+ * resurrection."). Never clears `permaDead` itself; nothing here undoes that.
+ */
 export function setTokenCondition(
   gameId: string,
   tokenId: string,
   conditionId: string,
   on: boolean,
+  fatal?: boolean,
 ): Promise<void> {
-  return writeValue(
-    `games/${gameId}/tokens/${tokenId}/conditions/${conditionId}`,
-    on ? true : null,
-  );
+  const updates: Record<string, unknown> = {
+    [`games/${gameId}/tokens/${tokenId}/conditions/${conditionId}`]: on ? true : null,
+  };
+  if (on && fatal) {
+    updates[`games/${gameId}/tokens/${tokenId}/defeated`] = true;
+    updates[`games/${gameId}/tokens/${tokenId}/permaDead`] = true;
+  }
+  return multiUpdate(updates);
 }
 
 /**
  * Set an exclusive-group condition (e.g. one Exhaustion level): activate `activeId` and clear every
- * other id in the group. Pass activeId = null to clear the whole group.
+ * other id in the group. Pass activeId = null to clear the whole group. Pass `fatal: true` (the
+ * newly-active condition's own `effects.fatal`) to also mark the token `defeated` + `permaDead` in
+ * the same write — see `setTokenCondition`.
  */
 export function setExclusiveCondition(
   gameId: string,
   tokenId: string,
   groupIds: string[],
   activeId: string | null,
+  fatal?: boolean,
 ): Promise<void> {
   const updates: Record<string, unknown> = {};
   for (const id of groupIds) {
     updates[`/games/${gameId}/tokens/${tokenId}/conditions/${id}`] = id === activeId ? true : null;
+  }
+  if (activeId && fatal) {
+    updates[`/games/${gameId}/tokens/${tokenId}/defeated`] = true;
+    updates[`/games/${gameId}/tokens/${tokenId}/permaDead`] = true;
   }
   return multiUpdate(updates);
 }

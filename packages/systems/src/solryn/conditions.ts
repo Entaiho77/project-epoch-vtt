@@ -71,10 +71,9 @@ export const conditions: TokenCondition[] = [
     effects: {},
   },
   // Exhaustion & Fatigue (rulebook §1.4): 3 levels, cumulative — level 2 carries level 1's
-  // effect too, same convention as the 5e exhaustion ladder below. Level 3 ("Death. Permanent.
-  // No resurrection.") is deliberately NOT auto-enforced here, matching how 5e's own top
-  // exhaustion level in this codebase is description-only — the GM confirms an actual death,
-  // same as everywhere else Solryn says "GM has final discretion."
+  // effect too, same convention as the 5e exhaustion ladder below. Level 3 IS mechanized death
+  // (Matthew, 2026-10-07: "Level 3 exhaustion is death in Solryn") — `effects.fatal` marks the
+  // token defeated + permaDead the instant it's set, and nothing (HP healing, Revive) undoes it.
   {
     id: 'exhaustion_1',
     name: 'Exhaustion 1',
@@ -96,10 +95,10 @@ export const conditions: TokenCondition[] = [
   {
     id: 'exhaustion_3',
     name: 'Exhaustion 3',
-    color: '#d4a017',
+    color: '#8b1a1a',
     group: 'exhaustion',
     level: 3,
-    description: 'Death. Permanent. No resurrection. (Plus levels 1–2; the GM confirms the death.)',
-    effects: { disadvantageAbilityChecks: true, speedHalved: true },
+    description: 'Death. Permanent. No resurrection. (Plus levels 1–2.)',
+    effects: { disadvantageAbilityChecks: true, speedHalved: true, fatal: true },
   },
 ];

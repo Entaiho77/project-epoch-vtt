@@ -471,6 +471,10 @@ export interface TokenConditionEffects {
   speedHalved?: boolean;
   /** Hit point maximum is halved (Exhaustion 4). */
   hpMaxHalved?: boolean;
+  /** Having this condition means the token is dead — permanently, no resurrection (Solryn
+   *  exhaustion level 3). Setting a condition with this flag also marks the token `defeated` +
+   *  `permaDead`; nothing in the app (HP healing, Revive) can undo it afterward. */
+  fatal?: boolean;
 }
 
 /** A token condition: a colored board indicator plus its mechanized effects. */

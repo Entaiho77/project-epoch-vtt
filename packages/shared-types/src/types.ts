@@ -248,6 +248,10 @@ export interface Token {
   hp?: { current: number; max: number };
   /** Creature defeated (grayed in place during combat). */
   defeated?: boolean;
+  /** Permanently, unrecoverably dead (e.g. Solryn exhaustion level 3: "Death. Permanent. No
+   *  resurrection."). Once true, nothing here — HP healing, Revive — undoes it; only a GM
+   *  editing it directly could. Always implies `defeated`. */
+  permaDead?: boolean;
   /** Trap lifecycle: hidden → revealed → sprung (GM-arbitrated). */
   trapState?: 'hidden' | 'revealed' | 'sprung';
   /** Homebrew loot already distributed from this spawned instance (equipmentId → true), so the

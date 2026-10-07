@@ -465,9 +465,11 @@ export function MonsterStatCard({
           <Button
             variant="ghost"
             size="sm"
+            disabled={!!token.permaDead}
+            title={token.permaDead ? 'Dead — permanent, no resurrection.' : undefined}
             onClick={() => void setDefeated(gameId, token, !token.defeated)}
           >
-            {token.defeated ? 'Revive' : 'Defeat'}
+            {token.permaDead ? 'Dead' : token.defeated ? 'Revive' : 'Defeat'}
           </Button>
           {lootItems && lootItems.length > 0 && (
             <Button variant="secondary" size="sm" onClick={() => setLootOpen(true)}>

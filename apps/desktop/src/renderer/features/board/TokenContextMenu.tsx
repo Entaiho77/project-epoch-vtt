@@ -77,9 +77,9 @@ export function TokenContextMenu({
     if (c.group) groups.set(c.group, [...(groups.get(c.group) ?? []), c]);
   }
 
-  const toggle = (c: TokenCondition) => void setTokenCondition(gameId, token.id, c.id, !active[c.id]);
+  const toggle = (c: TokenCondition) => void setTokenCondition(gameId, token.id, c.id, !active[c.id], c.effects.fatal);
   const toggleInGroup = (group: TokenCondition[], c: TokenCondition) =>
-    void setExclusiveCondition(gameId, token.id, group.map((g) => g.id), active[c.id] ? null : c.id);
+    void setExclusiveCondition(gameId, token.id, group.map((g) => g.id), active[c.id] ? null : c.id, c.effects.fatal);
 
   const setTarget = () => {
     onSetTarget();
@@ -135,7 +135,8 @@ export function TokenContextMenu({
             {isTarget ? 'Clear target' : 'Set as target'}
           </button>
         )}
-        {dead && targetingEnabled && <p className={styles.hint}>Defeated — can’t be targeted.</p>}
+        {token.permaDead && <p className={styles.hint}>Dead — permanent, no resurrection.</p>}
+        {dead && !token.permaDead && targetingEnabled && <p className={styles.hint}>Defeated — can’t be targeted.</p>}
 
         {initiative && (
           <button
