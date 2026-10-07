@@ -531,9 +531,20 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
     ),
   };
 
+  // GM's own prep notebook — same private-notes component/data as the player's Notes (scoped
+  // to the GM's own uid, so it never overlaps a player's notes), just relabeled for the GM's
+  // use: campaign hooks, NPCs, reminders. Same icon as the players' Notes, per request.
+  const campaignNotes: BarItem = {
+    kind: 'drawer',
+    id: 'campaign-notes',
+    label: 'Campaign notes',
+    short: 'Notes',
+    glyph: <Ico src={icoNotes} alt="Campaign notes" />,
+    content: <NotesDrawer uid={uid} gameId={gameId} />,
+  };
   const left: BarItem[] =
     role === 'gm'
-      ? [initiative, dice, log, chat, rulesBar]
+      ? [initiative, dice, log, chat, campaignNotes, rulesBar]
       : [
           dice,
           log,
