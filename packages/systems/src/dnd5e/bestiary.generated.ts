@@ -269,7 +269,13 @@ export const generatedBestiary: BestiaryEntry[] = [
         "dc": 16,
         "success": "none"
       }
-    ],
+    ,
+      {
+        "name": "Breath Weapons",
+        "ability": "DEX",
+        "dc": 18,
+        "success": "half"
+      }],
     "attacks": [
       {
         "name": "Bite",
@@ -329,7 +335,13 @@ export const generatedBestiary: BestiaryEntry[] = [
         "dc": 17,
         "success": "none"
       }
-    ],
+    ,
+      {
+        "name": "Breath Weapons",
+        "ability": "DEX",
+        "dc": 19,
+        "success": "half"
+      }],
     "attacks": [
       {
         "name": "Bite",
@@ -388,7 +400,13 @@ export const generatedBestiary: BestiaryEntry[] = [
         "dc": 16,
         "success": "none"
       }
-    ],
+    ,
+      {
+        "name": "Breath Weapons",
+        "ability": "DEX",
+        "dc": 18,
+        "success": "half"
+      }],
     "attacks": [
       {
         "name": "Bite",
@@ -448,7 +466,13 @@ export const generatedBestiary: BestiaryEntry[] = [
         "dc": 21,
         "success": "none"
       }
-    ],
+    ,
+      {
+        "name": "Breath Weapons",
+        "ability": "DEX",
+        "dc": 21,
+        "success": "half"
+      }],
     "attacks": [
       {
         "name": "Bite",
@@ -640,7 +664,13 @@ export const generatedBestiary: BestiaryEntry[] = [
         "dc": 18,
         "success": "none"
       }
-    ],
+    ,
+      {
+        "name": "Breath Weapons",
+        "ability": "CON",
+        "dc": 20,
+        "success": "half"
+      }],
     "attacks": [
       {
         "name": "Bite",
@@ -935,7 +965,13 @@ export const generatedBestiary: BestiaryEntry[] = [
         "dc": 18,
         "success": "none"
       }
-    ],
+    ,
+      {
+        "name": "Breath Weapons",
+        "ability": "DEX",
+        "dc": 21,
+        "success": "half"
+      }],
     "attacks": [
       {
         "name": "Bite",
@@ -996,7 +1032,13 @@ export const generatedBestiary: BestiaryEntry[] = [
         "dc": 20,
         "success": "none"
       }
-    ],
+    ,
+      {
+        "name": "Breath Weapons",
+        "ability": "DEX",
+        "dc": 23,
+        "success": "half"
+      }],
     "attacks": [
       {
         "name": "Bite",
@@ -1056,7 +1098,13 @@ export const generatedBestiary: BestiaryEntry[] = [
         "dc": 19,
         "success": "none"
       }
-    ],
+    ,
+      {
+        "name": "Breath Weapons",
+        "ability": "DEX",
+        "dc": 22,
+        "success": "half"
+      }],
     "attacks": [
       {
         "name": "Bite",
@@ -1117,7 +1165,13 @@ export const generatedBestiary: BestiaryEntry[] = [
         "dc": 24,
         "success": "none"
       }
-    ],
+    ,
+      {
+        "name": "Breath Weapons",
+        "ability": "DEX",
+        "dc": 24,
+        "success": "half"
+      }],
     "attacks": [
       {
         "name": "Bite",
@@ -1310,7 +1364,13 @@ export const generatedBestiary: BestiaryEntry[] = [
         "dc": 21,
         "success": "none"
       }
-    ],
+    ,
+      {
+        "name": "Breath Weapons",
+        "ability": "CON",
+        "dc": 24,
+        "success": "half"
+      }],
     "attacks": [
       {
         "name": "Bite",
@@ -2522,6 +2582,14 @@ export const generatedBestiary: BestiaryEntry[] = [
     "abilities": [
       "Breath Weapons: The dragon uses one of the following breath weapons. Fire Breath. The dragon exhales fire in an 20-foot line that is 5 feet wide. Each creature in that line must make a DC 11 Dexterity saving throw, taking 14 (4d6) fire damage on a failed save, or half as much damage on a successful one. Sleep Breath. The dragon exhales sleep gas in a 15-foot cone. Each creature in that area must succeed on a DC 11 Constitution saving throw or fall unconscious for 1 minute. This effect ends for a creature if the creature takes damage or someone uses an action to wake it."
     ],
+    "saves": [
+      {
+        "name": "Breath Weapons",
+        "ability": "DEX",
+        "dc": 11,
+        "success": "half"
+      }
+    ],
     "attacks": [
       {
         "name": "Bite",
@@ -2555,6 +2623,14 @@ export const generatedBestiary: BestiaryEntry[] = [
     "abilities": [
       "Amphibious: The dragon can breathe air and water.",
       "Breath Weapons: The dragon uses one of the following breath weapons. Lightning Breath. The dragon exhales lightning in a 40-foot line that is 5 feet wide. Each creature in that line must make a DC 12 Dexterity saving throw, taking 16 (3d10) lightning damage on a failed save, or half as much damage on a successful one. Repulsion Breath. The dragon exhales repulsion energy in a 30-foot cone. Each creature in that area must succeed on a DC 12 Strength saving throw. On a failed save, the creature is pushed 30 feet away from the dragon."
+    ],
+    "saves": [
+      {
+        "name": "Breath Weapons",
+        "ability": "DEX",
+        "dc": 12,
+        "success": "half"
+      }
     ],
     "attacks": [
       {
@@ -3173,6 +3249,14 @@ export const generatedBestiary: BestiaryEntry[] = [
     },
     "abilities": [
       "Breath Weapons: The dragon uses one of the following breath weapons. Acid Breath. The dragon exhales acid in an 20-foot line that is 5 feet wide. Each creature in that line must make a DC 11 Dexterity saving throw, taking 18 (4d8) acid damage on a failed save, or half as much damage on a successful one. Slowing Breath. The dragon exhales gas in a 15-foot cone. Each creature in that area must succeed on a DC 11 Constitution saving throw. On a failed save, the creature can't use reactions, its speed is halved, and it can't make more than one attack on its turn. In addition, the creature can use either an action or a bonus action on its turn, but not both. These effects last for 1 minute. The creature can repeat the saving throw at the end of each of its turns, ending the effect on itself with a successful save."
+    ],
+    "saves": [
+      {
+        "name": "Breath Weapons",
+        "ability": "DEX",
+        "dc": 11,
+        "success": "half"
+      }
     ],
     "attacks": [
       {
@@ -6100,6 +6184,14 @@ export const generatedBestiary: BestiaryEntry[] = [
     "abilities": [
       "Amphibious: The dragon can breathe air and water.",
       "Breath Weapons: The dragon uses one of the following breath weapons. Fire Breath. The dragon exhales fire in a 15-foot cone. Each creature in that area must make a DC 13 Dexterity saving throw, taking 22 (4d10) fire damage on a failed save, or half as much damage on a successful one. Weakening Breath. The dragon exhales gas in a 15-foot cone. Each creature in that area must succeed on a DC 13 Strength saving throw or have disadvantage on Strength-based attack rolls, Strength checks, and Strength saving throws for 1 minute. A creature can repeat the saving throw at the end of each of its turns, ending the effect on itself on a success."
+    ],
+    "saves": [
+      {
+        "name": "Breath Weapons",
+        "ability": "DEX",
+        "dc": 13,
+        "success": "half"
+      }
     ],
     "attacks": [
       {
@@ -10233,6 +10325,14 @@ export const generatedBestiary: BestiaryEntry[] = [
     "abilities": [
       "Breath Weapons: The dragon uses one of the following breath weapons. Cold Breath. The dragon exhales an icy blast in a 15-foot cone. Each creature in that area must make a DC 13 Constitution saving throw, taking 18 (4d8) cold damage on a failed save, or half as much damage on a successful one. Paralyzing Breath. The dragon exhales paralyzing gas in a 15-foot cone. Each creature in that area must succeed on a DC 13 Constitution saving throw or be paralyzed for 1 minute. A creature can repeat the saving throw at the end of each of its turns, ending the effect on itself on a success."
     ],
+    "saves": [
+      {
+        "name": "Breath Weapons",
+        "ability": "CON",
+        "dc": 13,
+        "success": "half"
+      }
+    ],
     "attacks": [
       {
         "name": "Bite",
@@ -13083,6 +13183,14 @@ export const generatedBestiary: BestiaryEntry[] = [
       "Multiattack: The dragon makes three attacks: one with its bite and two with its claws.",
       "Breath Weapons: The dragon uses one of the following breath weapons. Fire Breath. The dragon exhales fire in a 40-foot line that is 5 feet wide. Each creature in that line must make a DC 14 Dexterity saving throw, taking 42 (12d6) fire damage on a failed save, or half as much damage on a successful one. Sleep Breath. The dragon exhales sleep gas in a 30-foot cone. Each creature in that area must succeed on a DC 14 Constitution saving throw or fall unconscious for 5 minutes. This effect ends for a creature if the creature takes damage or someone uses an action to wake it."
     ],
+    "saves": [
+      {
+        "name": "Breath Weapons",
+        "ability": "DEX",
+        "dc": 14,
+        "success": "half"
+      }
+    ],
     "attacks": [
       {
         "name": "Bite",
@@ -13124,6 +13232,14 @@ export const generatedBestiary: BestiaryEntry[] = [
       "Multiattack: The dragon makes three attacks: one with its bite and two with its claws.",
       "Breath Weapons: The dragon uses one of the following breath weapons. Lightning Breath. The dragon exhales lightning in a 60-foot line that is 5 feet wide. Each creature in that line must make a DC 15 Dexterity saving throw, taking 55 (10d10) lightning damage on a failed save, or half as much damage on a successful one. Repulsion Breath. The dragon exhales repulsion energy in a 30-foot cone. Each creature in that area must succeed on a DC 15 Strength saving throw. On a failed save, the creature is pushed 40 feet away from the dragon."
     ],
+    "saves": [
+      {
+        "name": "Breath Weapons",
+        "ability": "DEX",
+        "dc": 15,
+        "success": "half"
+      }
+    ],
     "attacks": [
       {
         "name": "Bite",
@@ -13163,6 +13279,14 @@ export const generatedBestiary: BestiaryEntry[] = [
     "abilities": [
       "Multiattack: The dragon makes three attacks: one with its bite and two with its claws.",
       "Breath Weapons: The dragon uses one of the following breath weapons. Acid Breath. The dragon exhales acid in an 40-foot line that is 5 feet wide. Each creature in that line must make a DC 14 Dexterity saving throw, taking 40 (9d8) acid damage on a failed save, or half as much damage on a successful one. Slowing Breath. The dragon exhales gas in a 30-foot cone. Each creature in that area must succeed on a DC 14 Constitution saving throw. On a failed save, the creature can't use reactions, its speed is halved, and it can't make more than one attack on its turn. In addition, the creature can use either an action or a bonus action on its turn, but not both. These effects last for 1 minute. The creature can repeat the saving throw at the end of each of its turns, ending the effect on itself with a successful save."
+    ],
+    "saves": [
+      {
+        "name": "Breath Weapons",
+        "ability": "DEX",
+        "dc": 14,
+        "success": "half"
+      }
     ],
     "attacks": [
       {
@@ -13204,6 +13328,14 @@ export const generatedBestiary: BestiaryEntry[] = [
       "Amphibious: The dragon can breathe air and water.",
       "Multiattack: The dragon makes three attacks: one with its bite and two with its claws.",
       "Breath Weapons: The dragon uses one of the following breath weapons. Fire Breath. The dragon exhales fire in a 30-foot cone. Each creature in that area must make a DC 17 Dexterity saving throw, taking 55 (10d10) fire damage on a failed save, or half as much damage on a successful one. Weakening Breath. The dragon exhales gas in a 30-foot cone. Each creature in that area must succeed on a DC 17 Strength saving throw or have disadvantage on Strength-based attack rolls, Strength checks, and Strength saving throws for 1 minute. A creature can repeat the saving throw at the end of each of its turns, ending the effect on itself on a success."
+    ],
+    "saves": [
+      {
+        "name": "Breath Weapons",
+        "ability": "DEX",
+        "dc": 17,
+        "success": "half"
+      }
     ],
     "attacks": [
       {
@@ -13343,6 +13475,14 @@ export const generatedBestiary: BestiaryEntry[] = [
     "abilities": [
       "Multiattack: The dragon makes three attacks: one with its bite and two with its claws.",
       "Breath Weapons: The dragon uses one of the following breath weapons. Cold Breath. The dragon exhales an icy blast in a 30-foot cone. Each creature in that area must make a DC 17 Constitution saving throw, taking 54 (12d8) cold damage on a failed save, or half as much damage on a successful one. Paralyzing Breath. The dragon exhales paralyzing gas in a 30-foot cone. Each creature in that area must succeed on a DC 17 Constitution saving throw or be paralyzed for 1 minute. A creature can repeat the saving throw at the end of each of its turns, ending the effect on itself on a success."
+    ],
+    "saves": [
+      {
+        "name": "Breath Weapons",
+        "ability": "CON",
+        "dc": 17,
+        "success": "half"
+      }
     ],
     "attacks": [
       {
