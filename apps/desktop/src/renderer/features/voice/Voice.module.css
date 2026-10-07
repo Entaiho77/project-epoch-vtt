@@ -109,6 +109,12 @@
 .triggerTalking {
   box-shadow: 0 0 0 3px var(--teal-tint);
 }
+.triggerIcon {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  display: block;
+}
 .panel {
   position: absolute;
   top: calc(100% + 8px);
@@ -153,7 +159,10 @@
   color: var(--accent-red);
 }
 .pillIcon {
-  font-size: 1em;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  display: block;
 }
 .pillOthers {
   color: var(--text-muted);

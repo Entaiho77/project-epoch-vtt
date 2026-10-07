@@ -2,6 +2,9 @@ import { useEffect } from 'react';
 import v from './Voice.module.css';
 import { keyLabel } from './VoicePanel';
 import { setMicMuted, setPushToTalkDown, useVoice } from './voiceStore';
+import icoVoice from '../../assets/icons/icon-voice.png';
+import icoVoiceMuted from '../../assets/icons/icon-voice-muted.png';
+import icoVoiceSpeaking from '../../assets/icons/icon-voice-speaking.png';
 
 /** Typing in a box shouldn't key the mic. */
 function isTyping(target: EventTarget | null): boolean {
@@ -63,9 +66,12 @@ export function VoiceStatus({ uid }: { uid: string }) {
       title={muted ? 'Click to unmute' : 'Click to mute'}
       aria-label={`Voice: ${label}${others ? `, ${others} speaking` : ''}`}
     >
-      <span className={v.pillIcon} aria-hidden>
-        {muted ? '🔇' : '🎙'}
-      </span>
+      <img
+        className={v.pillIcon}
+        src={muted ? icoVoiceMuted : talking ? icoVoiceSpeaking : icoVoice}
+        alt=""
+        aria-hidden="true"
+      />
       {label}
       {others > 0 && <span className={v.pillOthers}>· {others} speaking</span>}
     </button>

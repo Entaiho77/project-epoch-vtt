@@ -5,6 +5,9 @@ import { VoicePanel } from './VoicePanel';
 import { VoiceStatus } from './VoiceStatus';
 import { useVoice } from './voiceStore';
 import { useVoicePresence } from './voicePresence';
+import icoVoice from '../../assets/icons/icon-voice.png';
+import icoVoiceMuted from '../../assets/icons/icon-voice-muted.png';
+import icoVoiceSpeaking from '../../assets/icons/icon-voice-speaking.png';
 
 /**
  * Voice in the game's top bar, so it's there on every game screen (choosing a
@@ -51,6 +54,7 @@ export function VoiceButton({
     voice.joined ? (muted ? v.triggerMuted : v.triggerOn) : '',
     talking ? v.triggerTalking : '',
   ].join(' ');
+  const icon = voice.joined && muted ? icoVoiceMuted : talking ? icoVoiceSpeaking : icoVoice;
 
   return (
     <div className={v.anchor} ref={anchor}>
@@ -61,7 +65,7 @@ export function VoiceButton({
         aria-expanded={open}
         aria-haspopup="dialog"
       >
-        <span aria-hidden>{voice.joined && muted ? '🔇' : '🎙'}</span>
+        <img className={v.triggerIcon} src={icon} alt="" aria-hidden="true" />
         Voice
         {inVoice.size > 0 && <span className={v.count}>{inVoice.size}</span>}
       </button>
