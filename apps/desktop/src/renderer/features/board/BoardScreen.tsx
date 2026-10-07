@@ -667,8 +667,14 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
    *  to review/exclude someone first can still use Shapes → "Apply damage…" by hand; this just
    *  skips that for the common case. No-op if nothing's been placed yet for this creature. */
   async function applyAoeFromAbilityRoll(amount: number, kind: ShapeKind, sourceTokenId: string) {
-    if (!activeMap) return;
-    const match = Object.values(game.shapes ?? {})
+    // TEMP diagnostic (2026-10-06): every branch posts to the log so we can see exactly which
+    // one is firing instead of guessing — remove once this is confirmed working.
+    if (!activeMap) {
+      postRollText('[AoE debug] no active map');
+      return;
+    }
+    const allShapes = Object.values(game.shapes ?? {});
+    const match = allShapes
       .filter(
         (sh) =>
           sh.mapId === activeMap.id &&
@@ -677,15 +683,25 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
           sh.anchor.tokenId === sourceTokenId,
       )
       .sort((a, b) => b.createdAt - a.createdAt)[0];
-    if (!match) return;
+    if (!match) {
+      const onMap = allShapes.filter((sh) => sh.mapId === activeMap.id);
+      const desc = onMap.length
+        ? onMap.map((sh) => `${sh.kind}@${'tokenId' in sh.anchor ? `token:${sh.anchor.tokenId}` : `${sh.anchor.col},${sh.anchor.row}`}`).join(' | ')
+        : 'none';
+      postRollText(`[AoE debug] no ${kind} shape anchored to token ${sourceTokenId}. Shapes on this map: ${desc}`);
+      return;
+    }
 
     const anchor = shapeAnchorCenter(match.anchor, tokens, activeMap.gridSize);
-    if (!anchor) return;
+    if (!anchor) {
+      postRollText('[AoE debug] matched a shape but could not resolve its anchor point');
+      return;
+    }
     const caught = tokensInShape(match, anchor, tokens, activeMap.gridSize, measureScale?.value ?? 1).filter(
       (t) => (t.kind === 'character' || t.kind === 'creature') && !isDefeated(t) && t.id !== sourceTokenId,
     );
     if (caught.length === 0) {
-      postRollText("Nobody else is caught in it — nothing applied.");
+      postRollText('[AoE debug] shape matched, but nobody else is caught in it — nothing applied.');
       return;
     }
     const updates: Record<string, unknown> = {};
