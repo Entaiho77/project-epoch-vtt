@@ -20,6 +20,11 @@ const row: React.CSSProperties = { display: 'flex', alignItems: 'center', justif
  * Each caught token has its own checkbox so the GM can leave anyone out before applying (a
  * breath weapon shouldn't damage the dragon breathing it — the shape's own anchor token, when
  * it's token-anchored, starts unchecked for exactly that reason; everyone else starts checked).
+ *
+ * Manual path only (opened from Shapes drawer → "Apply damage…"): rolling a save-based
+ * monster ability with its shape already placed applies damage straight away with no modal
+ * (BoardScreen's applyAoeFromAbilityRoll) — this stays for a one-off amount, or reviewing/
+ * excluding someone by hand before applying.
  */
 export function AoeDamageModal({
   gameId,
@@ -30,7 +35,6 @@ export function AoeDamageModal({
   ftPerSquare,
   postRoll,
   onClose,
-  initialAmount,
 }: {
   gameId: string;
   shape: BoardShape;
@@ -40,12 +44,8 @@ export function AoeDamageModal({
   ftPerSquare: number;
   postRoll: (text: string) => void;
   onClose: () => void;
-  /** Pre-fills the amount from a just-rolled ability (2026-10-06 playtest: "streamline it" —
-   *  rolling a save-based ability with its cone already placed opens straight here with the
-   *  rolled number ready, instead of making the GM retype it). */
-  initialAmount?: number;
 }) {
-  const [amount, setAmount] = useState(initialAmount ?? 0);
+  const [amount, setAmount] = useState(0);
   const [applied, setApplied] = useState(false);
   const sourceTokenId = 'tokenId' in shape.anchor ? shape.anchor.tokenId : undefined;
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});

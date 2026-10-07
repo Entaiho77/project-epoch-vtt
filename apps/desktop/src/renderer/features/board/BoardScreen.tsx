@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { SystemDefinition } from '@epoch/shared-types';
-import type { Character, Game, Role, Token } from '@epoch/shared-types';
+import type { Character, Game, Role, ShapeKind, Token } from '@epoch/shared-types';
 import { homebrewList, homebrewToBestiaryEntry, useLibrary, useRules } from '../../data/homebrew';
 import {
   addToken,
@@ -18,7 +18,7 @@ import { addShape, removeShape } from '../../data/shapes';
 import { clearAllMeasures, moveShape, rotateShape, setMyMeasure } from '../../data/measures';
 import { useCreatureArt, useMyCreatures } from '../../data/creatures';
 import { useGameCharacterArt } from '../../data/characters';
-import { firstFreeCell, gridDimensions, takenSquares } from './boardGeometry';
+import { firstFreeCell, gridDimensions, shapeAnchorCenter, takenSquares, tokensInShape } from './boardGeometry';
 import { isPartyScale } from './partyMode';
 import { useGridPrefs } from './gridPrefs';
 import { GridDrawer } from './drawers/GridDrawer';
@@ -46,12 +46,12 @@ import { RollLog, useRollLog } from '../rolllog/rollLog';
 import { AttackGateContext } from './attackGate';
 import { playChime } from '../voice/chime';
 import { dice3dEnabled, playDice } from '../dice3d/dice3d';
-import { isDefeated } from '../../data/damage';
+import { hitChanges, hitNote, isDefeated } from '../../data/damage';
 import { creatureCombatant, joinCombat, leaveCombat, mayMoveNow, rollInitiative, turnBlockReason } from '../../data/combat';
 import { initiativeModifier } from '../../data/initiativeModifier';
 import { useGameCharacters } from '../../data/characters';
 import { canSeeMessage, useChat } from '../../data/chat';
-import { writeValue } from '../../data/realtime';
+import { multiUpdate, writeValue } from '../../data/realtime';
 import { BoardToasts, useArrivals, useToasts, type Toast } from './BoardToasts';
 import { rollsToShow, summarizeRoll, unreadMessages } from './toastSummaries';
 import { canSeeMonsterStats } from '../../permissions';
@@ -157,11 +157,11 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
   const [giveLootFor, setGiveLootFor] = useState<string | null>(null);
   // Player "Loot corpse" (playtest #6): the defeated creature token being searched; null = closed.
   const [lootCorpseFor, setLootCorpseFor] = useState<string | null>(null);
-  // GM "Apply AoE damage" (playtest #8): the placed shape being resolved; null = closed.
+  // GM "Apply AoE damage" (playtest #8): the placed shape being resolved; null = closed. A
+  // manual backup for a one-off amount or excluding someone by hand — rolling a save-based
+  // ability with its shape already placed applies straight away without this (see
+  // applyAoeFromAbilityRoll), so this is reached only from Shapes drawer → "Apply damage…".
   const [aoeShapeFor, setAoeShapeFor] = useState<string | null>(null);
-  // Pre-fills the amount above when opened straight from a monster-ability roll (playtest
-  // "streamline it"), instead of the GM retyping it; 0 when opened manually from Shapes.
-  const [aoePrefillAmount, setAoePrefillAmount] = useState(0);
   // GM right-click token menu (board cleanup): the token + cursor position, null when closed.
   const [ctxMenu, setCtxMenu] = useState<{ token: Token; x: number; y: number } | null>(null);
   // 2026-10-06 playtest (corrected again): Measure is just another same-side menu now, with no
@@ -399,22 +399,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
               }
               onRollSaveAbility={
                 role === 'gm' && activeMap
-                  ? (amount, kind) => {
-                      // Most-recently-placed shape of this kind anchored to this creature's own
-                      // token — the one the GM just placed for this ability, if they placed one.
-                      const match = Object.values(game.shapes ?? {})
-                        .filter(
-                          (sh) =>
-                            sh.mapId === activeMap.id &&
-                            sh.kind === kind &&
-                            'tokenId' in sh.anchor &&
-                            sh.anchor.tokenId === selected.id,
-                        )
-                        .sort((a, b) => b.createdAt - a.createdAt)[0];
-                      if (!match) return; // nothing placed yet — just the roll in the log, as before
-                      setAoePrefillAmount(amount);
-                      setAoeShapeFor(match.id);
-                    }
+                  ? (amount, kind) => void applyAoeFromAbilityRoll(amount, kind, selected.id)
                   : undefined
               }
               onClose={closeMonsterPanel}
@@ -675,6 +660,52 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
     });
   }
 
+  /** GM: rolling a save-based ability (e.g. a breath weapon) with its cone/line/etc already
+   *  placed on the board applies that roll's damage straight away to everyone caught in it
+   *  (except the creature itself) — no separate "Apply AoE damage" step. 2026-10-06 playtest:
+   *  "the damage should auto apply from the roll, not require a manual entry." A GM who wants
+   *  to review/exclude someone first can still use Shapes → "Apply damage…" by hand; this just
+   *  skips that for the common case. No-op if nothing's been placed yet for this creature. */
+  async function applyAoeFromAbilityRoll(amount: number, kind: ShapeKind, sourceTokenId: string) {
+    if (!activeMap) return;
+    const match = Object.values(game.shapes ?? {})
+      .filter(
+        (sh) =>
+          sh.mapId === activeMap.id &&
+          sh.kind === kind &&
+          'tokenId' in sh.anchor &&
+          sh.anchor.tokenId === sourceTokenId,
+      )
+      .sort((a, b) => b.createdAt - a.createdAt)[0];
+    if (!match) return;
+
+    const anchor = shapeAnchorCenter(match.anchor, tokens, activeMap.gridSize);
+    if (!anchor) return;
+    const caught = tokensInShape(match, anchor, tokens, activeMap.gridSize, measureScale?.value ?? 1).filter(
+      (t) => (t.kind === 'character' || t.kind === 'creature') && !isDefeated(t) && t.id !== sourceTokenId,
+    );
+    if (caught.length === 0) {
+      postRollText("Nobody else is caught in it — nothing applied.");
+      return;
+    }
+    const updates: Record<string, unknown> = {};
+    const notes: string[] = [];
+    for (const t of caught) {
+      const charHp =
+        t.kind === 'character' && t.characterId
+          ? gameCharacters.find((c) => c.id === t.characterId)?.play.pools?.hp?.current
+          : undefined;
+      const changes = hitChanges(gameId, t, amount, charHp);
+      if (!changes) continue;
+      Object.assign(updates, changes);
+      const after =
+        t.kind === 'character' ? Math.max(0, (charHp ?? 0) - amount) : Math.max(0, (t.hp?.current ?? 0) - amount);
+      notes.push(hitNote(t.name, amount, after === 0));
+    }
+    if (Object.keys(updates).length) await multiUpdate(updates);
+    postRollText(`${match.kind} hits ${caught.length} for ${amount} each — ${notes.join('; ') || 'nothing to apply'}`);
+  }
+
   return (
     <AttackGateContext.Provider value={myTurnBlock}>
     <BoardShell
@@ -858,11 +889,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
               gridSize={activeMap.gridSize}
               ftPerSquare={measureScale?.value ?? 1}
               postRoll={postRollText}
-              initialAmount={aoePrefillAmount}
-              onClose={() => {
-                setAoeShapeFor(null);
-                setAoePrefillAmount(0);
-              }}
+              onClose={() => setAoeShapeFor(null)}
             />
           );
         })()}
