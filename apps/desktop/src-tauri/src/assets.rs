@@ -1,7 +1,8 @@
-//! Image files (maps, token art) stored on disk instead of inside the save file.
+//! Image and audio files (maps, token art, ambient scene tracks) stored on disk instead of
+//! inside the save file.
 //!
-//! Each image is saved once under a name derived from its contents (SHA-256),
-//! so the same image uploaded twice is stored once and a name never changes
+//! Each file is saved once under a name derived from its contents (SHA-256),
+//! so the same file uploaded twice is stored once and a name never changes
 //! meaning. The save file only holds a short reference like
 //! `epoch-asset:3fa9…c2.png`; the renderer turns that into a URL served by the
 //! `epoch-asset` protocol registered in main.rs.
@@ -24,7 +25,7 @@ pub struct Assets {
     dir: PathBuf,
 }
 
-/// File extension for a supported image MIME type.
+/// File extension for a supported image or audio MIME type.
 fn ext_for_mime(mime: &str) -> Option<&'static str> {
     match mime.split(';').next().unwrap_or("").trim().to_ascii_lowercase().as_str() {
         "image/png" => Some("png"),
@@ -34,6 +35,11 @@ fn ext_for_mime(mime: &str) -> Option<&'static str> {
         "image/avif" => Some("avif"),
         "image/bmp" => Some("bmp"),
         "image/svg+xml" => Some("svg"),
+        // Ambient scene audio (2026-10-07 MVP backlog): one looping track per map.
+        "audio/mpeg" | "audio/mp3" => Some("mp3"),
+        "audio/ogg" | "application/ogg" => Some("ogg"),
+        "audio/wav" | "audio/x-wav" | "audio/wave" => Some("wav"),
+        "audio/mp4" | "audio/x-m4a" | "audio/m4a" => Some("m4a"),
         _ => None,
     }
 }
@@ -47,6 +53,10 @@ pub fn mime_for_name(name: &str) -> &'static str {
         "avif" => "image/avif",
         "bmp" => "image/bmp",
         "svg" => "image/svg+xml",
+        "mp3" => "audio/mpeg",
+        "ogg" => "audio/ogg",
+        "wav" => "audio/wav",
+        "m4a" => "audio/mp4",
         _ => "application/octet-stream",
     }
 }
@@ -57,7 +67,7 @@ pub fn is_valid_name(name: &str) -> bool {
     let Some((hash, ext)) = name.split_once('.') else { return false };
     hash.len() == 64
         && hash.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-        && matches!(ext, "png" | "jpg" | "webp" | "gif" | "avif" | "bmp" | "svg")
+        && matches!(ext, "png" | "jpg" | "webp" | "gif" | "avif" | "bmp" | "svg" | "mp3" | "ogg" | "wav" | "m4a")
 }
 
 impl Assets {
@@ -72,9 +82,9 @@ impl Assets {
             return Err("That file is empty.".into());
         }
         if bytes.len() > MAX_BYTES {
-            return Err("Image too large (max 50 MB).".into());
+            return Err("File too large (max 50 MB).".into());
         }
-        let ext = ext_for_mime(mime).ok_or_else(|| format!("Unsupported image type: {mime}"))?;
+        let ext = ext_for_mime(mime).ok_or_else(|| format!("Unsupported file type: {mime}"))?;
         let hash = Sha256::digest(bytes);
         let name = format!("{}.{ext}", hex(&hash));
         let path = self.dir.join(&name);

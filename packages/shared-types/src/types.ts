@@ -180,6 +180,22 @@ export interface MapDef {
   customSquare?: { value: number; unit: string };
   /** Fogged squares, keyed "col,row". */
   fog?: Record<string, true>;
+  /** Ambient scene audio (2026-10-07 MVP backlog): one looping track per map, GM-controlled.
+   *  No playlist, no crossfade, no separate SFX layer — swapping scenes means the GM swaps
+   *  this. Absent → no track loaded for this map. */
+  ambientAudio?: MapAmbientAudio;
+}
+
+/** One ambient audio track attached to a map. `track` is the same storage contract as
+ *  `MapDef.imageUrl` (an `epoch-asset:` reference in the desktop app, or a data URL) —
+ *  resolve it with `imageSrc()`, which is generic over any stored asset, not actually
+ *  image-specific. `playing` is shared: everyone hears the same track start/stop together.
+ *  Each listener's own volume is a local-only preference, never stored here. */
+export interface MapAmbientAudio {
+  track: string;
+  /** Original filename, so the GM can tell what's loaded without re-opening the file picker. */
+  name: string;
+  playing: boolean;
 }
 
 export type TokenKind = 'character' | 'creature' | 'trap' | 'party';

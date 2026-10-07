@@ -15,7 +15,7 @@
  */
 
 const PREFIX = 'epoch-asset:';
-const NAME_RE = /^[0-9a-f]{64}\.(png|jpg|webp|gif|avif|bmp|svg)$/;
+const NAME_RE = /^[0-9a-f]{64}\.(png|jpg|webp|gif|avif|bmp|svg|mp3|ogg|wav|m4a)$/;
 /** Raw bytes per chunk (~350 KB once base64-encoded). */
 const CHUNK_BYTES = 256 * 1024;
 /** 50 MB limit / 256 KB chunks = 200; a little headroom. */
@@ -196,6 +196,10 @@ function mimeFor(name: string): string {
       avif: 'image/avif',
       bmp: 'image/bmp',
       svg: 'image/svg+xml',
+      mp3: 'audio/mpeg',
+      ogg: 'audio/ogg',
+      wav: 'audio/wav',
+      m4a: 'audio/mp4',
     }[ext] ?? 'application/octet-stream'
   );
 }

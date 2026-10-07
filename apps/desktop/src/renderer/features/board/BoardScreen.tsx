@@ -16,12 +16,15 @@ import {
 import { addShape, removeShape } from '../../data/shapes';
 import { clearAllMeasures, moveShape, rotateShape, setMyMeasure } from '../../data/measures';
 import { setMyLightPen, setMyPing } from '../../data/pointers';
+import { imageSrc } from '../../data/images';
 import { useCreatureArt, useMyCreatures } from '../../data/creatures';
 import { useGameCharacterArt } from '../../data/characters';
 import { firstFreeCell, gridDimensions, shapeAnchorCenter, takenSquares, tokensInShape } from './boardGeometry';
 import { isPartyScale } from './partyMode';
 import { useGridPrefs } from './gridPrefs';
+import { AmbientAudioPlayer } from './AmbientAudioPlayer';
 import { GridDrawer } from './drawers/GridDrawer';
+import { AmbientAudioDrawer } from './drawers/AmbientAudioDrawer';
 import { GiveLootModal } from './drawers/GiveLootModal';
 import { LootCorpseModal } from './drawers/LootCorpseModal';
 import { AoeDamageModal } from './drawers/AoeDamageModal';
@@ -68,6 +71,10 @@ import icoMap from '../../assets/icons/icon-map.png';
 import icoMeasure from '../../assets/icons/icon-measure.png';
 import icoPing from '../../assets/icons/icon-select-pointer.png';
 import icoLightPen from '../../assets/icons/icon-spell.png';
+// Borrowed the Slate set's "rest" campfire tile — currently unused elsewhere in the app — for
+// Ambient audio; a campfire reads reasonably as "mood/atmosphere." Happy to swap for a
+// dedicated icon if one gets made.
+import icoAmbient from '../../assets/icons/icon-rest.png';
 import icoMonster from '../../assets/icons/icon-monster.png';
 import icoJournal from '../../assets/icons/icon-journal.png';
 import icoNotes from '../../assets/icons/icon-notes.png';
@@ -538,6 +545,17 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
     ),
   };
 
+  // Ambient audio (2026-10-07 MVP backlog): one looping scene track, GM-controlled, everyone's
+  // own volume local to them. Available to the GM and any player — see AmbientAudioDrawer.
+  const ambientAudio: BarItem = {
+    kind: 'drawer',
+    id: 'ambient',
+    label: 'Ambient audio',
+    short: 'Audio',
+    glyph: <Ico src={icoAmbient} alt="Ambient audio" />,
+    content: <AmbientAudioDrawer gameId={gameId} activeMap={activeMap} role={role} />,
+  };
+
   // Shapes are scoped to the active map; hidden shapes are GM-only (filtered like tokens).
   const visibleShapes = Object.values(game.shapes ?? {}).filter(
     (sh) => sh.mapId === activeMap?.id && (!sh.hidden || role === 'gm'),
@@ -590,6 +608,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
       measureAction,
       pingAction,
       lightPenAction,
+      ambientAudio,
       shapes,
       { kind: 'divider', id: 'd1' },
       {
@@ -658,6 +677,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
       measureAction,
       pingAction,
       lightPenAction,
+      ambientAudio,
       shapes,
       { kind: 'drawer', id: 'grid', label: 'Grid', short: 'Grid', glyph: <Ico src={icoGrid} alt="Grid settings" />, content: <GridDrawer /> },
       { kind: 'divider', id: 'pd1' },
@@ -771,6 +791,10 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
       leftPanel={monsterPanel}
     >
       <div className={styles.boardArea} ref={boardAreaRef}>
+        <AmbientAudioPlayer
+          track={imageSrc(activeMap?.ambientAudio?.track)}
+          playing={!!activeMap?.ambientAudio?.playing}
+        />
         {activeMap ? (
           <BoardCanvas
             map={activeMap}

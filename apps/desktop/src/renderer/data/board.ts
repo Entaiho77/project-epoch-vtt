@@ -1,4 +1,4 @@
-import type { MapDef, Token } from '@epoch/shared-types';
+import type { MapAmbientAudio, MapDef, Token } from '@epoch/shared-types';
 import {
   multiUpdate,
   newKey,
@@ -42,6 +42,26 @@ export function setGridSize(
   size: number,
 ): Promise<void> {
   return writeValue(`games/${gameId}/maps/${mapId}/gridSize`, size);
+}
+
+// --- Ambient scene audio (2026-10-07 MVP backlog) ---
+
+/** GM: load (or remove, with null) this map's ambient track. Starts paused — the GM presses
+ *  Play separately, same as swapping a scene shouldn't blast audio before anyone's ready. */
+export function setMapAmbientAudio(
+  gameId: string,
+  mapId: string,
+  audio: Omit<MapAmbientAudio, 'playing'> | null,
+): Promise<void> {
+  return writeValue(
+    `games/${gameId}/maps/${mapId}/ambientAudio`,
+    audio ? { ...audio, playing: false } : null,
+  );
+}
+
+/** GM: play/pause the loaded track — shared, so everyone hears it start/stop together. */
+export function setAmbientPlaying(gameId: string, mapId: string, playing: boolean): Promise<void> {
+  return writeValue(`games/${gameId}/maps/${mapId}/ambientAudio/playing`, playing);
 }
 
 // --- Fog (grid-square level) ---
