@@ -138,9 +138,9 @@ export function MonsterStatCard({
   rules?: CampaignRules;
   /** During combat: why this creature can't attack now ("It's Thorn's turn"), else null. */
   turnBlocked?: string | null;
-  /** GM only: place an AoE shape anchored to this creature's own token (e.g. a breath weapon's
-   * cone), parsed straight from the ability's text. 2026-10-06 playtest: "have the cone
-   * populate centered on the monster token from the stat block." */
+  /** GM only: arm an AoE shape of this kind/size (parsed straight from the ability's text),
+   * ready to anchor on a token and aim by dragging — same mechanic as the Shapes drawer, so a
+   * breath weapon's cone actually points at whoever it's aimed at instead of defaulting east. */
   onPlaceAoe?: (kind: ShapeKind, sizeFt: number) => void;
   /** GM only (2026-10-06 playtest, "streamline it"): after rolling a save-based ability that
    *  has an AoE already placed on the board, offer to apply that roll's damage straight away —
@@ -413,8 +413,13 @@ export function MonsterStatCard({
                 {(aoe || dice) && (
                   <span style={abilityActions}>
                     {aoe && onPlaceAoe && (
-                      <Button variant="ghost" size="sm" onClick={() => onPlaceAoe(aoe.kind, aoe.sizeFt)} title={`Place a ${aoe.sizeFt} ft ${aoe.kind} centered on ${entry.name}'s token`}>
-                        Place {aoe.sizeFt}ft {aoe.kind}
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => onPlaceAoe(aoe.kind, aoe.sizeFt)}
+                        title={`Click ${entry.name}'s token on the board, then drag to aim the ${aoe.sizeFt} ft ${aoe.kind}`}
+                      >
+                        Aim {aoe.sizeFt}ft {aoe.kind}
                       </Button>
                     )}
                     {dice && (

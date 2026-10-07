@@ -389,14 +389,12 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
               }
               onPlaceAoe={
                 role === 'gm' && activeMap
-                  ? (kind, sizeFt) =>
-                      void addShape(gameId, {
-                        mapId: activeMap.id,
-                        kind,
-                        sizeFt,
-                        anchor: { tokenId: selected.id },
-                        ownerUid: uid,
-                      })
+                  // Arms the same draft the Shapes drawer uses (click a token to anchor, then
+                  // drag to aim) instead of dropping a fixed, always-east cone — a breath
+                  // weapon aimed at whoever's actually standing there, not wherever east happens
+                  // to be. 2026-10-06 playtest: AoE damage wasn't landing because the auto-placed
+                  // cone never pointed at the targets.
+                  ? (kind, sizeFt) => setShapeDraft({ kind, sizeFt, color: '#5dcaa5', anchorMode: 'token', hidden: false })
                   : undefined
               }
               onRollSaveAbility={
@@ -774,6 +772,15 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
           <div className={styles.toolHint} role="status">
             Drag to measure — the line stays for everyone. Right-click or Esc removes{' '}
             {role === 'gm' ? 'all measuring lines' : 'yours'}.
+          </div>
+        )}
+
+        {/* Shown whether the shape was armed from the Shapes drawer or a monster ability's
+            "Aim …" button — the drawer's own inline hint isn't visible from the monster panel. */}
+        {!measuring && shapeDraft && (
+          <div className={styles.toolHint} role="status">
+            {shapeDraft.anchorMode === 'token' ? 'Click a token to anchor' : 'Click a grid cell to anchor'}
+            {shapeDraft.kind === 'cone' || shapeDraft.kind === 'line' ? ', then drag to aim.' : '.'}
           </div>
         )}
 
