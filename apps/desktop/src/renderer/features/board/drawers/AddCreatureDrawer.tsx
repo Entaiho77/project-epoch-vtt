@@ -1,9 +1,9 @@
 import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { SystemDefinition } from '@epoch/shared-types';
-import type { MapDef, Token } from '@epoch/shared-types';
+import type { Combatant, MapDef, Token } from '@epoch/shared-types';
 import { addToken, revealAllCreatures } from '../../../data/board';
-import { creatureCombatant, joinCombat } from '../../../data/combat';
+import { creatureCombatant, groupRoll, joinCombat } from '../../../data/combat';
 import {
   deleteCreature,
   saveCreature,
@@ -28,6 +28,8 @@ export function AddCreatureDrawer({
   uid,
   activeMap,
   tokens,
+  groupInitiative,
+  initiativeOrder,
 }: {
   system: SystemDefinition;
   /** The GM's library monsters (from useLibrary in BoardScreen). Editing happens on the
@@ -37,6 +39,10 @@ export function AddCreatureDrawer({
   uid: string;
   activeMap?: MapDef;
   tokens: Token[];
+  /** Campaign rule: same-named creatures share one initiative roll when placed mid-combat. */
+  groupInitiative?: boolean;
+  /** Current initiative order (for matching a shared roll by name); undefined outside combat. */
+  initiativeOrder?: Combatant[];
 }) {
   const navigate = useNavigate();
   const [tab, setTab] = useState<'bestiary' | 'homebrew' | 'mine' | 'build'>('bestiary');
@@ -115,7 +121,10 @@ export function AddCreatureDrawer({
     void addToken(gameId, { ...token, mapId: activeMap.id, col: cell.col, row: cell.row }).then((id) => {
       // During combat a new creature rolls initiative and joins the order right away
       // (reinforcements, summons, ambushes) without changing whose turn it is.
-      if (token.kind === 'creature') void joinCombat(gameId, creatureCombatant({ id, name: token.name, stats: token.stats }));
+      if (token.kind === 'creature') {
+        const shared = groupInitiative ? groupRoll(initiativeOrder ?? [], token.name) : undefined;
+        void joinCombat(gameId, creatureCombatant({ id, name: token.name, stats: token.stats }, shared));
+      }
     });
   }
 

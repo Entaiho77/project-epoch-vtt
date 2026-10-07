@@ -207,6 +207,13 @@ export function RulesEditor({ uid }: { uid: string }) {
         <span className={d.hint}>Failures needed to die.</span>
       </label>
 
+      <Toggle
+        title="Group initiative"
+        desc="Several copies of the same monster share one roll, instead of each rolling its own"
+        value={draft.groupInitiative}
+        onChange={(v) => patch({ groupInitiative: v })}
+      />
+
       {/* --- Character Rules --- */}
       <span className={s.sectionTitle} style={{ marginTop: 'var(--space-3)' }}>Character Rules</span>
 

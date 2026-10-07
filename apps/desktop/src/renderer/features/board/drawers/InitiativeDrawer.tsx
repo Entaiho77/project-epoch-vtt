@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { Combatant, Game, MapDef } from '@epoch/shared-types';
 import type { SystemDefinition } from '@epoch/shared-types';
-import { creatureCombatant, endCombat, isRolling, joinCombat, leaveCombat, removeCombatantsByToken, rollInitiative, startCombat } from '../../../data/combat';
+import { creatureCombatant, endCombat, groupRoll, isRolling, joinCombat, leaveCombat, removeCombatantsByToken, rollInitiative, startCombat } from '../../../data/combat';
 import { useGameCharacters } from '../../../data/characters';
 import { initiativeModifier } from '../../../data/initiativeModifier';
 import { removeToken } from '../../../data/board';
@@ -102,7 +102,12 @@ export function InitiativeDrawer({
   );
 
   function roll() {
-    const monsters: Combatant[] = creatures.filter((t) => selected.has(t.id)).map(creatureCombatant);
+    const chosen = creatures.filter((t) => selected.has(t.id));
+    const monsters: Combatant[] = [];
+    for (const t of chosen) {
+      const shared = rules?.groupInitiative ? groupRoll(monsters, t.name) : undefined;
+      monsters.push(creatureCombatant(t, shared));
+    }
     void startCombat(gameId, monsters);
     setSelected(new Set());
   }
@@ -216,7 +221,14 @@ export function InitiativeDrawer({
                   <span className={s.item} style={{ flex: 1 }}>
                     <span className={s.itemName}>{t.name}</span>
                   </span>
-                  <button type="button" className={s.place} onClick={() => void joinCombat(gameId, creatureCombatant(t))}>
+                  <button
+                    type="button"
+                    className={s.place}
+                    onClick={() => {
+                      const shared = rules?.groupInitiative ? groupRoll(order, t.name) : undefined;
+                      void joinCombat(gameId, creatureCombatant(t, shared));
+                    }}
+                  >
                     Add &amp; roll
                   </button>
                 </div>

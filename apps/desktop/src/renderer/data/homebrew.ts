@@ -355,6 +355,10 @@ export interface CampaignRules {
   critFormulaCustom?: string;
   /** Failed death saves needed to die (display-only until death saves are tracked). */
   deathSaveFailures: number;
+  /** Several copies of the same monster share one initiative roll (5e convention) instead of
+   *  each rolling its own. Default off — Matthew wants it as a choice, not a default behavior
+   *  change. */
+  groupInitiative: boolean;
   startingHp: StartingHp;
   flanking: boolean;
   multiclassing: boolean;
@@ -369,6 +373,7 @@ export const DEFAULT_RULES: CampaignRules = {
   critThreshold: 20,
   critFormula: 'double_dice',
   deathSaveFailures: 3,
+  groupInitiative: false,
   startingHp: 'max',
   flanking: false,
   multiclassing: false,

@@ -117,15 +117,37 @@ export function creatureInitiativeMod(stats: Token['stats']): number {
   return Number.isFinite(dex) && stats?.dex !== undefined ? Math.floor((dex - 10) / 2) : 0;
 }
 
-/** A creature token as a combatant, with a fresh initiative roll. */
-export function creatureCombatant(t: Pick<Token, 'id' | 'name' | 'stats'>): Combatant {
+/**
+ * A creature token as a combatant. Normally rolls fresh initiative; pass `sharedRoll` (from
+ * `groupRoll`) to reuse another copy of the same monster's roll instead — the "Group
+ * initiative" campaign rule.
+ */
+export function creatureCombatant(
+  t: Pick<Token, 'id' | 'name' | 'stats'>,
+  sharedRoll?: { initiative: number; tieBreak: number },
+): Combatant {
   return {
     id: t.id,
     name: t.name,
     kind: 'creature',
     tokenId: t.id,
-    ...rollInitiative(creatureInitiativeMod(t.stats)),
+    ...(sharedRoll ?? rollInitiative(creatureInitiativeMod(t.stats))),
   };
+}
+
+/**
+ * Campaign rule "Group initiative": several copies of the same monster (matched by name) share
+ * one roll instead of each rolling its own. Looks for an existing creature combatant of the same
+ * name already in `order` (combat already running, or earlier in the same batch) and returns its
+ * roll to reuse; undefined means none yet — the caller rolls fresh and this becomes the group's
+ * shared roll for anyone added after it.
+ */
+export function groupRoll(
+  order: Combatant[],
+  name: string,
+): { initiative: number; tieBreak: number } | undefined {
+  const match = order.find((c) => c.kind === 'creature' && c.name === name);
+  return match ? { initiative: match.initiative, tieBreak: match.tieBreak } : undefined;
 }
 
 /** Advance to the next combatant, skipping defeated creatures; loop bumps the round. */

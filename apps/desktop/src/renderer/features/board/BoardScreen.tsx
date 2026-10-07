@@ -46,7 +46,7 @@ import { AttackGateContext } from './attackGate';
 import { playChime } from '../voice/chime';
 import { dice3dEnabled, playDice } from '../dice3d/dice3d';
 import { hitChanges, hitNote, isDefeated } from '../../data/damage';
-import { creatureCombatant, joinCombat, leaveCombat, mayMoveNow, rollInitiative, turnBlockReason } from '../../data/combat';
+import { creatureCombatant, groupRoll, joinCombat, leaveCombat, mayMoveNow, rollInitiative, turnBlockReason } from '../../data/combat';
 import { initiativeModifier } from '../../data/initiativeModifier';
 import { useGameCharacters } from '../../data/characters';
 import { canSeeMessage, useChat } from '../../data/chat';
@@ -568,6 +568,8 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
             uid={uid}
             activeMap={activeMap}
             tokens={tokens}
+            groupInitiative={rules?.groupInitiative}
+            initiativeOrder={initState?.order}
           />
         ),
       },
@@ -640,7 +642,8 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
    *  character with theirs. */
   function addTokenToCombat(tok: Token) {
     if (tok.kind === 'creature') {
-      void joinCombat(gameId, creatureCombatant(tok));
+      const shared = rules?.groupInitiative ? groupRoll(initState?.order ?? [], tok.name) : undefined;
+      void joinCombat(gameId, creatureCombatant(tok, shared));
       return;
     }
     const ch = tok.characterId ? gameCharacters.find((c) => c.id === tok.characterId) : undefined;

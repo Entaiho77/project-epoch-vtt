@@ -2,7 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Combatant, InitiativeState } from '@epoch/shared-types';
 import {
   beginCombat,
+  creatureCombatant,
   creatureInitiativeMod,
+  groupRoll,
   joinCombat,
   leaveCombat,
   mayMoveNow,
@@ -240,5 +242,29 @@ describe('mayMoveNow (playtest #2: turn-gate movement)', () => {
   it('a different combatant on someone else\'s turn may not move', () => {
     expect(mayMoveNow(running, { uid: 'uid-a', tokenId: 'tok-a' })).toBe(false);
     expect(mayMoveNow(running, { uid: 'uid-hero', tokenId: 'tok-hero' })).toBe(false);
+  });
+});
+
+describe('groupRoll (campaign rule: same-named monsters share one roll)', () => {
+  it('finds an existing creature combatant with the same name and returns its roll', () => {
+    const order = [c('goblin-1', 'creature', 14, 2), c('wolf-1', 'creature', 9, 1)];
+    expect(groupRoll(order, 'goblin-1')).toEqual({ initiative: 14, tieBreak: 2 });
+  });
+
+  it('returns undefined when no combatant of that name exists yet (first of the group rolls fresh)', () => {
+    const order = [c('wolf-1', 'creature', 9, 1)];
+    expect(groupRoll(order, 'goblin-1')).toBeUndefined();
+  });
+
+  it('ignores a player character sharing the same name as a monster', () => {
+    const order: Combatant[] = [{ id: 'hero', name: 'goblin-1', kind: 'character', initiative: 20, tieBreak: 5 }];
+    expect(groupRoll(order, 'goblin-1')).toBeUndefined();
+  });
+
+  it('creatureCombatant reuses a shared roll instead of rolling fresh', () => {
+    const shared = { initiative: 11, tieBreak: 3 };
+    const combatant = creatureCombatant({ id: 'goblin-2', name: 'goblin-2', stats: { dex: 18 } }, shared);
+    expect(combatant.initiative).toBe(11);
+    expect(combatant.tieBreak).toBe(3);
   });
 });
