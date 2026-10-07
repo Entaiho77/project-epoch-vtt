@@ -169,15 +169,15 @@ export function GamePage() {
           )}
           <RoleBadge role={role} />
           {!needsCharacter && (
-            <Button
-              variant="secondary"
-              size="sm"
+            <button
+              type="button"
+              className={styles.settingsButton}
               onClick={() => setShowSettings(true)}
               title="Settings"
               aria-label="Settings"
             >
-              <img src={icoSettings} alt="" aria-hidden="true" width={20} height={20} />
-            </Button>
+              <img src={icoSettings} alt="" aria-hidden="true" />
+            </button>
           )}
         </div>
       </header>

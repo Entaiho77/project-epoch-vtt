@@ -71,6 +71,31 @@
   gap: var(--space-3);
 }
 
+/* Settings: same "icon tile IS the button" look as the board's own icon strips
+ * (BoardShell.module.css .toolIcon) — a bare stone-plaque icon with no extra button
+ * chrome around it, instead of sitting inside a generic Button's pill/border. */
+.settingsButton {
+  width: 40px;
+  height: 40px;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background: transparent;
+  cursor: pointer;
+}
+.settingsButton:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.settingsButton img {
+  width: 34px;
+  height: 34px;
+  border-radius: 5px;
+  display: block;
+}
+
 .body {
   flex: 1;
   display: flex;
