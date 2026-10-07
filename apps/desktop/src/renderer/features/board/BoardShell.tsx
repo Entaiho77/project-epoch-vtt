@@ -34,8 +34,6 @@ export type BarItem =
       glyph: ReactNode;
       onClick: () => void;
       active?: boolean;
-      /** Greyed out and unclickable (e.g. "doesn't work while a drawer is open"). */
-      disabled?: boolean;
     }
   | { kind: 'divider'; id: string };
 
@@ -118,12 +116,10 @@ function Strip({
         const active = item.kind === 'drawer' ? openId === item.id : item.active;
         const badge = item.kind === 'drawer' && !active ? (item.badge ?? 0) : 0;
         const isIconTile = typeof item.glyph !== 'string';
-        const disabled = item.kind === 'action' && !!item.disabled;
         return (
           <button
             key={item.id}
             type="button"
-            disabled={disabled}
             className={[
               styles.tool,
               isIconTile ? styles.toolIcon : '',

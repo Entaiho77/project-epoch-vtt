@@ -160,7 +160,10 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
   const [aoeShapeFor, setAoeShapeFor] = useState<string | null>(null);
   // GM right-click token menu (board cleanup): the token + cursor position, null when closed.
   const [ctxMenu, setCtxMenu] = useState<{ token: Token; x: number; y: number } | null>(null);
-  const [measuring, setMeasuring] = useState(false);
+  // 2026-10-06 playtest (corrected again): Measure is just another same-side menu now, with no
+  // special-case behavior — it participates in the ordinary one-panel-per-side toggle (below)
+  // exactly like Initiative, Dice, Shapes, etc., so it opens/closes/replaces the same way they do.
+  const measuring = openRight === 'measure' || openLeft === 'measure';
   // Armed shape from the Shapes drawer (drives the 'shape' canvas tool); null when none.
   const [shapeDraft, setShapeDraft] = useState<ShapeDraft | null>(null);
   // How the grid looks on this computer (strength/thickness/light-dark) — per person.
@@ -264,10 +267,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
   }, [role, activeMap, partyScale, game.tokens, gameId]);
 
   function toggle(side: 'left' | 'right', id: string) {
-    // 2026-10-06 playtest (corrected): measuring doesn't work while any drawer is open — opening
-    // one cancels an active measurement, same as disarming a shape.
-    setMeasuring(false);
-    setShapeDraft(null);
+    setShapeDraft(null); // opening any menu disarms an armed shape
     if (side === 'left') setOpenLeft((o) => (o === id ? null : id));
     else setOpenRight((o) => (o === id ? null : id));
   }
@@ -466,23 +466,21 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
   };
 
   // Distance measuring is available to everyone — players measure their own movement/range.
-  // 2026-10-06 playtest (corrected): it doesn't function while any drawer is open, on either
-  // side — the button is disabled, and opening a drawer (toggle(), above) cancels it if it was
-  // already running.
-  const anyDrawerOpen = !!openLeft || !!openRight;
+  // 2026-10-06 playtest (corrected again): Measure is a plain menu now, no special-casing —
+  // it's a `kind: 'drawer'` item like Initiative/Dice/Shapes, so `toggle()` (above) opens,
+  // closes, and replaces it exactly the same way it does every other same-side menu.
   const measureAction: BarItem = {
-    kind: 'action',
+    kind: 'drawer',
     id: 'measure',
-    label: anyDrawerOpen ? 'Measure distance (close a drawer first)' : 'Measure distance',
+    label: 'Measure distance',
     short: 'Measure',
     glyph: <Ico src={icoMeasure} alt="Measure" />,
-    active: measuring,
-    disabled: anyDrawerOpen,
-    onClick: () => {
-      if (anyDrawerOpen) return;
-      setShapeDraft(null); // measuring and shape placement are mutually exclusive
-      setMeasuring((m) => !m);
-    },
+    content: (
+      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+        Drag on the map to measure distance — the line stays for everyone to see. Right-click or
+        Esc removes {role === 'gm' ? 'all measuring lines' : 'yours'}.
+      </p>
+    ),
   };
 
   // Shapes are scoped to the active map; hidden shapes are GM-only (filtered like tokens).
