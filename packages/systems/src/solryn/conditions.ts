@@ -70,4 +70,36 @@ export const conditions: TokenCondition[] = [
     description: 'Can’t attack the charmer.',
     effects: {},
   },
+  // Exhaustion & Fatigue (rulebook §1.4): 3 levels, cumulative — level 2 carries level 1's
+  // effect too, same convention as the 5e exhaustion ladder below. Level 3 ("Death. Permanent.
+  // No resurrection.") is deliberately NOT auto-enforced here, matching how 5e's own top
+  // exhaustion level in this codebase is description-only — the GM confirms an actual death,
+  // same as everywhere else Solryn says "GM has final discretion."
+  {
+    id: 'exhaustion_1',
+    name: 'Exhaustion 1',
+    color: '#d4a017',
+    group: 'exhaustion',
+    level: 1,
+    description: 'Disadvantage on all ability checks.',
+    effects: { disadvantageAbilityChecks: true },
+  },
+  {
+    id: 'exhaustion_2',
+    name: 'Exhaustion 2',
+    color: '#d4a017',
+    group: 'exhaustion',
+    level: 2,
+    description: 'Movement speed halved (plus level 1).',
+    effects: { disadvantageAbilityChecks: true, speedHalved: true },
+  },
+  {
+    id: 'exhaustion_3',
+    name: 'Exhaustion 3',
+    color: '#d4a017',
+    group: 'exhaustion',
+    level: 3,
+    description: 'Death. Permanent. No resurrection. (Plus levels 1–2; the GM confirms the death.)',
+    effects: { disadvantageAbilityChecks: true, speedHalved: true },
+  },
 ];

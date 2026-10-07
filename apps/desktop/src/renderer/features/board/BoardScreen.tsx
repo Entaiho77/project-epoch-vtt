@@ -317,9 +317,8 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
     return m;
   }, [system.tokenConditions]);
   // The viewer's own character token — its conditions are the attacker's, threaded to the sheet.
-  const myConditions = character
-    ? tokens.find((t) => t.characterId === character.id)?.conditions
-    : undefined;
+  const myToken = character ? tokens.find((t) => t.characterId === character.id) : undefined;
+  const myConditions = myToken?.conditions;
 
   // 2026-10-06 playtest: "a player who's down and making death saves should automatically show a
   // visible indicator of that condition, not just a number somewhere." Mirror it as the existing
@@ -632,6 +631,8 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
               canLevelUp={character.play.level < (game.levelGrant ?? 1)}
               target={target}
               attackerConditions={myConditions}
+              gameId={gameId}
+              tokenId={myToken?.id}
             />
           ),
       },

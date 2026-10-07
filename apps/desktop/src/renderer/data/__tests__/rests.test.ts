@@ -42,4 +42,44 @@ describe('Solryn rests (rulebook Rest & Recovery)', () => {
   it('long rest in town: everything full', () => {
     expect(restSolryn('c', 'B', 'long-town', pools).updates['/characters/c/play/pools/hp/current']).toBe(20);
   });
+
+  describe('exhaustion (rulebook §1.4, cumulative, confirmed by Matthew)', () => {
+    it('a short rest never touches exhaustion, even with a level present', () => {
+      const r = restSolryn('c', 'B', 'short', pools, { gameId: 'g', tokenId: 't', level: 2 });
+      expect(Object.keys(r.updates).some((k) => k.includes('conditions'))).toBe(false);
+      expect(r.text).not.toContain('exhaustion');
+    });
+
+    it('a long rest steps exhaustion down by exactly one level', () => {
+      const r = restSolryn('c', 'B', 'long-field', pools, { gameId: 'g', tokenId: 't', level: 2 });
+      expect(r.updates['games/g/tokens/t/conditions/exhaustion_1']).toBe(true);
+      expect(r.updates['games/g/tokens/t/conditions/exhaustion_2']).toBeNull();
+      expect(r.updates['games/g/tokens/t/conditions/exhaustion_3']).toBeNull();
+      expect(r.text).toContain('exhaustion reduced to level 1');
+    });
+
+    it('stepping down from level 1 clears exhaustion entirely', () => {
+      const r = restSolryn('c', 'B', 'long-town', pools, { gameId: 'g', tokenId: 't', level: 1 });
+      expect(r.updates['games/g/tokens/t/conditions/exhaustion_1']).toBeNull();
+      expect(r.text).toContain('exhaustion cleared');
+    });
+
+    it('a long rest with no exhaustion present writes nothing and says nothing', () => {
+      const r = restSolryn('c', 'B', 'long-field', pools, { gameId: 'g', tokenId: 't', level: 0 });
+      expect(Object.keys(r.updates).some((k) => k.includes('conditions'))).toBe(false);
+      expect(r.text).not.toContain('exhaustion');
+    });
+
+    it('a rest only ever reduces exhaustion — level 3 never gets written by one', () => {
+      const r = restSolryn('c', 'B', 'long-field', pools, { gameId: 'g', tokenId: 't', level: 3 });
+      expect(r.updates['games/g/tokens/t/conditions/exhaustion_3']).toBeNull();
+      expect(Object.values(r.updates).includes('exhaustion_3')).toBe(false);
+    });
+
+    it('no token on the active map (exhaustion omitted) still rests normally, no crash', () => {
+      const r = restSolryn('c', 'B', 'long-field', pools);
+      expect(r.updates['/characters/c/play/pools/hp/current']).toBe(15);
+      expect(r.text).not.toContain('exhaustion');
+    });
+  });
 });

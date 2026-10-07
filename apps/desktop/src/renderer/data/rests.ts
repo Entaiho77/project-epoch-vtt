@@ -7,10 +7,13 @@
  *    dice up to half your level (min 1), death saves cleared.
  *  - Short rest: spend hit dice (each heals 1 die + CON), Warlock pact slots back.
  * Solryn (rulebook "Rest & Recovery"):
- *  - Short rest (1 hr): AP recovers half its max (rounded down); no HP or Luck.
- *  - Long rest, field (8 hrs): HP +half max, AP full, Luck full.
- *  - Long rest, town (8 hrs): HP full, AP full, Luck full.
- *  (Both long rests also remove one exhaustion level — the GM adjusts that condition.)
+ *  - Short rest (1 hr): AP recovers half its max (rounded down); no HP or Luck. No exhaustion
+ *    benefit (rulebook §1.4).
+ *  - Long rest, field (8 hrs): HP +half max, AP full, Luck full, exhaustion −1 level.
+ *  - Long rest, town (8 hrs): HP full, AP full, Luck full, exhaustion −1 level.
+ *  Exhaustion levels are cumulative (confirmed by Matthew 2026-10-07): level 2 carries level 1's
+ *  effect too, same convention 5e already uses in this codebase. Level 3 ("Death. Permanent. No
+ *  resurrection.") is never auto-applied by a rest — a rest only ever REDUCES exhaustion.
  */
 
 export type Updates = Record<string, unknown>;
@@ -80,11 +83,18 @@ export interface SolrynPool {
 
 export type SolrynRest = 'short' | 'long-field' | 'long-town';
 
+/** The 3 exhaustion condition ids, in level order — matches `solryn/conditions.ts`. */
+export const SOLRYN_EXHAUSTION_IDS = ['exhaustion_1', 'exhaustion_2', 'exhaustion_3'];
+
 export function restSolryn(
   characterId: string,
   name: string,
   kind: SolrynRest,
   pools: { hp?: SolrynPool; ap?: SolrynPool; luck?: SolrynPool },
+  /** The character's own board token + its current exhaustion level (0–3), so a long rest can
+   *  step it down by one. Omit if the character has no token on the active map — the rest still
+   *  works, it just can't touch exhaustion (nothing to write it to). */
+  exhaustion?: { gameId: string; tokenId: string; level: number },
 ): { updates: Updates; text: string } {
   const u: Updates = {};
   const said: string[] = [];
@@ -103,6 +113,16 @@ export function restSolryn(
     set(pools.luck, pools.luck?.max ?? 0, 'Luck');
   }
   const label = kind === 'short' ? 'a short rest' : kind === 'long-town' ? 'a long rest in town' : 'a long rest in the field';
-  const tail = kind === 'short' ? '' : ' · remove one exhaustion level';
+  // Short rests give no exhaustion benefit (rulebook §1.4); long rests (either kind) reduce it
+  // by one level. Level 3 ("Death") is a floor a rest can step away from but never apply.
+  let tail = '';
+  if (kind !== 'short' && exhaustion && exhaustion.level > 0) {
+    const nextLevel = exhaustion.level - 1;
+    for (let i = 0; i < SOLRYN_EXHAUSTION_IDS.length; i++) {
+      u[`games/${exhaustion.gameId}/tokens/${exhaustion.tokenId}/conditions/${SOLRYN_EXHAUSTION_IDS[i]}`] =
+        i + 1 === nextLevel ? true : null;
+    }
+    tail = nextLevel > 0 ? ` · exhaustion reduced to level ${nextLevel}` : ' · exhaustion cleared';
+  }
   return { updates: u, text: `${name} takes ${label}: ${said.join(', ') || 'nothing to recover'}${tail}.` };
 }

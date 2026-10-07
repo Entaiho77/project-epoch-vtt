@@ -3,7 +3,7 @@ import type { SemanticColor, SystemDefinition } from '@epoch/shared-types';
 import type { Character } from '@epoch/shared-types';
 import { computeDerived } from '@epoch/engine';
 import { setCharacterImage, setPoolCurrent } from '../../../data/characters';
-import { restSolryn, type SolrynRest } from '../../../data/rests';
+import { restSolryn, SOLRYN_EXHAUSTION_IDS, type SolrynRest } from '../../../data/rests';
 import { multiUpdate } from '../../../data/realtime';
 import { useRollLog } from '../../rolllog/rollLog';
 import { Modal } from '../../../components/ui/Modal';
@@ -27,14 +27,21 @@ export function CharacterQuickView({
   canLevelUp = false,
   target,
   attackerConditions,
+  gameId,
+  tokenId,
 }: {
   system: SystemDefinition;
   character: Character;
   canLevelUp?: boolean;
   /** Current click-to-target creature (Solryn): its DR is shown in and used by the attack UI. */
   target?: { name: string; dr?: number; conditions?: Record<string, true> };
-  /** The viewer's own token conditions (attacker) — passed through to the attack UI. */
+  /** The viewer's own token conditions (attacker) — passed through to the attack UI, and read
+   *  here to find the character's current exhaustion level before a rest steps it down. */
   attackerConditions?: Record<string, true>;
+  /** Needed (with tokenId) only to let a long rest step exhaustion down on this character's
+   *  token; omit and rest buttons still work, they just can't touch exhaustion. */
+  gameId?: string;
+  tokenId?: string;
 }) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [bookOpen, setBookOpen] = useState(false);
@@ -56,12 +63,19 @@ export function CharacterQuickView({
     const p = pools.find((x) => x.id === id);
     return p ? { id, max: p.value, current: character.play.pools?.[id]?.current ?? p.value } : undefined;
   };
+  // Highest exhaustion level currently active on this character's token (0 = none).
+  const exhaustionLevel = SOLRYN_EXHAUSTION_IDS.reduce(
+    (level, id, i) => (attackerConditions?.[id] ? i + 1 : level),
+    0,
+  );
   function rest(kind: SolrynRest) {
-    const r = restSolryn(character.id, character.name, kind, {
-      hp: poolOf('hp'),
-      ap: poolOf('arcanaPoints'),
-      luck: poolOf('luckPoints'),
-    });
+    const r = restSolryn(
+      character.id,
+      character.name,
+      kind,
+      { hp: poolOf('hp'), ap: poolOf('arcanaPoints'), luck: poolOf('luckPoints') },
+      gameId && tokenId ? { gameId, tokenId, level: exhaustionLevel } : undefined,
+    );
     void multiUpdate(r.updates).then(() => postRoll(r.text));
   }
 
