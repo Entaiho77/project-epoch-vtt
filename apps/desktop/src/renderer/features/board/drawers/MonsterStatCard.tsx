@@ -33,17 +33,28 @@ const interactiveRow: React.CSSProperties = {
 // Name + dice on their own lines, free to wrap — no ellipsis truncation.
 const nameCol: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 };
 const nameText: React.CSSProperties = { fontWeight: 600, overflowWrap: 'anywhere' };
+// Text + action buttons stack vertically (2026-10-06 playtest: the "Place cone" button was
+// getting squeezed out of a narrow drawer when it shared a row with a long ability
+// description — stacking removes any width where a button could get clipped or overlapped).
 const abilityRow: React.CSSProperties = {
   display: 'flex',
-  alignItems: 'flex-start',
-  justifyContent: 'space-between',
-  gap: 'var(--space-3)',
+  flexDirection: 'column',
+  alignItems: 'stretch',
+  gap: 'var(--space-2)',
   paddingBlock: 'var(--space-1)',
 };
+const abilityActions: React.CSSProperties = { display: 'flex', gap: 'var(--space-1)', flexWrap: 'wrap' };
+
+/** Bestiary text sometimes carries smart punctuation (en/em dashes, non-breaking spaces) from
+ *  a pasted PDF or homebrew entry — normalize before matching so "60‑foot cone" (non-breaking
+ *  hyphen) matches the same as "60-foot cone". */
+function normalizeDashes(text: string): string {
+  return text.replace(/[‐-―]/g, '-').replace(/[ ]/g, ' ');
+}
 
 /** First clean dice term in a free-text ability string (e.g. "...66 (12d10) lightning..."). */
 function abilityDice(text: string): string | null {
-  const m = /(\d+d\d+(?:\s*[+-]\s*\d+)?)/.exec(text);
+  const m = /(\d+d\d+(?:\s*[+-]\s*\d+)?)/.exec(normalizeDashes(text));
   return m ? m[1].replace(/\s+/g, '') : null;
 }
 
@@ -54,13 +65,14 @@ function abilityDice(text: string): string | null {
  * playtest: "have the cone populate centered on the monster token from the stat block."
  */
 function abilityAoe(text: string): { kind: ShapeKind; sizeFt: number } | null {
-  let m = /(\d+)-foot(?:-radius)? cone/i.exec(text);
+  const t = normalizeDashes(text);
+  let m = /(\d+)-foot(?:-radius)? cone/i.exec(t);
   if (m) return { kind: 'cone', sizeFt: Number(m[1]) };
-  m = /(\d+)-foot line/i.exec(text);
+  m = /(\d+)-foot line/i.exec(t);
   if (m) return { kind: 'line', sizeFt: Number(m[1]) };
-  m = /(\d+)-foot[- ]radius/i.exec(text);
+  m = /(\d+)-foot[- ]radius/i.exec(t);
   if (m) return { kind: 'circle', sizeFt: Number(m[1]) };
-  m = /(\d+)-foot cube/i.exec(text);
+  m = /(\d+)-foot cube/i.exec(t);
   if (m) return { kind: 'square', sizeFt: Number(m[1]) };
   return null;
 }
@@ -104,6 +116,7 @@ export function MonsterStatCard({
   rules,
   turnBlocked,
   onPlaceAoe,
+  onRollSaveAbility,
   onClose,
 }: {
   system: SystemDefinition;
@@ -129,6 +142,11 @@ export function MonsterStatCard({
    * cone), parsed straight from the ability's text. 2026-10-06 playtest: "have the cone
    * populate centered on the monster token from the stat block." */
   onPlaceAoe?: (kind: ShapeKind, sizeFt: number) => void;
+  /** GM only (2026-10-06 playtest, "streamline it"): after rolling a save-based ability that
+   *  has an AoE already placed on the board, offer to apply that roll's damage straight away —
+   *  skips the GM retyping the number into a second "Apply AoE damage" step. No-op if the GM
+   *  hasn't placed the shape yet (nothing to apply it to). */
+  onRollSaveAbility?: (amount: number, kind: ShapeKind, sizeFt: number) => void;
   onClose?: () => void;
 }) {
   const { postRoll } = useRollLog();
@@ -224,9 +242,9 @@ export function MonsterStatCard({
   // Abilities roll plain damage (never the attack resolver). If the ability forces a save,
   // annotate the line: half-on-success shows the halved number, so the GM applies the right
   // amount once the target rolls its save (in the save panel).
-  const postAbility = (label: string, diceExpr: string, sv?: CreatureSave) =>
-    void secureRoll(() => postAbilityNow(label, diceExpr, sv));
-  const postAbilityNow = (label: string, diceExpr: string, sv?: CreatureSave) => {
+  const postAbility = (label: string, diceExpr: string, sv?: CreatureSave, aoe?: { kind: ShapeKind; sizeFt: number } | null) =>
+    void secureRoll(() => postAbilityNow(label, diceExpr, sv, aoe));
+  const postAbilityNow = (label: string, diceExpr: string, sv?: CreatureSave, aoe?: { kind: ShapeKind; sizeFt: number } | null) => {
     const r = rollDice(diceExpr);
     let line = describeRoll(`${entry.name} — ${label}`, r);
     if (sv) {
@@ -234,6 +252,9 @@ export function MonsterStatCard({
       line += sv.success === 'half' ? ` for half (${Math.floor(r.total / 2)})` : ' (none on success)';
     }
     postRoll(line);
+    // A save-based ability with its cone/line/etc already placed on the board → offer to apply
+    // this roll to whoever's caught in it, instead of making the GM retype the number.
+    if (sv && aoe && onRollSaveAbility) onRollSaveAbility(r.total, aoe.kind, aoe.sizeFt);
   };
   const postCheck = () => void secureRoll(postCheckNow);
   const postCheckNow = () => {
@@ -381,7 +402,7 @@ export function MonsterStatCard({
             const sv = saveByName.get(label.replace(' (Legendary)', '').trim());
             return (
               <div key={i} style={abilityRow}>
-                <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
+                <span style={{ overflowWrap: 'anywhere' }}>
                   {ab}
                   {sv && (
                     <span className={s.itemMeta}>
@@ -389,18 +410,20 @@ export function MonsterStatCard({
                     </span>
                   )}
                 </span>
-                <span style={{ display: 'flex', gap: 'var(--space-1)', flexShrink: 0 }}>
-                  {aoe && onPlaceAoe && (
-                    <Button variant="ghost" size="sm" onClick={() => onPlaceAoe(aoe.kind, aoe.sizeFt)} title={`Place a ${aoe.sizeFt} ft ${aoe.kind} centered on ${entry.name}'s token`}>
-                      Place {aoe.sizeFt}ft {aoe.kind}
-                    </Button>
-                  )}
-                  {dice && (
-                    <Button variant="secondary" onClick={() => postAbility(label, dice, sv)}>
-                      Roll
-                    </Button>
-                  )}
-                </span>
+                {(aoe || dice) && (
+                  <span style={abilityActions}>
+                    {aoe && onPlaceAoe && (
+                      <Button variant="ghost" size="sm" onClick={() => onPlaceAoe(aoe.kind, aoe.sizeFt)} title={`Place a ${aoe.sizeFt} ft ${aoe.kind} centered on ${entry.name}'s token`}>
+                        Place {aoe.sizeFt}ft {aoe.kind}
+                      </Button>
+                    )}
+                    {dice && (
+                      <Button variant="secondary" onClick={() => postAbility(label, dice, sv, aoe)}>
+                        Roll
+                      </Button>
+                    )}
+                  </span>
+                )}
               </div>
             );
           })}

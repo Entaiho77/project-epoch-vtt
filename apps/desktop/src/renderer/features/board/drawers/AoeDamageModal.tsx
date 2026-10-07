@@ -30,6 +30,7 @@ export function AoeDamageModal({
   ftPerSquare,
   postRoll,
   onClose,
+  initialAmount,
 }: {
   gameId: string;
   shape: BoardShape;
@@ -39,8 +40,12 @@ export function AoeDamageModal({
   ftPerSquare: number;
   postRoll: (text: string) => void;
   onClose: () => void;
+  /** Pre-fills the amount from a just-rolled ability (2026-10-06 playtest: "streamline it" —
+   *  rolling a save-based ability with its cone already placed opens straight here with the
+   *  rolled number ready, instead of making the GM retype it). */
+  initialAmount?: number;
 }) {
-  const [amount, setAmount] = useState(0);
+  const [amount, setAmount] = useState(initialAmount ?? 0);
   const [applied, setApplied] = useState(false);
   const sourceTokenId = 'tokenId' in shape.anchor ? shape.anchor.tokenId : undefined;
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});

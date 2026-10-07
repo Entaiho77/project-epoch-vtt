@@ -158,6 +158,9 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
   const [lootCorpseFor, setLootCorpseFor] = useState<string | null>(null);
   // GM "Apply AoE damage" (playtest #8): the placed shape being resolved; null = closed.
   const [aoeShapeFor, setAoeShapeFor] = useState<string | null>(null);
+  // Pre-fills the amount above when opened straight from a monster-ability roll (playtest
+  // "streamline it"), instead of the GM retyping it; 0 when opened manually from Shapes.
+  const [aoePrefillAmount, setAoePrefillAmount] = useState(0);
   // GM right-click token menu (board cleanup): the token + cursor position, null when closed.
   const [ctxMenu, setCtxMenu] = useState<{ token: Token; x: number; y: number } | null>(null);
   // 2026-10-06 playtest (corrected again): Measure is just another same-side menu now, with no
@@ -393,6 +396,26 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
                         anchor: { tokenId: selected.id },
                         ownerUid: uid,
                       })
+                  : undefined
+              }
+              onRollSaveAbility={
+                role === 'gm' && activeMap
+                  ? (amount, kind) => {
+                      // Most-recently-placed shape of this kind anchored to this creature's own
+                      // token — the one the GM just placed for this ability, if they placed one.
+                      const match = Object.values(game.shapes ?? {})
+                        .filter(
+                          (sh) =>
+                            sh.mapId === activeMap.id &&
+                            sh.kind === kind &&
+                            'tokenId' in sh.anchor &&
+                            sh.anchor.tokenId === selected.id,
+                        )
+                        .sort((a, b) => b.createdAt - a.createdAt)[0];
+                      if (!match) return; // nothing placed yet — just the roll in the log, as before
+                      setAoePrefillAmount(amount);
+                      setAoeShapeFor(match.id);
+                    }
                   : undefined
               }
               onClose={closeMonsterPanel}
@@ -816,7 +839,11 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
               gridSize={activeMap.gridSize}
               ftPerSquare={measureScale?.value ?? 1}
               postRoll={postRollText}
-              onClose={() => setAoeShapeFor(null)}
+              initialAmount={aoePrefillAmount}
+              onClose={() => {
+                setAoeShapeFor(null);
+                setAoePrefillAmount(0);
+              }}
             />
           );
         })()}
