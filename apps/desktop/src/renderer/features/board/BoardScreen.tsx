@@ -123,6 +123,13 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
     const img = tokenImage(t);
     return img && img !== t.imageUrl ? { ...t, imageUrl: img } : t;
   });
+  // Same resolved art, keyed by id — the initiative tracker needs the library/character art
+  // fallback too, not just a token's own uploaded image, or a bestiary monster with no
+  // per-token upload shows a letter badge there while its portrait renders fine on the map.
+  const boardTokensById: Record<string, Token> = useMemo(
+    () => Object.fromEntries(boardTokens.map((t) => [t.id, t])),
+    [boardTokens],
+  );
   const initState = game.initiative;
   // A persisted initiative can be malformed: Firebase drops empty arrays, so a fully
   // cleared order comes back undefined. Only "active with a non-empty order" is real
@@ -909,7 +916,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
             uid={uid}
             character={character}
             gameId={gameId}
-            tokens={game.tokens ?? {}}
+            tokens={boardTokensById}
             activeMapId={activeMap?.id}
             onSelectToken={(id) => selectToken(id)}
           />
