@@ -29,18 +29,6 @@
   background: var(--surface-bar);
   border-bottom: 1px solid var(--border-hairline);
 }
-.back {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  padding: var(--space-2);
-  border-radius: var(--radius-sm);
-}
-.back:hover {
-  color: var(--text-primary);
-  background: var(--surface-raised);
-}
 .titleBlock {
   display: flex;
   align-items: center;

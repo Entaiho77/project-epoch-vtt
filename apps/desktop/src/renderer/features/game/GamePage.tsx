@@ -16,6 +16,7 @@ import { getSystem, isClassAndLevel } from '@epoch/systems/registry';
 import { Button } from '../../components/ui/Button';
 import icoSettings from '../../assets/icons/icon-settings.png';
 import icoLibrary from '../../assets/icons/icon-library.png';
+import icoLobby from '../../assets/icons/icon-lobby.png';
 import { RoleBadge } from '../../components/ui/Badge';
 import { GameSettingsModal } from './GameSettingsModal';
 import { CharacterBuilder } from '../builder/CharacterBuilder';
@@ -151,8 +152,14 @@ export function GamePage() {
     >
     <div className={styles.page}>
       <header className={styles.header}>
-        <button className={styles.back} onClick={() => navigate('/')} aria-label="Back to lobby">
-          ‹ Lobby
+        <button
+          type="button"
+          className={styles.iconButton}
+          onClick={() => navigate('/')}
+          title="Back to lobby"
+          aria-label="Back to lobby"
+        >
+          <img src={icoLobby} alt="" aria-hidden="true" />
         </button>
         <div className={styles.titleBlock}>
           <span className={styles.glyph} style={{ color: game.systemColor }} aria-hidden="true">
