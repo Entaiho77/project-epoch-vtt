@@ -14,6 +14,7 @@ import { useLibrary, withHomebrewOptions } from '../../data/homebrew';
 import { roleOf } from '../../permissions';
 import { getSystem, isClassAndLevel } from '@epoch/systems/registry';
 import { Button } from '../../components/ui/Button';
+import icoSettings from '../../assets/icons/icon-settings.png';
 import { RoleBadge } from '../../components/ui/Badge';
 import { GameSettingsModal } from './GameSettingsModal';
 import { CharacterBuilder } from '../builder/CharacterBuilder';
@@ -169,6 +170,7 @@ export function GamePage() {
           <RoleBadge role={role} />
           {!needsCharacter && (
             <Button variant="secondary" size="sm" onClick={() => setShowSettings(true)}>
+              <img src={icoSettings} alt="" aria-hidden="true" width={16} height={16} />
               Settings
             </Button>
           )}

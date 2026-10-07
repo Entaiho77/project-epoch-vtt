@@ -69,7 +69,8 @@ import icoMap from '../../assets/icons/icon-map.png';
 import icoMeasure from '../../assets/icons/icon-measure.png';
 import icoMonster from '../../assets/icons/icon-monster.png';
 import icoJournal from '../../assets/icons/icon-journal.png';
-import icoSettings from '../../assets/icons/icon-settings.png';
+import icoNotes from '../../assets/icons/icon-notes.png';
+import icoGrid from '../../assets/icons/icon-grid.png';
 import icoShapes from '../../assets/icons/icon-shape-tools.png';
 import icoToken from '../../assets/icons/icon-token.png';
 import icoRules from '../../assets/icons/icon-rules.png';
@@ -537,7 +538,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
           dice,
           log,
           chat,
-          { kind: 'drawer', id: 'notes', label: 'Notes', short: 'Notes', glyph: <Ico src={icoJournal} alt="Notes" />, content: <NotesDrawer uid={uid} gameId={gameId} /> },
+          { kind: 'drawer', id: 'notes', label: 'Notes', short: 'Notes', glyph: <Ico src={icoNotes} alt="Notes" />, content: <NotesDrawer uid={uid} gameId={gameId} /> },
           rulesBar,
         ];
 
@@ -594,7 +595,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
         id: 'grid',
         label: 'Grid',
         short: 'Grid',
-        glyph: <Ico src={icoSettings} alt="Grid settings" />,
+        glyph: <Ico src={icoGrid} alt="Grid settings" />,
         content: (
           <GridDrawer
             gmToggle={
@@ -618,7 +619,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
     right = [
       measureAction,
       shapes,
-      { kind: 'drawer', id: 'grid', label: 'Grid', short: 'Grid', glyph: <Ico src={icoSettings} alt="Grid settings" />, content: <GridDrawer /> },
+      { kind: 'drawer', id: 'grid', label: 'Grid', short: 'Grid', glyph: <Ico src={icoGrid} alt="Grid settings" />, content: <GridDrawer /> },
       { kind: 'divider', id: 'pd1' },
       {
         kind: 'drawer',
