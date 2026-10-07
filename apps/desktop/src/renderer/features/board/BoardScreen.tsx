@@ -15,6 +15,7 @@ import {
 } from '../../data/board';
 import { addShape, removeShape } from '../../data/shapes';
 import { clearAllMeasures, moveShape, rotateShape, setMyMeasure } from '../../data/measures';
+import { setMyLightPen, setMyPing } from '../../data/pointers';
 import { useCreatureArt, useMyCreatures } from '../../data/creatures';
 import { useGameCharacterArt } from '../../data/characters';
 import { firstFreeCell, gridDimensions, shapeAnchorCenter, takenSquares, tokensInShape } from './boardGeometry';
@@ -25,7 +26,7 @@ import { GiveLootModal } from './drawers/GiveLootModal';
 import { LootCorpseModal } from './drawers/LootCorpseModal';
 import { AoeDamageModal } from './drawers/AoeDamageModal';
 import { BoardShell, type BarItem } from './BoardShell';
-import { BoardCanvas, type BoardTool, type ShapeDraft } from './BoardCanvas';
+import { BoardCanvas, LIGHT_PEN_FADE_MS, PING_LIFETIME_MS, type BoardTool, type ShapeDraft } from './BoardCanvas';
 import { TokenCard } from './TokenCard';
 import { TokenContextMenu } from './TokenContextMenu';
 import { InitiativeTracker } from './InitiativeTracker';
@@ -65,6 +66,8 @@ import icoFog from '../../assets/icons/icon-fog-of-war.png';
 import icoInitiative from '../../assets/icons/icon-initiative.png';
 import icoMap from '../../assets/icons/icon-map.png';
 import icoMeasure from '../../assets/icons/icon-measure.png';
+import icoPing from '../../assets/icons/icon-select-pointer.png';
+import icoLightPen from '../../assets/icons/icon-spell.png';
 import icoMonster from '../../assets/icons/icon-monster.png';
 import icoJournal from '../../assets/icons/icon-journal.png';
 import icoNotes from '../../assets/icons/icon-notes.png';
@@ -172,6 +175,10 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
   // special-case behavior — it participates in the ordinary one-panel-per-side toggle (below)
   // exactly like Initiative, Dice, Shapes, etc., so it opens/closes/replaces the same way they do.
   const measuring = openRight === 'measure' || openLeft === 'measure';
+  // Board pointers (2026-10-07 MVP backlog): Ping and Light pen are plain same-side menus too,
+  // same "opening the menu arms the tool" trick Measure already uses.
+  const pinging = openRight === 'ping' || openLeft === 'ping';
+  const lightPenning = openRight === 'lightpen' || openLeft === 'lightpen';
   // Armed shape from the Shapes drawer (drives the 'shape' canvas tool); null when none.
   const [shapeDraft, setShapeDraft] = useState<ShapeDraft | null>(null);
   // How the grid looks on this computer (strength/thickness/light-dark) — per person.
@@ -179,11 +186,20 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
 
   const tool: BoardTool = measuring
     ? 'measure'
-    : shapeDraft
-      ? 'shape'
-      : role === 'gm' && openRight === 'fog'
-        ? 'fog'
-        : 'select';
+    : pinging
+      ? 'ping'
+      : lightPenning
+        ? 'lightpen'
+        : shapeDraft
+          ? 'shape'
+          : role === 'gm' && openRight === 'fog'
+            ? 'fog'
+            : 'select';
+
+  // A light-pen stroke keeps syncing while the drag is live; once it ends, this fades it out of
+  // shared state after LIGHT_PEN_FADE_MS. Re-ending (a new stroke starting before the old one
+  // finished fading) cancels the pending clear so the new stroke isn't wiped out from under it.
+  const lightPenClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activeType = activeMap
     ? system.mapTypes.find((t) => t.id === activeMap.typeId)
@@ -493,6 +509,35 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
     ),
   };
 
+  // Board pointers (2026-10-07 MVP backlog): lighter, ephemeral alternatives to freehand
+  // drawing — "look over here" without leaving anything permanent on the map.
+  const pingAction: BarItem = {
+    kind: 'drawer',
+    id: 'ping',
+    label: 'Ping',
+    short: 'Ping',
+    glyph: <Ico src={icoPing} alt="Ping" />,
+    content: (
+      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+        Click a spot on the map — a marker pulses there for everyone for a couple seconds, then
+        vanishes on its own.
+      </p>
+    ),
+  };
+  const lightPenAction: BarItem = {
+    kind: 'drawer',
+    id: 'lightpen',
+    label: 'Light pen',
+    short: 'Light pen',
+    glyph: <Ico src={icoLightPen} alt="Light pen" />,
+    content: (
+      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+        Click and drag on the map to trace a glowing trail — like a laser pointer. It fades out
+        behind the cursor on its own; nothing is left behind once you let go.
+      </p>
+    ),
+  };
+
   // Shapes are scoped to the active map; hidden shapes are GM-only (filtered like tokens).
   const visibleShapes = Object.values(game.shapes ?? {}).filter(
     (sh) => sh.mapId === activeMap?.id && (!sh.hidden || role === 'gm'),
@@ -543,6 +588,8 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
   if (role === 'gm') {
     right = [
       measureAction,
+      pingAction,
+      lightPenAction,
       shapes,
       { kind: 'divider', id: 'd1' },
       {
@@ -609,6 +656,8 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
   } else if (character) {
     right = [
       measureAction,
+      pingAction,
+      lightPenAction,
       shapes,
       { kind: 'drawer', id: 'grid', label: 'Grid', short: 'Grid', glyph: <Ico src={icoGrid} alt="Grid settings" />, content: <GridDrawer /> },
       { kind: 'divider', id: 'pd1' },
@@ -754,6 +803,37 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
               activeMap && void setMyMeasure(gameId, uid, { ...seg, ownerUid: uid, ownerName: character?.name ?? myName, mapId: activeMap.id })
             }
             onClearMeasures={() => void (role === 'gm' ? clearAllMeasures(gameId) : setMyMeasure(gameId, uid, null))}
+            pings={Object.values(game.pings ?? {}).filter((p) => p.mapId === activeMap?.id)}
+            onCommitPing={(col, row) => {
+              if (!activeMap) return;
+              void setMyPing(gameId, uid, {
+                ownerUid: uid,
+                ownerName: character?.name ?? myName,
+                mapId: activeMap.id,
+                col,
+                row,
+                createdAt: Date.now(),
+              });
+              setTimeout(() => void setMyPing(gameId, uid, null), PING_LIFETIME_MS);
+            }}
+            lightPenStrokes={Object.values(game.lightPen ?? {}).filter((s) => s.mapId === activeMap?.id)}
+            onCommitLightPen={(points) => {
+              if (!activeMap) return;
+              if (lightPenClearTimer.current) {
+                clearTimeout(lightPenClearTimer.current);
+                lightPenClearTimer.current = null;
+              }
+              void setMyLightPen(gameId, uid, {
+                ownerUid: uid,
+                ownerName: character?.name ?? myName,
+                mapId: activeMap.id,
+                color: '#5ad1ff',
+                points,
+              });
+            }}
+            onEndLightPen={() => {
+              lightPenClearTimer.current = setTimeout(() => void setMyLightPen(gameId, uid, null), LIGHT_PEN_FADE_MS);
+            }}
             shapeDraft={shapeDraft}
             onCommitShape={(shape) =>
               activeMap && void addShape(gameId, { ...shape, mapId: activeMap.id, ownerUid: uid })

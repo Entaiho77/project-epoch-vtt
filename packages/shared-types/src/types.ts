@@ -113,6 +113,10 @@ export interface Game {
   shapes?: Record<string, BoardShape>;
   /** Measuring lines left on the board, one per person (keyed by uid). */
   measures?: Record<string, SharedMeasure>;
+  /** Board pointers (2026-10-07): ephemeral "look over here" pings, one per person (keyed by uid). */
+  pings?: Record<string, SharedPing>;
+  /** Board pointers (2026-10-07): light-pen trails, one per person (keyed by uid). */
+  lightPen?: Record<string, SharedLightPenStroke>;
 
   // --- Combat & social (Phase E) ---
   initiative?: InitiativeState;
@@ -214,6 +218,35 @@ export interface SharedMeasure {
   sr: number;
   ec: number;
   er: number;
+}
+
+/**
+ * A "look over here" ping: a marker that pulses at a grid cell for everyone, then clears
+ * itself a couple seconds later. One per person, at games/{id}/pings/{uid} — a new ping
+ * replaces your last one, same discipline as SharedMeasure.
+ */
+export interface SharedPing {
+  ownerUid: string;
+  ownerName: string;
+  mapId: string;
+  col: number;
+  row: number;
+  createdAt: number;
+}
+
+/**
+ * A light-pen stroke: a glowing trail that fades out behind the cursor, like a laser pointer,
+ * while you drag. One per person, at games/{id}/lightPen/{uid} — points are in world (map)
+ * pixels, not grid cells, so the trail is smooth rather than snapped to squares; `t` is when
+ * each point was added, used to fade older points and to self-clear the whole stroke once
+ * every point has aged out.
+ */
+export interface SharedLightPenStroke {
+  ownerUid: string;
+  ownerName: string;
+  mapId: string;
+  color: string;
+  points: { x: number; y: number; t: number }[];
 }
 
 export interface Token {

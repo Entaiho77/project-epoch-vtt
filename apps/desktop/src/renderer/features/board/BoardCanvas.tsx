@@ -1,5 +1,14 @@
 import { useEffect, useReducer, useRef, useState, type MouseEvent } from 'react';
-import type { BoardShape, MapDef, Role, ShapeKind, SharedMeasure, Token } from '@epoch/shared-types';
+import type {
+  BoardShape,
+  MapDef,
+  Role,
+  ShapeKind,
+  SharedLightPenStroke,
+  SharedMeasure,
+  SharedPing,
+  Token,
+} from '@epoch/shared-types';
 import { squareKey } from '../../data/board';
 import { imageSrc } from '../../data/images';
 import { onAssetStored } from '../../data/assetSync';
@@ -31,7 +40,13 @@ import { partyLockHeldByOther, visibleOnMap } from './partyMode';
 import { gridStroke, type GridPrefs } from './gridPrefs';
 import styles from './BoardCanvas.module.css';
 
-export type BoardTool = 'select' | 'fog' | 'measure' | 'shape';
+export type BoardTool = 'select' | 'fog' | 'measure' | 'shape' | 'ping' | 'lightpen';
+
+/** How long a ping pulses before it's gone (owner's client clears the shared write on this
+ *  same timer — see BoardScreen). */
+export const PING_LIFETIME_MS = 2000;
+/** How long a light-pen point stays visible before it's fully faded. */
+export const LIGHT_PEN_FADE_MS = 900;
 
 /** The armed shape config from the Shapes drawer; the canvas resolves anchor/aim on click. */
 export interface ShapeDraft {
@@ -101,6 +116,16 @@ interface BoardCanvasProps {
   onCommitMeasure?: (seg: { sc: number; sr: number; ec: number; er: number }) => void;
   /** Remove my measuring line (the GM's removes everyone's). */
   onClearMeasures?: () => void;
+  /** Board pointers (2026-10-07): "look over here" pings everyone sees, on this map. */
+  pings?: SharedPing[];
+  /** Drop a ping at this grid cell (self-clears after PING_LIFETIME_MS — see BoardScreen). */
+  onCommitPing?: (col: number, row: number) => void;
+  /** Board pointers (2026-10-07): light-pen trails everyone sees, on this map. */
+  lightPenStrokes?: SharedLightPenStroke[];
+  /** Sync my light-pen stroke's points as I drag (called often, lightly throttled). */
+  onCommitLightPen?: (points: { x: number; y: number; t: number }[]) => void;
+  /** My light-pen drag just ended — BoardScreen starts fading the shared stroke out. */
+  onEndLightPen?: () => void;
   /** Armed shape from the Shapes drawer (tool === 'shape'); null when none armed. */
   shapeDraft?: ShapeDraft | null;
   onCommitShape?: (shape: ShapeCommit) => void;
@@ -234,6 +259,11 @@ export function BoardCanvas({
   measures,
   onCommitMeasure,
   onClearMeasures,
+  pings,
+  onCommitPing,
+  lightPenStrokes,
+  onCommitLightPen,
+  onEndLightPen,
   selectedTokenId,
   highlightTokenId,
   targetTokenId,
@@ -271,6 +301,9 @@ export function BoardCanvas({
   const tokenDrag = useRef<{ id: string; party: boolean; dc: number; dr: number; size: number } | null>(null);
   const fogPaint = useRef<{ target: boolean; seen: Set<string> } | null>(null);
   const measuringRef = useRef(false);
+  // Light-pen drag in progress: the points accumulated so far (world pixels) and when we last
+  // pushed them to shared state (lightly throttled — see handleMove).
+  const lightPenRef = useRef<{ points: { x: number; y: number; t: number }[]; lastSync: number } | null>(null);
   const panRef = useRef<{ lastX: number; lastY: number } | null>(null);
   const [panning, setPanning] = useState(false);
   const [ghost, setGhost] = useReducer(
@@ -373,9 +406,25 @@ export function BoardCanvas({
     if (tool !== 'measure') setMeasure(null);
   }, [tool]);
 
+  // Pings and light-pen trails animate (pulse / fade) on their own clock, not in response to any
+  // other prop changing — so while at least one is live, redraw every frame; otherwise don't
+  // pay for a render loop at all.
+  useEffect(() => {
+    if (!(pings?.length || lightPenStrokes?.length)) return;
+    let raf = 0;
+    const tick = () => {
+      bump();
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [pings, lightPenStrokes]);
+
   // Escape clears an active measuring line (and, in measure mode, removes my shared one).
   const clearMeasuresRef = useRef(onClearMeasures);
   clearMeasuresRef.current = onClearMeasures;
+  const onEndLightPenRef = useRef(onEndLightPen);
+  onEndLightPenRef.current = onEndLightPen;
   const toolRef = useRef(tool);
   toolRef.current = tool;
   useEffect(() => {
@@ -384,6 +433,10 @@ export function BoardCanvas({
         measuringRef.current = false;
         setMeasure(null);
         setShapeAim(null);
+        if (lightPenRef.current) {
+          lightPenRef.current = null;
+          onEndLightPenRef.current?.(); // start fading out whatever was last synced
+        }
         if (toolRef.current === 'measure') clearMeasuresRef.current?.();
       }
     }
@@ -742,6 +795,46 @@ export function BoardCanvas({
       ctx.fillText(label, sb.x + 14, sb.y - 1);
       ctx.restore();
     }
+
+    // Pings: an expanding, fading ring at the cell someone clicked — "look over here." Drawn
+    // from shared state only; a ping vanishing here even before the owner's clear-write lands
+    // is deliberate (defensive — see PING_LIFETIME_MS).
+    const now = Date.now();
+    for (const ping of pings ?? []) {
+      const age = now - ping.createdAt;
+      if (age < 0 || age > PING_LIFETIME_MS) continue;
+      const t = age / PING_LIFETIME_MS; // 0 = just placed, 1 = about to disappear
+      const c = cellCenter(ping.col, ping.row, g);
+      ctx.save();
+      ctx.globalAlpha = 1 - t;
+      ctx.strokeStyle = COLORS.amber;
+      ctx.lineWidth = 3 / cam.zoom;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, g * (0.25 + t * 0.55), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Light-pen trails: a glowing line that fades out behind the cursor as it moves. Points are
+    // world pixels (not grid cells), so the trail is smooth; each segment's alpha comes from how
+    // old its *newer* endpoint is.
+    for (const stroke of lightPenStrokes ?? []) {
+      const pts = stroke.points;
+      for (let i = 1; i < pts.length; i++) {
+        const age = now - pts[i].t;
+        if (age > LIGHT_PEN_FADE_MS) continue;
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, 1 - age / LIGHT_PEN_FADE_MS) * 0.9;
+        ctx.strokeStyle = stroke.color;
+        ctx.lineWidth = 4 / cam.zoom;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(pts[i - 1].x, pts[i - 1].y);
+        ctx.lineTo(pts[i].x, pts[i].y);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
   }
 
   useEffect(draw, [
@@ -757,6 +850,8 @@ export function BoardCanvas({
     ghost,
     measure,
     measures,
+    pings,
+    lightPenStrokes,
     shapeGhost,
     turnGhost,
     tool,
@@ -782,6 +877,19 @@ export function BoardCanvas({
     if (tool === 'measure') {
       measuringRef.current = true;
       setMeasure({ sc: col, sr: row, ec: col, er: row });
+      return;
+    }
+
+    if (tool === 'ping') {
+      onCommitPing?.(col, row);
+      return;
+    }
+
+    if (tool === 'lightpen') {
+      const w = screenToWorld(camera.current, e.nativeEvent.offsetX, e.nativeEvent.offsetY);
+      const points = [{ x: w.x, y: w.y, t: Date.now() }];
+      lightPenRef.current = { points, lastSync: 0 };
+      onCommitLightPen?.(points);
       return;
     }
 
@@ -881,6 +989,21 @@ export function BoardCanvas({
   }
 
   function handleMove(e: MouseEvent<HTMLCanvasElement>) {
+    if (lightPenRef.current) {
+      const w = screenToWorld(camera.current, e.nativeEvent.offsetX, e.nativeEvent.offsetY);
+      const now = Date.now();
+      const pts = lightPenRef.current.points;
+      pts.push({ x: w.x, y: w.y, t: now });
+      // Trim the locally-held window too — a long, slow drag shouldn't grow this forever.
+      while (pts.length > 1 && now - pts[0].t > LIGHT_PEN_FADE_MS) pts.shift();
+      // Lightly throttled: smooth enough to read as a trail, cheap enough not to flood shared
+      // state with a write per mouse-move tick.
+      if (now - lightPenRef.current.lastSync >= 30) {
+        lightPenRef.current.lastSync = now;
+        onCommitLightPen?.(pts.slice());
+      }
+      return;
+    }
     // Hover tooltip: while idle, show the active conditions of the token under the cursor.
     if (!panRef.current && !tokenDrag.current && !fogPaint.current && !measuringRef.current && !shapeAim) {
       const { col, row } = eventCell(e);
@@ -946,6 +1069,12 @@ export function BoardCanvas({
   }
 
   function handleUp() {
+    if (lightPenRef.current) {
+      onCommitLightPen?.(lightPenRef.current.points.slice());
+      onEndLightPen?.();
+      lightPenRef.current = null;
+      return;
+    }
     if (shapeAim) {
       // Commit the aimed cone/line (drag released). A disarmed draft just clears the aim.
       if (shapeDraft) {
@@ -1061,7 +1190,7 @@ export function BoardCanvas({
   }
 
   const cursor =
-    tool === 'measure' || tool === 'fog' || tool === 'shape'
+    tool === 'measure' || tool === 'fog' || tool === 'shape' || tool === 'ping' || tool === 'lightpen'
       ? 'crosshair'
       : panning
         ? 'grabbing'
