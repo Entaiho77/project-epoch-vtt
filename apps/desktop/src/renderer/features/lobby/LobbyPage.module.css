@@ -23,7 +23,10 @@
   font-size: var(--text-lg);
 }
 .brandGlyph {
-  color: var(--accent-teal);
+  width: 32px;
+  height: 32px;
+  border-radius: 5px;
+  display: block;
 }
 .user {
   display: flex;

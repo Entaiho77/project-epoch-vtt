@@ -10,6 +10,7 @@ import { Button } from '../../components/ui/Button';
 import { TextField } from '../../components/ui/TextField';
 import { GameRow } from './GameRow';
 import { CreateGameModal } from './CreateGameModal';
+import icoLobby from '../../assets/icons/icon-lobby.png';
 import styles from './LobbyPage.module.css';
 
 export function LobbyPage() {
@@ -79,9 +80,7 @@ export function LobbyPage() {
     <div className={styles.page}>
       <header className={styles.topbar}>
         <div className={styles.brand}>
-          <span className={styles.brandGlyph} aria-hidden="true">
-            ✶
-          </span>
+          <img className={styles.brandGlyph} src={icoLobby} alt="" aria-hidden="true" />
           Project Epoch VTT
           {version && <span className={styles.version}>v{version}</span>}
         </div>

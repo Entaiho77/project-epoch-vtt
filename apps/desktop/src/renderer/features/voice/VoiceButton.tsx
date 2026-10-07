@@ -64,9 +64,10 @@ export function VoiceButton({
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-haspopup="dialog"
+        title="Voice"
+        aria-label={`Voice${inVoice.size > 0 ? `, ${inVoice.size} in call` : ''}`}
       >
         <img className={v.triggerIcon} src={icon} alt="" aria-hidden="true" />
-        Voice
         {inVoice.size > 0 && <span className={v.count}>{inVoice.size}</span>}
       </button>
       {open && (
