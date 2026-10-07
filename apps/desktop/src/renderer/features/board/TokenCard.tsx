@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useRollLog } from '../rolllog/rollLog';
 import { isClassAndLevel } from '@epoch/systems/registry';
+import { pcDerived } from '@epoch/systems/dnd5e/character';
 import type { SystemDefinition } from '@epoch/shared-types';
 import type { Character, Role, Token } from '@epoch/shared-types';
 import { updateToken, setTokenHp, setDefeated } from '../../data/board';
@@ -21,6 +22,7 @@ export function TokenCard({
   uid,
   gameId,
   viewerCharacter,
+  viewedCharacter,
   onClose,
 }: {
   token: Token;
@@ -29,6 +31,10 @@ export function TokenCard({
   uid: string;
   gameId: string;
   viewerCharacter?: Character;
+  /** GM only (2026-10-06 playtest): the full record for ANOTHER player's character token, so
+   *  the GM can read their current HP/AC at a glance without opening their sheet. Read-only —
+   *  the GM adjusts a player's HP from the player's own sheet, not from here. */
+  viewedCharacter?: Character;
   onClose: () => void;
 }) {
   const view = tokenVisibility(token, uid, role);
@@ -45,13 +51,33 @@ export function TokenCard({
     // Character tokens
     if (token.kind === 'character') {
       const own = token.characterId === viewerCharacter?.id && viewerCharacter;
+      if (own) {
+        return (
+          <p className={styles.muted}>
+            Your character — manage HP and more in the quick-view on the right.
+          </p>
+        );
+      }
+      // GM looking at another player's token (2026-10-06 playtest): show their current HP/AC
+      // at a glance, read-only — the GM adjusts HP from the player's own sheet, not here.
+      if (view === 'full' && viewedCharacter) {
+        const hp = viewedCharacter.play.pools?.hp?.current ?? 0;
+        const maxHp = isClassAndLevel(system) ? pcDerived(system, viewedCharacter).maxHp : hp;
+        const ac = token.stats?.ac;
+        return (
+          <div className={styles.body}>
+            <div className={styles.stats}>
+              <span>
+                HP {hp}/{maxHp}
+              </span>
+              {ac != null && <span>AC {String(ac)}</span>}
+            </div>
+          </div>
+        );
+      }
       return (
         <p className={styles.muted}>
-          {own
-            ? 'Your character — manage HP and more in the quick-view on the right.'
-            : view === 'full'
-              ? 'Player character (read-only).'
-              : 'Another player’s character.'}
+          {view === 'full' ? 'Player character (read-only).' : 'Another player’s character.'}
         </p>
       );
     }

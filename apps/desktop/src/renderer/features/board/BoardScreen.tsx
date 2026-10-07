@@ -724,6 +724,11 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
             uid={uid}
             gameId={gameId}
             viewerCharacter={character}
+            viewedCharacter={
+              role === 'gm' && selected.kind === 'character' && selected.characterId
+                ? gameCharacters.find((c) => c.id === selected.characterId)
+                : undefined
+            }
             onClose={() => setSelectedId(null)}
           />
         )}
