@@ -264,10 +264,9 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
   }, [role, activeMap, partyScale, game.tokens, gameId]);
 
   function toggle(side: 'left' | 'right', id: string) {
-    // 2026-10-06 playtest: measuring is exempt from the one-panel-per-side rule — a drawer
-    // opening/closing no longer cancels an active measurement, so both stay open and
-    // functional together. Arming a shape is still mutually exclusive with a drawer, since
-    // the shape tool and a drawer both want the canvas click.
+    // 2026-10-06 playtest (corrected): measuring doesn't work while any drawer is open — opening
+    // one cancels an active measurement, same as disarming a shape.
+    setMeasuring(false);
     setShapeDraft(null);
     if (side === 'left') setOpenLeft((o) => (o === id ? null : id));
     else setOpenRight((o) => (o === id ? null : id));
@@ -467,14 +466,20 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
   };
 
   // Distance measuring is available to everyone — players measure their own movement/range.
+  // 2026-10-06 playtest (corrected): it doesn't function while any drawer is open, on either
+  // side — the button is disabled, and opening a drawer (toggle(), above) cancels it if it was
+  // already running.
+  const anyDrawerOpen = !!openLeft || !!openRight;
   const measureAction: BarItem = {
     kind: 'action',
     id: 'measure',
-    label: 'Measure distance',
+    label: anyDrawerOpen ? 'Measure distance (close a drawer first)' : 'Measure distance',
     short: 'Measure',
     glyph: <Ico src={icoMeasure} alt="Measure" />,
     active: measuring,
+    disabled: anyDrawerOpen,
     onClick: () => {
+      if (anyDrawerOpen) return;
       setShapeDraft(null); // measuring and shape placement are mutually exclusive
       setMeasuring((m) => !m);
     },
