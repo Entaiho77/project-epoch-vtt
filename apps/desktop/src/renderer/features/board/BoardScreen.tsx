@@ -25,6 +25,7 @@ import { useGridPrefs } from './gridPrefs';
 import { AmbientAudioPlayer } from './AmbientAudioPlayer';
 import { GridDrawer } from './drawers/GridDrawer';
 import { AmbientAudioDrawer } from './drawers/AmbientAudioDrawer';
+import { BulkCreatureArtDrawer } from './drawers/BulkCreatureArtDrawer';
 import { GiveLootModal } from './drawers/GiveLootModal';
 import { LootCorpseModal } from './drawers/LootCorpseModal';
 import { AoeDamageModal } from './drawers/AoeDamageModal';
@@ -75,6 +76,10 @@ import icoLightPen from '../../assets/icons/icon-spell.png';
 // Ambient audio; a campfire reads reasonably as "mood/atmosphere." Happy to swap for a
 // dedicated icon if one gets made.
 import icoAmbient from '../../assets/icons/icon-rest.png';
+// Borrowed the Slate set's "inventory" treasure-chest tile — currently unused elsewhere in the
+// app — for Bulk creature art: "a batch of things to unpack." Happy to swap for a dedicated
+// icon if one gets made.
+import icoBulkArt from '../../assets/icons/icon-inventory.png';
 import icoMonster from '../../assets/icons/icon-monster.png';
 import icoJournal from '../../assets/icons/icon-journal.png';
 import icoNotes from '../../assets/icons/icon-notes.png';
@@ -363,6 +368,13 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
     () => libraryMonsters.map(homebrewToBestiaryEntry),
     [libraryMonsters],
   );
+  // Bulk creature art (2026-10-04 backlog item) matches a batch of uploaded files against
+  // this combined pool by name — homebrew first, so a homebrew entry that shadows an SRD id
+  // wins the same way the stat card's own merge already does.
+  const bulkArtPool = useMemo(
+    () => [...homebrewEntries, ...system.bestiary],
+    [homebrewEntries, system.bestiary],
+  );
 
   // GM-selected creature → the merged stat card in a proper right-side slide-out panel
   // (same chrome/width as the Add-creature drawer). Other tokens keep the floating TokenCard.
@@ -637,6 +649,14 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
             initiativeOrder={initState?.order}
           />
         ),
+      },
+      {
+        kind: 'drawer',
+        id: 'bulk-art',
+        label: 'Bulk creature art',
+        short: 'Art',
+        glyph: <Ico src={icoBulkArt} alt="Bulk creature art" />,
+        content: <BulkCreatureArtDrawer uid={game.createdBy} pool={bulkArtPool} creatureArt={creatureArt} />,
       },
       {
         kind: 'action',
