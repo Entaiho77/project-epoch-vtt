@@ -42,7 +42,7 @@ import { levelForXp } from '@epoch/systems/dnd5e/xp';
 import type { ProofVerdict } from './diceLedger';
 import { withHomebrewOptions } from './homebrew';
 import { damageAtZero, type DeathSaves } from '@epoch/systems/dnd5e/deathSaves';
-import { hitChanges, hitNote, isDefeated, maxClaimableDamage, mayAttackNow, type Hit } from './damage';
+import { hitChanges, hitNote, isDefeated, maxClaimableDamage, mayAttackNow, type Hit, type PendingSave } from './damage';
 import { initiativeModifier } from './initiativeModifier';
 
 export type SyncWrite = { t: 'write'; path: string; value: unknown };
@@ -506,7 +506,7 @@ async function checkChat(id: string, value: unknown, uid: string, ctx: GateConte
   return OK;
 }
 
-const ROLL_FIELDS = new Set(['id', 'text', 'at', 'byUid', 'by', 'rngId', 'dice', 'hit']);
+const ROLL_FIELDS = new Set(['id', 'text', 'at', 'byUid', 'by', 'rngId', 'dice', 'hit', 'pendingSave']);
 
 async function checkRoll(id: string, value: unknown, uid: string, ctx: GateContext): Promise<Verdict> {
   const existing = await ctx.read(`games/${ctx.gameId}/rollLog/${id}`);
@@ -531,9 +531,24 @@ async function checkRoll(id: string, value: unknown, uid: string, ctx: GateConte
       if (typeof hp === 'number' && hp <= 0) return deny("you're down at 0 HP");
     }
   }
+  const pendingSave = value.pendingSave;
+  if (pendingSave !== undefined) {
+    if (
+      !isObj(pendingSave) ||
+      !isStr(pendingSave.tokenId, 64) ||
+      typeof pendingSave.dc !== 'number' ||
+      !isStr(pendingSave.ability, 16) ||
+      (pendingSave.successType !== 'half' && pendingSave.successType !== 'none') ||
+      typeof pendingSave.amount !== 'number' ||
+      !Number.isFinite(pendingSave.amount) ||
+      pendingSave.amount < 0
+    ) {
+      return deny('bad roll');
+    }
+  }
   if (value.dice === undefined && value.rngId === undefined) {
-    // A plain line, not a checked roll — and so it can't deal damage.
-    return hit === undefined ? OK : deny('damage needs checked dice');
+    // A plain line, not a checked roll — and so it can't deal (or pend) damage.
+    return hit === undefined && pendingSave === undefined ? OK : deny('damage needs checked dice');
   }
   // Claimed dice must be the numbers the GM handed out.
   if (!ctx.dice) return deny('dice cannot be checked');
@@ -545,6 +560,15 @@ async function checkRoll(id: string, value: unknown, uid: string, ctx: GateConte
     const h = hit as unknown as Hit;
     if (h.amount > maxClaimableDamage(value.dice as { s: number; f: number }[])) return deny('more damage than those dice can do');
     Object.assign(followUps, await hitFollowUps(id, h, ctx));
+  }
+  // pendingSave is never auto-applied here — the GM resolves it by hand once the target rolls
+  // at the table (same trust tier as AoE damage) — but the claimed amount still can't exceed
+  // what the checked dice could plausibly produce.
+  if (isObj(pendingSave)) {
+    const ps = pendingSave as unknown as PendingSave;
+    if (ps.amount > maxClaimableDamage(value.dice as { s: number; f: number }[])) {
+      return deny('more damage than those dice can do');
+    }
   }
   return Object.keys(followUps).length ? { ok: true, followUps } : OK;
 }

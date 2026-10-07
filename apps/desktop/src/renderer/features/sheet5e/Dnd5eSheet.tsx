@@ -12,7 +12,7 @@ import { multiUpdate } from '../../data/realtime';
 import { xpProgress } from '@epoch/systems/dnd5e/xp';
 import { pcDerived, ABILITY_IDS } from '@epoch/systems/dnd5e/character';
 import { spells as allSpells, getSpellsForClass } from '@epoch/systems/dnd5e/spells';
-import { concentrationOnCast, spellCastLog, spellDamage } from '@epoch/systems/dnd5e/spellCast';
+import { concentrationOnCast, spellCastResolve, spellDamage } from '@epoch/systems/dnd5e/spellCast';
 import type { CampaignRules } from '../../data/homebrew';
 import { LevelUpModal } from './LevelUpModal';
 import { Modal } from '../../components/ui/Modal';
@@ -192,23 +192,33 @@ export function Dnd5eSheet({
     else castSpellNow(sp, slotLevel);
   };
   const castSpellNow = (sp: Dnd5eSpell, slotLevel: number) => {
-    // Build the log line via the shared resolvers (attack / save / utility), then spend a slot.
+    // Resolve via the shared resolvers (attack / save / utility), then spend a slot. A hit (attack
+    // spells, or a plain damage spell with no save) applies immediately, like a weapon; a save
+    // spell's damage is held as `pendingSave` until the GM resolves the target's roll.
+    const result = spellCastResolve(sp, {
+      casterName: character.name,
+      ...(usingTarget && sp.attackType ? { targetName: target!.name } : {}),
+      targetAc: usingTarget ? target!.ac : targetAc,
+      advantage: combineAdvantage(advantage, conditionAdvantage),
+      saveDc: d.spell!.saveDc,
+      attackBonus: d.spell!.attackBonus,
+      dice: damageAt(sp, slotLevel),
+      targetTokenId: target?.id,
+      resolver,
+      // Spell attacks crit on the campaign threshold (Champion doesn't apply) with the campaign
+      // formula; a paralyzed/unconscious target within 5 ft auto-crits.
+      critThreshold: autoCrit ? 1 : (rules?.critThreshold ?? 20),
+      ...(critFormula ? { critFormula } : {}),
+      ...(critFormulaCustom ? { critFormulaCustom } : {}),
+    });
+    // A resisted hit is halved, same as a weapon attack against a resistant target.
+    const hit =
+      result.hit && targetResists
+        ? { tokenId: result.hit.tokenId, amount: Math.floor(result.hit.amount / 2) }
+        : result.hit;
     postRoll(
-      spellCastLog(sp, {
-        casterName: character.name,
-        ...(usingTarget && sp.attackType ? { targetName: target!.name } : {}),
-        targetAc: usingTarget ? target!.ac : targetAc,
-        advantage: combineAdvantage(advantage, conditionAdvantage),
-        saveDc: d.spell!.saveDc,
-        attackBonus: d.spell!.attackBonus,
-        dice: damageAt(sp, slotLevel),
-        resolver,
-        // Spell attacks crit on the campaign threshold (Champion doesn't apply) with the campaign
-        // formula; a paralyzed/unconscious target within 5 ft auto-crits.
-        critThreshold: autoCrit ? 1 : (rules?.critThreshold ?? 20),
-        ...(critFormula ? { critFormula } : {}),
-        ...(critFormulaCustom ? { critFormulaCustom } : {}),
-      }),
+      result.hit && targetResists ? `${result.logText} · target resists — halved to ${hit!.amount}` : result.logText,
+      { hit, pendingSave: result.pendingSave },
     );
     // Concentration: casting a concentration spell breaks any previous one (logged) and becomes
     // the active one. Non-concentration spells leave play.concentrating alone.

@@ -1,6 +1,23 @@
 import type { Dnd5eSpell } from '@solryn/shared-types';
 import { describeRoll, rollDice, type CombatResolver, type CritFormula, type Rng } from '@solryn/engine';
 
+/** What a resolved cast deals, if anything — mirrors the roll-log's `Hit`/`PendingSave` shapes
+ *  (data/damage.ts) without importing them, since this package doesn't depend on the app. */
+export interface SpellCastResult {
+  logText: string;
+  /** Attack-spell hit, or a plain damage spell with no save — applied immediately, like a weapon. */
+  hit?: { tokenId: string; amount: number };
+  /** Save-based spell damage — the GM resolves fail/success afterward; not auto-applied. */
+  pendingSave?: {
+    tokenId: string;
+    dc: number;
+    ability: string;
+    successType: 'half' | 'none';
+    amount: number;
+    damageType?: string;
+  };
+}
+
 /**
  * Damage dice for a spell cast at a given slot level. Cantrips scale by the caster's level
  * (byCharacterLevel — highest keyed level ≤ caster level); leveled spells scale by the slot
@@ -49,6 +66,8 @@ export interface CastContext {
   attackBonus: number;
   /** Damage dice already resolved for the chosen slot/level (null = non-damage spell). */
   dice: string | null;
+  /** The targeted token's id, so a resulting hit/pendingSave knows what to apply to. */
+  targetTokenId?: string;
   resolver: CombatResolver;
   /** Campaign crit rules for attack spells (threshold + damage formula). */
   critThreshold?: number;
@@ -59,19 +78,24 @@ export interface CastContext {
 }
 
 /**
- * The roll-log line for casting a spell, reusing the shared resolvers (no new combat math):
- * - attack spell (attackType + dice) → attackRollVsAc, exactly like a weapon attack;
- * - save / plain-damage spell (dice) → roll damage + a "DC X ABILITY save" note (target rolls it);
+ * Resolve casting a spell, reusing the shared resolvers (no new combat math):
+ * - attack spell (attackType + dice) → attackRollVsAc, exactly like a weapon attack — a hit
+ *   applies immediately, same roll-proof pipeline as a weapon attack;
+ * - plain-damage spell with no save (dice, no attackType, no save) → always lands, applied
+ *   immediately like an auto-hit (e.g. Magic Missile);
+ * - save spell (dice + save) → roll damage + a "DC X ABILITY save" note; the amount is held as
+ *   `pendingSave` since the *target's* roll (not the caster's) decides fail/half/none — the GM
+ *   resolves it afterward, same trust tier as AoE damage;
  * - utility / buff (no dice) → announce "Caster casts Spell.".
  * Pure — the slot spend (Firebase) is the caller's responsibility.
  */
-export function spellCastLog(sp: Dnd5eSpell, ctx: CastContext): string {
+export function spellCastResolve(sp: Dnd5eSpell, ctx: CastContext): SpellCastResult {
   const label = ctx.targetName
     ? `${ctx.casterName} → ${ctx.targetName} — ${sp.name}`
     : `${ctx.casterName} — ${sp.name}`;
 
   if (sp.attackType && ctx.dice) {
-    return ctx.resolver.resolveAttack({
+    const res = ctx.resolver.resolveAttack({
       label,
       dice: ctx.dice,
       damageType: sp.damageType,
@@ -82,7 +106,13 @@ export function spellCastLog(sp: Dnd5eSpell, ctx: CastContext): string {
       ...(ctx.critFormula ? { critFormula: ctx.critFormula } : {}),
       ...(ctx.critFormulaCustom ? { critFormulaCustom: ctx.critFormulaCustom } : {}),
       rng: ctx.rng,
-    }).logText;
+    });
+    return {
+      logText: res.logText,
+      ...(ctx.targetTokenId && res.hit && res.damage > 0
+        ? { hit: { tokenId: ctx.targetTokenId, amount: res.damage } }
+        : {}),
+    };
   }
 
   if (ctx.dice) {
@@ -91,9 +121,33 @@ export function spellCastLog(sp: Dnd5eSpell, ctx: CastContext): string {
     if (sp.save) {
       line += ` · DC ${ctx.saveDc} ${sp.save} save`;
       if (sp.saveSuccess === 'half') line += ` for half (${Math.floor(r.total / 2)})`;
+      return {
+        logText: line,
+        ...(ctx.targetTokenId
+          ? {
+              pendingSave: {
+                tokenId: ctx.targetTokenId,
+                dc: ctx.saveDc,
+                ability: sp.save,
+                successType: sp.saveSuccess === 'half' ? ('half' as const) : ('none' as const),
+                amount: r.total,
+                ...(sp.damageType ? { damageType: sp.damageType } : {}),
+              },
+            }
+          : {}),
+      };
     }
-    return line;
+    // No attack roll, no save — a plain damage spell (e.g. Magic Missile) always lands in full.
+    return {
+      logText: line,
+      ...(ctx.targetTokenId && r.total > 0 ? { hit: { tokenId: ctx.targetTokenId, amount: r.total } } : {}),
+    };
   }
 
-  return `${ctx.casterName} casts ${sp.name}.`;
+  return { logText: `${ctx.casterName} casts ${sp.name}.` };
+}
+
+/** Back-compat string-only wrapper — existing callers that just want the log line. */
+export function spellCastLog(sp: Dnd5eSpell, ctx: CastContext): string {
+  return spellCastResolve(sp, ctx).logText;
 }

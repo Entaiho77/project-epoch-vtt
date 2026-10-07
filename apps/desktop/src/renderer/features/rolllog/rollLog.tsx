@@ -3,7 +3,9 @@ import { clearRollLog, postRollEntry, trimRollLog, type RollEntry } from '../../
 import { takeProof } from '../../data/secureDice';
 import { multiUpdate, readValue } from '../../data/realtime';
 import { hitFollowUps } from '../../data/gatekeeper';
-import type { Hit } from '../../data/damage';
+import { resolveSpellSave } from '../../data/spellSave';
+import type { Hit, PendingSave } from '../../data/damage';
+import { Button } from '../../components/ui/Button';
 import s from '../board/drawers/drawers.module.css';
 import r from './RollLog.module.css';
 
@@ -20,13 +22,18 @@ export type { RollEntry };
 
 interface RollLogValue {
   entries: RollEntry[];
-  /** Post a roll. `hit` = damage to the roller's target, taken off its HP automatically. */
-  postRoll: (text: string, opts?: { hit?: Hit }) => void;
+  /**
+   * Post a roll. `hit` = damage to the roller's target, taken off its HP automatically.
+   * `pendingSave` = save-based spell damage, held until the GM resolves fail/success.
+   */
+  postRoll: (text: string, opts?: { hit?: Hit; pendingSave?: PendingSave }) => void;
   clear: () => void;
   /** GM: clears the log for everyone. */
   canClear: boolean;
   /** Players: hide everything up to now on this computer only (the shared log is untouched). */
   clearMine: () => void;
+  /** GM only: resolve a pending spell save once the target rolls at the table. */
+  resolveSave: (rollId: string, ps: PendingSave, failed: boolean) => void;
 }
 
 const RollLogContext = createContext<RollLogValue | null>(null);
@@ -81,7 +88,7 @@ export function RollLogProvider({
   }, [log, hideKey]);
 
   const postRoll = useCallback(
-    (text: string, opts?: { hit?: Hit }) => {
+    (text: string, opts?: { hit?: Hit; pendingSave?: PendingSave }) => {
       // Only the GM trims old entries (players can't delete rolls during a session).
       // Rolled inside secureRoll: attach the dice so the GM's computer can check them.
       const proof = takeProof();
@@ -94,10 +101,12 @@ export function RollLogProvider({
         ...(proof?.rngId ? { rngId: proof.rngId } : {}),
         // Damage only rides on a roll with dice behind it (the GM's computer checks them).
         ...(opts?.hit && proof ? { hit: opts.hit } : {}),
+        ...(opts?.pendingSave && proof ? { pendingSave: opts.pendingSave } : {}),
       };
       void postRollEntry(gameId, entry).then(async (id) => {
         if (!canClear) return; // players: the GM's computer applies the hit after checking it
         // The GM's own roll: apply the hit here, the same way a checked player hit is applied.
+        // (pendingSave is never auto-applied — the GM resolves it by hand via resolveSave.)
         if (entry.hit) {
           const changes = await hitFollowUps(id, entry.hit, { gameId, read: (p) => readValue(p) });
           if (Object.keys(changes).length) await multiUpdate(changes);
@@ -112,8 +121,16 @@ export function RollLogProvider({
     if (canClear) void clearRollLog(gameId);
   }, [gameId, canClear]);
 
+  const resolveSave = useCallback(
+    (rollId: string, ps: PendingSave, failed: boolean) => {
+      if (!canClear) return; // GM only
+      void resolveSpellSave(gameId, rollId, ps, failed);
+    },
+    [gameId, canClear],
+  );
+
   return (
-    <RollLogContext.Provider value={{ entries, postRoll, clear, canClear, clearMine }}>
+    <RollLogContext.Provider value={{ entries, postRoll, clear, canClear, clearMine, resolveSave }}>
       {children}
     </RollLogContext.Provider>
   );
@@ -127,7 +144,7 @@ export function useRollLog(): RollLogValue {
 
 /** The shared log window. Drop it anywhere inside a RollLogProvider. */
 export function RollLog() {
-  const { entries, clear, canClear, clearMine } = useRollLog();
+  const { entries, clear, canClear, clearMine, resolveSave } = useRollLog();
   const [showAll, setShowAll] = useState(false);
   if (entries.length === 0) {
     return <p className={s.hint}>No rolls yet. Attacks, dice, and monster rolls land here.</p>;
@@ -163,6 +180,22 @@ export function RollLog() {
             {e.text}
             {e.applied && <span className={r.applied}> · {e.applied}</span>}
             <RollCheck entry={e} />
+            {e.pendingSave && canClear && (
+              <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                <Button size="sm" variant="secondary" onClick={() => resolveSave(e.id, e.pendingSave!, true)}>
+                  Target failed save
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => resolveSave(e.id, e.pendingSave!, false)}>
+                  Target saved
+                </Button>
+              </div>
+            )}
+            {e.pendingSave && !canClear && (
+              <span className={r.unchecked} title="Waiting on the GM to resolve the save">
+                {' '}
+                · awaiting save result
+              </span>
+            )}
           </div>
         ))}
       </div>

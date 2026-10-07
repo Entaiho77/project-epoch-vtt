@@ -11,6 +11,33 @@ export interface Hit {
   amount: number;
 }
 
+/**
+ * Damage pending on a target's saving throw (5e save-based spells: Fireball, breath-weapon-style
+ * effects, etc). Unlike `Hit`, the amount isn't auto-applied — it depends on a roll the *target*
+ * makes at the table, not the caster, so it doesn't fit the roll-proof pipeline's "attacker's own
+ * roll settles it" model. Instead the GM resolves it afterward (fail/success) — see
+ * `pendingSaveAmount` and `resolveSpellSave` in spellSave.ts. Same trust tier as AoE damage /
+ * Give loot / Set HP: a direct GM write, not gatekeeper-verified beyond the dice-shape check.
+ */
+export interface PendingSave {
+  tokenId: string;
+  /** The caster's spell save DC. */
+  dc: number;
+  /** Ability the target saves with (e.g. "DEX") — display only, the GM resolves by table roll. */
+  ability: string;
+  /** What a successful save does to the damage. */
+  successType: 'half' | 'none';
+  /** The full rolled damage, before any save is applied. */
+  amount: number;
+  damageType?: string;
+}
+
+/** The damage that actually lands once the target's save result is known. */
+export function pendingSaveAmount(ps: Pick<PendingSave, 'amount' | 'successType'>, failed: boolean): number {
+  if (failed) return Math.max(0, Math.floor(ps.amount));
+  return ps.successType === 'half' ? Math.max(0, Math.floor(ps.amount / 2)) : 0;
+}
+
 /** A creature at 0 HP (or marked defeated) — it can't be targeted any more. */
 export function isDefeated(t: Pick<Token, 'kind' | 'defeated' | 'hp'> | null | undefined): boolean {
   if (!t || t.kind !== 'creature') return false;

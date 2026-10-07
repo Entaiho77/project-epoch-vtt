@@ -36,7 +36,6 @@ export function AttacksSection({
 
   // Luck drives crits: the modifier sets the crit threshold, and each attempt spends a Luck Point.
   const luckMod = computeModifier(scores.LCK ?? 0, system.modifierRule);
-  const arcanaMod = computeModifier(scores.ARC ?? 0, system.modifierRule);
   const luckMax = Math.max(0, luckMod);
   const luckCurrent = character.play.pools?.[LUCK_POOL]?.current ?? luckMax;
   const canCrit = luckCurrent >= 1;
@@ -122,11 +121,10 @@ export function AttacksSection({
     const crit: CritState = forcedCrit ? 'success' : lc ? lc.crit : 'none';
     const suffix = (lc ? lc.suffix : '') + (forcedCrit ? ' · target condition: DR ignored (auto-crit)' : '');
     if (loaded.damageDice) {
-      // Solryn spell save: DC = 10 + Arcana modifier (+ skill bonus, unused here). Success = half,
-      // which the target/GM then compares against DR — surfaced as a note on the log line.
-      const saveDc = 10 + arcanaMod;
+      // Solryn has no save mechanic anywhere in the engine (its only combat mode is auto-hit-vs-
+      // DR, same as weapons) — so a spell's damage auto-applies in full, exactly like a weapon hit.
       const res = resolveSolrynAttack({ label: attackLabel(loaded.name), dice: loaded.damageDice, targetDr: target?.dr, crit, combatAdvantage: rollMode });
-      postRoll(`${res.logText} · save DC ${saveDc} (success: half vs DR) · −${loaded.cost} AP${suffix}`);
+      postRoll(`${res.logText} · −${loaded.cost} AP${suffix}`, hitFor(res.hpLoss));
     } else {
       postRoll(`${character.name} — ${loaded.name}: cast (−${loaded.cost} AP)`);
     }

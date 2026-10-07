@@ -27,6 +27,19 @@ export interface RollEntry {
   skipped?: number;
   /** Damage this roll deals to the roller's current target (auto-applied by the GM's computer). */
   hit?: { tokenId: string; amount: number };
+  /**
+   * Damage pending on the target's saving throw (5e save-based spells) — not auto-applied; the
+   * GM resolves it by hand once the target rolls at the table (fail/success), which clears this
+   * field. Same trust tier as AoE damage / Give loot / Set HP.
+   */
+  pendingSave?: {
+    tokenId: string;
+    dc: number;
+    ability: string;
+    successType: 'half' | 'none';
+    amount: number;
+    damageType?: string;
+  };
   /** Added by the GM's computer once the damage is applied: "Goblin takes 9 — down!". */
   applied?: string;
 }
