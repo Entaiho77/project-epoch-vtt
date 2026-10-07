@@ -20,6 +20,8 @@ import { TextField } from '../../components/ui/TextField';
 import { Avatar } from '../../components/ui/Avatar';
 import { RoleBadge } from '../../components/ui/Badge';
 import { changeRoomCode, kickPlayer, useSession } from '../../data/realtime';
+import { DICE_SKINS } from '../dice3d/diceSkins';
+import { setDiceSkin, useDiceSkin } from '../dice3d/diceSkinPrefs';
 import styles from './GameSettingsModal.module.css';
 
 interface GameSettingsModalProps {
@@ -221,6 +223,14 @@ export function GameSettingsModal({
             <span className={styles.systemName}>{game.systemName}</span>
             <span className={styles.locked}>locked at creation</span>
           </div>
+        </section>
+
+        {/* Dice set (everyone, playtest: "add a dice selection button so players can choose a
+            dice set that they would like to use") — a personal preference, remembered on this
+            computer like the 3D dice on/off toggle; only shows up when 3D dice are on. */}
+        <section className={styles.section}>
+          <span className={styles.label}>Dice set</span>
+          <DiceSkinPicker />
         </section>
 
         {/* Invite code (GM only controls) */}
@@ -497,6 +507,31 @@ function Field({ label, value }: { label: string; value: string }) {
     <div>
       <span className={styles.label}>{label}</span>
       <div className={styles.readonly}>{value}</div>
+    </div>
+  );
+}
+
+function DiceSkinPicker() {
+  const current = useDiceSkin();
+  const skins = Object.values(DICE_SKINS);
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+      {skins.map((skin) => (
+        <Button
+          key={skin.id}
+          variant={skin.id === current ? 'primary' : 'secondary'}
+          size="sm"
+          onClick={() => setDiceSkin(skin.id)}
+        >
+          {skin.name}
+        </Button>
+      ))}
+      {skins.length < 2 && (
+        <p className={styles.hint} style={{ margin: 0, width: '100%' }}>
+          Only one dice set so far — more will show up here as they're added. This only affects
+          the 3D dice (Dice drawer → "Show my dice in 3D").
+        </p>
+      )}
     </div>
   );
 }

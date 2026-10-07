@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import type { DieToShow } from './diceScene';
+import { diceSkin } from './diceSkinPrefs';
 
 /**
  * 3D dice: only the person rolling sees their dice tumble; everyone else sees the result as
@@ -46,7 +47,7 @@ export async function playDice(container: HTMLElement | null, dice: DieToShow[])
   if (!enabled || !container || dice.length === 0) return;
   try {
     const { showDice } = await import('./diceScene');
-    await showDice(container, dice);
+    await showDice(container, dice, diceSkin());
   } catch {
     // No 3D on this computer — the result still shows as usual.
   }

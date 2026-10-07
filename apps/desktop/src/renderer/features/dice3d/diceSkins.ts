@@ -9,6 +9,8 @@ import stoneMossRoughness from '../../assets/dice-skins/stone-moss/roughness.jpg
 
 export interface DiceSkin {
   id: string;
+  /** Display name shown in the dice-set picker (Settings → Dice set). */
+  name: string;
   /** Base color map. */
   albedo: string;
   /** Tangent-space normal map (bump detail — carved numbers, cracks, chips). */
@@ -46,6 +48,7 @@ export interface DiceSkin {
 export const DICE_SKINS: Record<string, DiceSkin> = {
   'stone-moss': {
     id: 'stone-moss',
+    name: 'Stone Moss',
     albedo: stoneMossAlbedo,
     normal: stoneMossNormal,
     roughness: stoneMossRoughness,
