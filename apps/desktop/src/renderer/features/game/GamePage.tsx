@@ -15,6 +15,7 @@ import { roleOf } from '../../permissions';
 import { getSystem, isClassAndLevel } from '@epoch/systems/registry';
 import { Button } from '../../components/ui/Button';
 import icoSettings from '../../assets/icons/icon-settings.png';
+import icoLibrary from '../../assets/icons/icon-library.png';
 import { RoleBadge } from '../../components/ui/Badge';
 import { GameSettingsModal } from './GameSettingsModal';
 import { CharacterBuilder } from '../builder/CharacterBuilder';
@@ -168,10 +169,21 @@ export function GamePage() {
             <VoiceButton uid={user.uid} members={game.members} gameId={game.id} role={role === 'gm' ? 'gm' : 'player'} />
           )}
           <RoleBadge role={role} />
+          {role === 'gm' && (
+            <button
+              type="button"
+              className={styles.iconButton}
+              onClick={() => navigate(`/game/${game.id}/customize`)}
+              title="My library"
+              aria-label="My library"
+            >
+              <img src={icoLibrary} alt="" aria-hidden="true" />
+            </button>
+          )}
           {!needsCharacter && (
             <button
               type="button"
-              className={styles.settingsButton}
+              className={styles.iconButton}
               onClick={() => setShowSettings(true)}
               title="Settings"
               aria-label="Settings"

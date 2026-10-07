@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import type { SystemDefinition } from '@epoch/shared-types';
 import type { Character, Game, Role, ShapeKind, Token } from '@epoch/shared-types';
 import { homebrewList, homebrewToBestiaryEntry, useLibrary, useRules } from '../../data/homebrew';
@@ -64,7 +63,6 @@ import icoDice from '../../assets/icons/icon-dice.png';
 import icoChat from '../../assets/icons/icon-chat.png';
 import icoFog from '../../assets/icons/icon-fog-of-war.png';
 import icoInitiative from '../../assets/icons/icon-initiative.png';
-import icoInventory from '../../assets/icons/icon-inventory.png';
 import icoMap from '../../assets/icons/icon-map.png';
 import icoMeasure from '../../assets/icons/icon-measure.png';
 import icoMonster from '../../assets/icons/icon-monster.png';
@@ -96,7 +94,6 @@ interface BoardScreenProps {
 const MONSTER_PANEL = '__monster';
 
 export function BoardScreen({ system, game, role, uid, character }: BoardScreenProps) {
-  const navigate = useNavigate();
   const gameId = game.id;
   const gmUid = game.gmUid ?? game.createdBy;
   // The GM's account-wide library (monsters/equipment/player options), read live for this session.
@@ -566,14 +563,6 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
             tokens={tokens}
           />
         ),
-      },
-      {
-        kind: 'action',
-        id: 'library',
-        label: 'Open my library',
-        short: 'Library',
-        glyph: <Ico src={icoInventory} alt="Library" />,
-        onClick: () => navigate(`/game/${gameId}/customize`),
       },
       {
         kind: 'action',

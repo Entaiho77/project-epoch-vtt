@@ -71,10 +71,13 @@
   gap: var(--space-3);
 }
 
-/* Settings: same "icon tile IS the button" look as the board's own icon strips
- * (BoardShell.module.css .toolIcon) — a bare stone-plaque icon with no extra button
- * chrome around it, instead of sitting inside a generic Button's pill/border. */
-.settingsButton {
+/* Header icon buttons (Library, Settings): same "icon tile IS the button" look as the
+ * board's own icon strips (BoardShell.module.css .toolIcon) — a bare stone-plaque icon
+ * with no extra button chrome around it, instead of sitting inside a generic Button's
+ * pill/border. Both are full navigations away from the live board (unlike the board's
+ * own GM toolbar, which is all in-place drawers), so they live together here in the
+ * header rather than in that toolbar. */
+.iconButton {
   width: 40px;
   height: 40px;
   padding: 2px;
@@ -86,10 +89,10 @@
   background: transparent;
   cursor: pointer;
 }
-.settingsButton:hover {
+.iconButton:hover {
   border-color: rgba(255, 255, 255, 0.18);
 }
-.settingsButton img {
+.iconButton img {
   width: 34px;
   height: 34px;
   border-radius: 5px;
