@@ -172,8 +172,10 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
   const [targetId, setTargetId] = useState<string | null>(null);
   // Every player's character (GM tools: rolling a player into initiative).
   const gameCharacters = useGameCharacters(role === 'gm' ? gameId : null);
-  // GM "Give loot" (open or secret); null = closed, '' = no player picked yet.
-  const [giveLootFor, setGiveLootFor] = useState<string | null>(null);
+  // GM "Give loot" preselected player (open/closed itself is just openRight === 'giveloot',
+  // like every other board drawer): '' = no player picked yet, an id = preselected (e.g. from
+  // the token right-click menu below).
+  const [giveLootFor, setGiveLootFor] = useState<string | null>('');
   // Player "Loot corpse" (playtest #6): the defeated creature token being searched; null = closed.
   const [lootCorpseFor, setLootCorpseFor] = useState<string | null>(null);
   // GM "Apply AoE damage" (playtest #8): the placed shape being resolved; null = closed. A
@@ -304,9 +306,15 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
 
   function toggle(side: 'left' | 'right', id: string) {
     setShapeDraft(null); // opening any menu disarms an armed shape
-    setGiveLootFor(null); // opening any menu collapses the Give loot panel too
     if (side === 'left') setOpenLeft((o) => (o === id ? null : id));
-    else setOpenRight((o) => (o === id ? null : id));
+    else
+      setOpenRight((o) => {
+        const next = o === id ? null : id;
+        // A plain toolbar click opens Give loot with no player preselected — a stale
+        // preselection from the right-click token menu (see onGiveLoot below) shouldn't linger.
+        if (next === 'giveloot') setGiveLootFor('');
+        return next;
+      });
   }
 
   const selected = selectedId ? (tokens.find((t) => t.id === selectedId) ?? null) : null;
@@ -660,20 +668,22 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
         content: <BulkCreatureArtDrawer uid={game.createdBy} pool={bulkArtPool} creatureArt={creatureArt} />,
       },
       {
-        kind: 'action',
+        kind: 'drawer',
         id: 'giveloot',
-        label: 'Give loot to a player (openly or secretly)',
+        label: 'Give loot',
         short: 'Loot',
         glyph: <Ico src={icoLoot} alt="Give loot" />,
-        active: giveLootFor !== null,
-        onClick: () => {
-          // Matches the drawers' own toggle behavior: click again to close, and opening this
-          // collapses whatever drawer menu was open on either side (same as `toggle()` above).
-          setOpenLeft(null);
-          setOpenRight(null);
-          setShapeDraft(null);
-          setGiveLootFor((cur) => (cur !== null ? null : ''));
-        },
+        content: (
+          <GiveLootModal
+            gameId={gameId}
+            gmUid={uid}
+            gmName={myName}
+            characters={gameCharacters}
+            equipment={Object.values(library?.equipment ?? {})}
+            initialCharacterId={giveLootFor || undefined}
+            announce={(text) => postRollText(text)}
+          />
+        ),
       },
       { kind: 'divider', id: 'd2' },
       {
@@ -980,7 +990,10 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
             }
             onGiveLoot={
               role === 'gm' && ctxMenu.token.kind === 'character' && ctxMenu.token.characterId
-                ? () => setGiveLootFor(ctxMenu.token.characterId!)
+                ? () => {
+                    setGiveLootFor(ctxMenu.token.characterId!);
+                    setOpenRight('giveloot');
+                  }
                 : undefined
             }
             onLootCorpse={
@@ -1031,19 +1044,6 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
             />
           );
         })()}
-
-        {giveLootFor !== null && role === 'gm' && (
-          <GiveLootModal
-            gameId={gameId}
-            gmUid={uid}
-            gmName={myName}
-            characters={gameCharacters}
-            equipment={Object.values(library?.equipment ?? {})}
-            initialCharacterId={giveLootFor || undefined}
-            announce={(text) => postRollText(text)}
-            onClose={() => setGiveLootFor(null)}
-          />
-        )}
 
         {combatActive && (
           <InitiativeTracker
