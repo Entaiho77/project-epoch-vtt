@@ -686,6 +686,10 @@ export interface SystemDefinition {
   /** Mechanized token conditions (board indicators + combat effects). Optional; systems without a
    *  condition model omit it. */
   tokenConditions?: TokenCondition[];
+  /** Legal attribution for a system built on licensed open content (e.g. the 5e SRD). Optional;
+   *  an original system (Solryn) omits it. Shown in the Rules drawer so it travels with the
+   *  content it credits. */
+  license?: { name: string; url: string; notice: string };
 
   creation: CreationConfig;
 

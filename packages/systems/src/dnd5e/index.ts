@@ -154,6 +154,16 @@ export const dnd5eSystem: SystemDefinition = {
   conditions,
   tokenConditions,
 
+  // Required CC-BY-4.0 credit for the SRD 5.1 content this system is built on (spells,
+  // bestiary, classes, races, feats, backgrounds, rules reference — see each file's own
+  // header comment). Wording follows the SRD 5.1 preamble's own attribution language.
+  license: {
+    name: 'SRD 5.1 — Creative Commons Attribution 4.0',
+    url: 'https://creativecommons.org/licenses/by/4.0/legalcode',
+    notice:
+      'This work includes material taken from the System Reference Document 5.1 ("SRD 5.1") by Wizards of the Coast LLC and available at https://dnd.wizards.com/resources/systems-reference-document. The SRD 5.1 is licensed under the Creative Commons Attribution 4.0 International License available at https://creativecommons.org/licenses/by/4.0/legalcode.',
+  },
+
   creation,
 
   classes,

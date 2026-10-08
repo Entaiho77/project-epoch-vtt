@@ -191,6 +191,15 @@ export function RulesDrawer({
       {cards.length === 0 && conditions.length === 0 && (
         <p className={s.hint}>Nothing matches “{q}”.</p>
       )}
+
+      {system.license && !query && (
+        <>
+          <span className={s.label}>License</span>
+          <p className={s.hint} style={{ margin: 0 }}>
+            {system.license.notice}
+          </p>
+        </>
+      )}
     </div>
   );
 }
