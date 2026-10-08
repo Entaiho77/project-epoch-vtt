@@ -304,6 +304,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
 
   function toggle(side: 'left' | 'right', id: string) {
     setShapeDraft(null); // opening any menu disarms an armed shape
+    setGiveLootFor(null); // opening any menu collapses the Give loot panel too
     if (side === 'left') setOpenLeft((o) => (o === id ? null : id));
     else setOpenRight((o) => (o === id ? null : id));
   }
@@ -664,7 +665,15 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
         label: 'Give loot to a player (openly or secretly)',
         short: 'Loot',
         glyph: <Ico src={icoLoot} alt="Give loot" />,
-        onClick: () => setGiveLootFor(''),
+        active: giveLootFor !== null,
+        onClick: () => {
+          // Matches the drawers' own toggle behavior: click again to close, and opening this
+          // collapses whatever drawer menu was open on either side (same as `toggle()` above).
+          setOpenLeft(null);
+          setOpenRight(null);
+          setShapeDraft(null);
+          setGiveLootFor((cur) => (cur !== null ? null : ''));
+        },
       },
       { kind: 'divider', id: 'd2' },
       {
