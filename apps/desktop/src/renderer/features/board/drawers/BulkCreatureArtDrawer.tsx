@@ -114,10 +114,12 @@ export function BulkCreatureArtDrawer({
             style={{ display: 'none' }}
             onChange={addFiles}
           />
-          <Button size="sm" variant="ghost" onClick={() => filesRef.current?.click()}>
+          {/* secondary, not ghost: ghost has no resting-state border/background anywhere in the
+              app, so these looked clickable only on hover — matches the "+ Add…" buttons elsewhere. */}
+          <Button size="sm" variant="secondary" onClick={() => filesRef.current?.click()}>
             Choose files…
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => folderRef.current?.click()}>
+          <Button size="sm" variant="secondary" onClick={() => folderRef.current?.click()}>
             Choose folder…
           </Button>
         </div>
