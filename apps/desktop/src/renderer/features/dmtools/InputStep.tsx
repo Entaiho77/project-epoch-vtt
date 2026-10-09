@@ -73,6 +73,25 @@ export function InputStep({
     addPart(pasted, [], false);
   }
 
+  /** A screenshot copied straight from the Snipping Tool (Win+Shift+S) lands on the clipboard
+   *  as image data, not text — a plain textarea paste silently does nothing with it. Catch that
+   *  case here and route it through the same OCR path as an uploaded image file, instead of
+   *  requiring the DM to save the screenshot to a file first just to upload it. */
+  function handleTextareaPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) void handleFile(file);
+        return;
+      }
+    }
+    // No image on the clipboard — let the browser's normal text paste happen.
+  }
+
   if (reviewText != null) {
     return (
       <div className={s.step}>
@@ -129,9 +148,10 @@ export function InputStep({
 
       <textarea
         className={s.pasteTextarea}
-        placeholder={isMultiPart ? `Paste part ${partNumber} of ${partsCount} here…` : 'Paste the stat block text here…'}
+        placeholder={isMultiPart ? `Paste part ${partNumber} of ${partsCount} here… (text, or Ctrl+V a screenshot)` : 'Paste the stat block text here… (text, or Ctrl+V a screenshot)'}
         value={pasted}
         onChange={(e) => setPasted(e.target.value)}
+        onPaste={handleTextareaPaste}
         rows={10}
       />
       <div className={s.stepActions}>
