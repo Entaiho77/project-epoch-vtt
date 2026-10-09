@@ -1,6 +1,6 @@
 import type { BestiaryEntry, StatBlockShape } from '@solryn/shared-types';
 import { generatedBestiary } from './bestiary.generated';
-import { comingledBestiaryFor } from '../bestiary/comingled';
+import { mergeWithComingled } from '../bestiary/comingled';
 
 /**
  * Stat-block shapes drive the add-creature form's fields by category. Solryn creatures
@@ -37,6 +37,8 @@ export const statBlockShapes: StatBlockShape[] = [
  * the SRD/Eribor conversions) flows through data/bestiary-source.json ->
  * scripts/genBestiary.ts -> bestiary.generated.ts (run `npm run gen:bestiary`) — edit
  * creatures there, not here. The comingled half (Solryn Bestiary volumes, tagged for
- * Solryn use) comes from ../bestiary/comingled.ts.
+ * Solryn use) comes from ../bestiary/comingled.ts and supersedes any hand-authored
+ * stub of the same name (e.g. the old thin "Crag Hound" is dropped in favor of Volume
+ * One's dual-stat version).
  */
-export const bestiary: BestiaryEntry[] = [...generatedBestiary, ...comingledBestiaryFor('solryn')];
+export const bestiary: BestiaryEntry[] = mergeWithComingled(generatedBestiary, 'solryn');

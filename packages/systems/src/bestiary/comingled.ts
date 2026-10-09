@@ -20,3 +20,17 @@ export const comingledBestiary: BestiaryEntry[] = generated;
 export function comingledBestiaryFor(systemId: 'dnd5e' | 'solryn'): BestiaryEntry[] {
   return comingledBestiary.filter((e) => e.systems?.includes(systemId));
 }
+
+/**
+ * Merges a system's own (hand-authored/SRD) bestiary with its comingled Volume One
+ * creatures. Where a name collides — many Volume One creatures are richer dual-stat
+ * versions of creatures that already existed as thinner stub entries — the Volume One
+ * version wins and the old stub is dropped, so the picker shows one entry per creature,
+ * not two.
+ */
+export function mergeWithComingled(ownBestiary: BestiaryEntry[], systemId: 'dnd5e' | 'solryn'): BestiaryEntry[] {
+  const incoming = comingledBestiaryFor(systemId);
+  const incomingNames = new Set(incoming.map((e) => e.name.toLowerCase()));
+  const keptOwn = ownBestiary.filter((e) => !incomingNames.has(e.name.toLowerCase()));
+  return [...keptOwn, ...incoming];
+}
