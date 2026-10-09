@@ -385,6 +385,35 @@ export interface AttackEntry {
   /** d20 to-hit bonus for roll-to-hit systems (5e). Omitted for auto-hit (Solryn). */
   attackBonus?: number;
   note?: string;
+  /** Which 5e ability's modifier backs this attack (damage and/or to-hit) — carried on
+   *  dual-stat entries so the 5e side of a comingled creature reads correctly without
+   *  re-inferring it. Omitted for Solryn-only or legacy single-system entries. */
+  ability5e?: 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha';
+  /** Same idea for the Solryn side — which Solryn ability backs this attack. */
+  abilitySolryn?: 'str' | 'nim' | 'end' | 'wis' | 'int' | 'arc' | 'lck';
+}
+
+/** 5e's six ability scores — the one standard set, read by both comingled and legacy 5e entries. */
+export interface AbilityScores5e {
+  str: number;
+  dex: number;
+  con: number;
+  int: number;
+  wis: number;
+  cha: number;
+}
+
+/** Solryn's seven core stats (packages/systems/src/solryn/attributes.ts), as raw scores —
+ *  distinct field from 5e's even where the abbreviation overlaps (wis/int), because the two
+ *  systems' scores for the "same" ability are different numbers on a dual-stat creature. */
+export interface AbilityScoresSolryn {
+  str: number;
+  nim: number;
+  end: number;
+  wis: number;
+  int: number;
+  arc: number;
+  lck: number;
 }
 
 /** A save a creature's ability forces on its targets (5e: breath weapons, etc.). */
@@ -415,6 +444,25 @@ export interface BestiaryEntry {
   /** Harvest/loot pool id (ties into the universal harvest mechanic). */
   lootPoolId?: string;
   provisional?: boolean;
+  /** Which system(s) this entry is usable from. A single-system entry (the 5e SRD import,
+   *  hand-authored Solryn creatures) omits this — its home system is implied by which
+   *  bestiary array it lives in. A comingled/dual-stat entry (e.g. an imported Solryn
+   *  bestiary-volume creature) sets both ids here, so either game's UI can show it. */
+  systems?: ('dnd5e' | 'solryn')[];
+  /** 5e ability scores, present on any entry authored with full 5e stats (a dual-stat
+   *  Solryn-volume creature, or a richer future 5e import) — separate from the legacy
+   *  `stats.str`/`stats.dex`/... convention used by the plain 5e SRD bestiary. */
+  abilityScores5e?: AbilityScores5e;
+  /** 5e Armor Class, for an entry that carries full 5e stats alongside Solryn's HP/DR —
+   *  separate from `stats.ac`, which is the legacy 5e-only convention. */
+  armorClass5e?: number;
+  /** Solryn's seven ability scores, present on any dual-stat entry. Solryn's existing
+   *  stats.hp/dr/speed/damage convention is unaffected — this only adds the per-ability
+   *  breakdown those fields were compressed from. */
+  abilityScoresSolryn?: AbilityScoresSolryn;
+  /** Flavor text, shown in a creature's detail view. Kept out of `stats` (meant for short
+   *  stat-block values) since this is prose. */
+  lore?: string;
 }
 
 // --- Rules reference & conditions -------------------------------------------
