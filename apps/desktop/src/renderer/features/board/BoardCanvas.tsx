@@ -23,6 +23,7 @@ import {
   occupiedCells,
   pixelToCell,
   tokensAtCell,
+  tokensInRect,
   dragTopLeft,
   edgeAllowance,
   footprintCenter,
@@ -40,7 +41,7 @@ import { partyLockHeldByOther, visibleOnMap } from './partyMode';
 import { gridStroke, type GridPrefs } from './gridPrefs';
 import styles from './BoardCanvas.module.css';
 
-export type BoardTool = 'select' | 'fog' | 'measure' | 'shape' | 'ping' | 'lightpen';
+export type BoardTool = 'select' | 'fog' | 'measure' | 'shape' | 'ping' | 'lightpen' | 'marquee';
 
 /** How long a ping pulses before it's gone (owner's client clears the shared write on this
  *  same timer — see BoardScreen). */
@@ -138,6 +139,12 @@ interface BoardCanvasProps {
   onSelectToken: (token: Token | null) => void;
   /** Right-click a token → raise a context menu at (clientX, clientY). Absent → no menu. */
   onContextToken?: (token: Token, x: number, y: number) => void;
+  /** Backlog: drag-select many creatures/traps at once (tool === 'marquee') to bulk-remove them.
+   *  Never sweeps up a character or the party token — see handleUp. Ids already queued from a
+   *  previous drag, drawn with a distinct ring so the GM can see what's about to be removed. */
+  marqueeSelectedIds?: Set<string>;
+  /** A drag-box just finished — ids of every creature/trap it caught (may be empty). */
+  onCommitMarquee?: (ids: string[]) => void;
   /** Party-token soft-lock: grab on drag start, release on drop. */
   onGrabParty: (tokenId: string) => void;
   onReleaseParty: (tokenId: string) => void;
@@ -278,6 +285,8 @@ export function BoardCanvas({
   onGrabParty,
   onReleaseParty,
   conditionDefs,
+  marqueeSelectedIds,
+  onCommitMarquee,
 }: BoardCanvasProps) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -301,6 +310,10 @@ export function BoardCanvas({
   const tokenDrag = useRef<{ id: string; party: boolean; dc: number; dr: number; size: number } | null>(null);
   const fogPaint = useRef<{ target: boolean; seen: Set<string> } | null>(null);
   const measuringRef = useRef(false);
+  // Drag-box (marquee) in progress — same {sc,sr,ec,er} corner-cell shape as a measuring
+  // Segment, just read as a rectangle's two opposite corners instead of a line's two ends.
+  const marqueeRef = useRef(false);
+  const [marqueeBox, setMarqueeBox] = useState<Segment | null>(null);
   // Light-pen drag in progress: the points accumulated so far (world pixels) and when we last
   // pushed them to shared state (lightly throttled — see handleMove).
   const lightPenRef = useRef<{ points: { x: number; y: number; t: number }[]; lastSync: number } | null>(null);
@@ -432,6 +445,8 @@ export function BoardCanvas({
       if (e.key === 'Escape') {
         measuringRef.current = false;
         setMeasure(null);
+        marqueeRef.current = false;
+        setMarqueeBox(null);
         setShapeAim(null);
         if (lightPenRef.current) {
           lightPenRef.current = null;
@@ -724,19 +739,22 @@ export function BoardCanvas({
       }
 
       const selected = token.id === selectedTokenId;
+      const marqueeSelected = marqueeSelectedIds?.has(token.id) ?? false;
       const sprung = token.kind === 'trap' && token.trapState === 'sprung';
       // Red ring while the drag ghost is over a cell it can't legally land on.
       const cantLand = dragging && blocked ? !canLandOn(token, col, row, blocked) : false;
-      ctx.lineWidth = (selected ? 4 : 2) / cam.zoom;
+      ctx.lineWidth = (selected || marqueeSelected ? 4 : 2) / cam.zoom;
       ctx.strokeStyle = cantLand
         ? COLORS.red
-        : selected
-          ? COLORS.teal
-          : sprung
-            ? COLORS.red
-            : token.defeated
-              ? COLORS.gray
-              : COLORS.border;
+        : marqueeSelected
+          ? COLORS.amber
+          : selected
+            ? COLORS.teal
+            : sprung
+              ? COLORS.red
+              : token.defeated
+                ? COLORS.gray
+                : COLORS.border;
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
       ctx.stroke();
@@ -835,6 +853,26 @@ export function BoardCanvas({
         ctx.restore();
       }
     }
+
+    // Marquee (drag-box) in progress: a translucent amber rectangle covering the dragged cells.
+    if (marqueeBox) {
+      const colMin = Math.min(marqueeBox.sc, marqueeBox.ec);
+      const colMax = Math.max(marqueeBox.sc, marqueeBox.ec);
+      const rowMin = Math.min(marqueeBox.sr, marqueeBox.er);
+      const rowMax = Math.max(marqueeBox.sr, marqueeBox.er);
+      const x0 = colMin * g;
+      const y0 = rowMin * g;
+      const w = (colMax - colMin + 1) * g;
+      const h = (rowMax - rowMin + 1) * g;
+      ctx.save();
+      ctx.fillStyle = 'rgba(239,159,39,0.15)';
+      ctx.fillRect(x0, y0, w, h);
+      ctx.strokeStyle = COLORS.amber;
+      ctx.lineWidth = 2 / cam.zoom;
+      ctx.setLineDash([6 / cam.zoom, 4 / cam.zoom]);
+      ctx.strokeRect(x0, y0, w, h);
+      ctx.restore();
+    }
   }
 
   useEffect(draw, [
@@ -861,6 +899,8 @@ export function BoardCanvas({
     measureScale,
     conditionDefs,
     version,
+    marqueeBox,
+    marqueeSelectedIds,
   ]);
 
   /** Mouse event → world (map) pixel coords, undoing the camera. */
@@ -877,6 +917,12 @@ export function BoardCanvas({
     if (tool === 'measure') {
       measuringRef.current = true;
       setMeasure({ sc: col, sr: row, ec: col, er: row });
+      return;
+    }
+
+    if (tool === 'marquee') {
+      marqueeRef.current = true;
+      setMarqueeBox({ sc: col, sr: row, ec: col, er: row });
       return;
     }
 
@@ -1004,6 +1050,11 @@ export function BoardCanvas({
       }
       return;
     }
+    if (marqueeRef.current) {
+      const { col, row } = eventCell(e);
+      setMarqueeBox((m) => (m ? { ...m, ec: col, er: row } : m));
+      return;
+    }
     // Hover tooltip: while idle, show the active conditions of the token under the cursor.
     if (!panRef.current && !tokenDrag.current && !fogPaint.current && !measuringRef.current && !shapeAim) {
       const { col, row } = eventCell(e);
@@ -1069,6 +1120,25 @@ export function BoardCanvas({
   }
 
   function handleUp() {
+    if (marqueeRef.current) {
+      if (marqueeBox) {
+        const colMin = Math.min(marqueeBox.sc, marqueeBox.ec);
+        const colMax = Math.max(marqueeBox.sc, marqueeBox.ec);
+        const rowMin = Math.min(marqueeBox.sr, marqueeBox.er);
+        const rowMax = Math.max(marqueeBox.sr, marqueeBox.er);
+        // Only creatures/traps — never a player's character or the shared party token — can be
+        // swept up by a drag-box. This tool exists for "I placed a pile of monsters, let me
+        // clear them out fast," not for bulk-grabbing player tokens.
+        const candidates = onMap.filter(
+          (t) => tokenVisibility(t, uid, role) !== 'hidden' && (t.kind === 'creature' || t.kind === 'trap'),
+        );
+        const hits = tokensInRect(candidates, colMin, rowMin, colMax, rowMax);
+        onCommitMarquee?.(hits.map((t) => t.id));
+      }
+      marqueeRef.current = false;
+      setMarqueeBox(null);
+      return;
+    }
     if (lightPenRef.current) {
       onCommitLightPen?.(lightPenRef.current.points.slice());
       onEndLightPen?.();
@@ -1190,7 +1260,7 @@ export function BoardCanvas({
   }
 
   const cursor =
-    tool === 'measure' || tool === 'fog' || tool === 'shape' || tool === 'ping' || tool === 'lightpen'
+    tool === 'measure' || tool === 'fog' || tool === 'shape' || tool === 'ping' || tool === 'lightpen' || tool === 'marquee'
       ? 'crosshair'
       : panning
         ? 'grabbing'

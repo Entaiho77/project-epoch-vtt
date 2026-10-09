@@ -53,8 +53,10 @@ import { AttackGateContext } from './attackGate';
 import { playChime } from '../voice/chime';
 import { dice3dEnabled, playDice } from '../dice3d/dice3d';
 import { hitChanges, hitNote, isDefeated } from '../../data/damage';
-import { creatureCombatant, groupRoll, joinCombat, leaveCombat, mayMoveNow, rollInitiative, turnBlockReason } from '../../data/combat';
+import { creatureCombatant, groupRoll, joinCombat, leaveCombat, mayMoveNow, removeCombatantsByToken, rollInitiative, turnBlockReason } from '../../data/combat';
 import { dueToResolve, resolveLootSearch } from '../../data/loot';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { Button } from '../../components/ui/Button';
 import { initiativeModifier } from '../../data/initiativeModifier';
 import { useGameCharacters } from '../../data/characters';
 import { canSeeMessage, useChat } from '../../data/chat';
@@ -91,6 +93,7 @@ import icoShapes from '../../assets/icons/icon-shape-tools.png';
 import icoToken from '../../assets/icons/icon-token.png';
 import icoRules from '../../assets/icons/icon-rules.png';
 import icoLoot from '../../assets/icons/icon-loot.png';
+import icoMarquee from '../../assets/icons/icon-move-drag.png';
 import icoEncounter from '../../assets/icons/icon-gm.png';
 // Imported for future use in the voice top-bar button (not yet wired up);
 // the `void` reference keeps both eslint and tsc quiet about the unused import.
@@ -209,6 +212,11 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
   // same "opening the menu arms the tool" trick Measure already uses.
   const pinging = openRight === 'ping' || openLeft === 'ping';
   const lightPenning = openRight === 'lightpen' || openLeft === 'lightpen';
+  // Playtest (2026-10-09): removing a large pile of placed creatures one click at a time was
+  // too slow — drag a box on the map to queue many at once, then remove them in one action.
+  const marqueeing = role === 'gm' && (openRight === 'marquee' || openLeft === 'marquee');
+  const [marqueeIds, setMarqueeIds] = useState<Set<string>>(new Set());
+  const [confirmBulkRemove, setConfirmBulkRemove] = useState(false);
   // Armed shape from the Shapes drawer (drives the 'shape' canvas tool); null when none.
   const [shapeDraft, setShapeDraft] = useState<ShapeDraft | null>(null);
   // How the grid looks on this computer (strength/thickness/light-dark) — per person.
@@ -220,11 +228,29 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
       ? 'ping'
       : lightPenning
         ? 'lightpen'
-        : shapeDraft
-          ? 'shape'
-          : role === 'gm' && openRight === 'fog'
-            ? 'fog'
-            : 'select';
+        : marqueeing
+          ? 'marquee'
+          : shapeDraft
+            ? 'shape'
+            : role === 'gm' && openRight === 'fog'
+              ? 'fog'
+              : 'select';
+
+  /** Drag-box just finished — add its catch to whatever's already queued (so dragging a second
+   *  box adds to the pile instead of replacing it). */
+  function addMarqueeHits(ids: string[]) {
+    if (ids.length === 0) return;
+    setMarqueeIds((prev) => new Set([...prev, ...ids]));
+  }
+
+  async function removeMarqueeTokens() {
+    const ids = new Set(marqueeIds);
+    if (ids.size === 0) return;
+    for (const id of ids) void removeToken(gameId, id);
+    if (initState?.active) await removeCombatantsByToken(gameId, initState, ids);
+    setMarqueeIds(new Set());
+    setConfirmBulkRemove(false);
+  }
 
   // A light-pen stroke keeps syncing while the drag is live; once it ends, this fades it out of
   // shared state after LIGHT_PEN_FADE_MS. Re-ending (a new stroke starting before the old one
@@ -581,6 +607,40 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
       </p>
     ),
   };
+  // GM-only, playtest 2026-10-09: drag a box over a pile of creatures/traps to queue them (never
+  // a character token), then remove them all in one click. Queued tokens stay ringed amber on
+  // the map even if this drawer is closed — dragging more boxes just adds to the pile.
+  const multiRemoveAction: BarItem = {
+    kind: 'drawer',
+    id: 'marquee',
+    label: 'Multi-remove',
+    short: 'Multi-remove',
+    glyph: <Ico src={icoMarquee} alt="Multi-remove" />,
+    content: (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+          Drag a box over creatures or traps to queue them — drag more boxes to add to the pile.
+          Player characters are never caught by the box.
+        </p>
+        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+          {marqueeIds.size === 0 ? 'Nothing queued yet.' : `${marqueeIds.size} queued for removal.`}
+        </p>
+        <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
+          <Button
+            variant="danger"
+            size="sm"
+            disabled={marqueeIds.size === 0}
+            onClick={() => setConfirmBulkRemove(true)}
+          >
+            Remove queued
+          </Button>
+          <Button variant="ghost" size="sm" disabled={marqueeIds.size === 0} onClick={() => setMarqueeIds(new Set())}>
+            Clear
+          </Button>
+        </div>
+      </div>
+    ),
+  };
 
   // Ambient audio (2026-10-07 MVP backlog): one looping scene track, GM-controlled, everyone's
   // own volume local to them. Available to the GM and any player — see AmbientAudioDrawer.
@@ -647,6 +707,7 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
       lightPenAction,
       ambientAudio,
       shapes,
+      multiRemoveAction,
       { kind: 'divider', id: 'd1' },
       {
         kind: 'drawer',
@@ -940,6 +1001,8 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
             selectedTokenId={selected?.id}
             highlightTokenId={highlightTokenId}
             targetTokenId={target?.id}
+            marqueeSelectedIds={marqueeIds}
+            onCommitMarquee={addMarqueeHits}
             shapes={visibleShapes}
             onMoveShape={(id, col, row) => void moveShape(gameId, id, col, row)}
             onRotateShape={(id, deg) => void rotateShape(gameId, id, deg)}
@@ -1127,6 +1190,16 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
             />
           );
         })()}
+
+        <ConfirmDialog
+          open={confirmBulkRemove}
+          title="Remove queued tokens"
+          message={`Remove ${marqueeIds.size} token(s)? This can't be undone.`}
+          confirmLabel="Remove"
+          destructive
+          onConfirm={() => void removeMarqueeTokens()}
+          onCancel={() => setConfirmBulkRemove(false)}
+        />
 
         {combatActive && (
           <InitiativeTracker

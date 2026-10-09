@@ -17,6 +17,7 @@ import {
   sizeToSquares,
   tokenAtCell,
   tokensAtCell,
+  tokensInRect,
 } from '../boardGeometry';
 
 describe('pixelToCell', () => {
@@ -105,6 +106,32 @@ describe('tokensAtCell', () => {
     expect(tokensAtCell(big, 4, 4).map((t) => t.id)).toEqual(['giant']);
     expect(tokensAtCell(big, 4, 3).map((t) => t.id)).toEqual(['giant']);
     expect(tokensAtCell(big, 2, 2)).toEqual([]); // outside the footprint
+  });
+});
+
+describe('tokensInRect (marquee drag-box multi-select)', () => {
+  const tokens = [
+    { id: 'a', col: 1, row: 1 },
+    { id: 'b', col: 4, row: 1 },
+    { id: 'c', col: 8, row: 8 },
+  ] as Token[];
+
+  it('catches every token fully inside the box', () => {
+    expect(tokensInRect(tokens, 0, 0, 5, 5).map((t) => t.id)).toEqual(['a', 'b']);
+  });
+
+  it('catches nothing when the box is empty space', () => {
+    expect(tokensInRect(tokens, 20, 20, 25, 25)).toEqual([]);
+  });
+
+  it('counts a multi-square token as caught if any part of its footprint overlaps the box', () => {
+    const giant = [{ id: 'giant', col: 3, row: 3, size: 2 }] as Token[]; // occupies (3,3)-(4,4)
+    expect(tokensInRect(giant, 4, 4, 6, 6).map((t) => t.id)).toEqual(['giant']); // corner overlap
+    expect(tokensInRect(giant, 0, 0, 2, 2)).toEqual([]); // no overlap at all
+  });
+
+  it('catches a token sitting exactly on the box edge', () => {
+    expect(tokensInRect(tokens, 4, 1, 6, 3).map((t) => t.id)).toEqual(['b']);
   });
 });
 

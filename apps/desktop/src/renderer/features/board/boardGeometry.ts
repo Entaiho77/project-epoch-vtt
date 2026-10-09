@@ -69,6 +69,27 @@ export function tokensAtCell(tokens: Token[], col: number, row: number): Token[]
 }
 
 /**
+ * Every token whose footprint overlaps the inclusive cell rectangle
+ * [colMin,colMax] × [rowMin,rowMax] — the marquee (drag-box) multi-select's hit test. A
+ * multi-square token counts as a hit as soon as any part of its footprint is inside the box,
+ * same "any overlap counts" rule `coversCell` uses for a single-cell click.
+ */
+export function tokensInRect(
+  tokens: Token[],
+  colMin: number,
+  rowMin: number,
+  colMax: number,
+  rowMax: number,
+): Token[] {
+  return tokens.filter((t) => {
+    const n = t.size ?? 1;
+    const tColMax = t.col + n - 1;
+    const tRowMax = t.row + n - 1;
+    return t.col <= colMax && tColMax >= colMin && t.row <= rowMax && tRowMax >= rowMin;
+  });
+}
+
+/**
  * Click-cycling through a stack of tokens sharing a cell. The stack is in render order
  * (bottom → top), so the topmost token is the last element. A fresh click (the current
  * selection isn't in this stack) picks the topmost; each repeat click steps one token
