@@ -141,6 +141,9 @@ export interface Game {
   /** 5e: level a newly-built character starts at. When >1, the sheet chains the level-up flow up
    *  to this level right after creation (new player joining mid-campaign, replacement PC). */
   startingLevel?: number;
+  /** Backlog item 1 (loot generator): the GM-triggered, scene-wide loot search currently in
+   *  progress (or its resolved result, until the GM clears it). */
+  lootSearch?: LootSearchState;
 }
 
 /** One entry in the initiative order. */
@@ -170,6 +173,77 @@ export interface InitiativeState {
   round: number;
   turnIndex: number;
   order: Combatant[];
+}
+
+/** D&D-flavored rarity band for a generated magic item — used only by the loot generator
+ *  (backlog item 1); nothing else in the schema has a rarity concept. */
+export type LootRarity = 'common' | 'uncommon' | 'rare' | 'veryRare' | 'legendary' | 'artifact';
+
+/**
+ * One item in a generated loot pool. Shaped like `HomebrewEquipment` (so it can be handed
+ * straight to `equipmentToInventoryItem`/`giveInventoryItem`, same as a library item) plus the
+ * loot-generator's own reveal-text split: `description` is the full, mechanical writeup (always
+ * visible to the GM); `revealDescription`, when set, is what the player actually sees instead —
+ * a short, non-mechanical blurb for a magic/cursed item, so the roll doesn't hand them the
+ * item's stat line up front. A mundane item has no `revealDescription` — `description` alone is
+ * already fine for a player to read.
+ */
+export interface GeneratedLootItem {
+  id: string;
+  name: string;
+  category: EquipmentCategory;
+  description: string;
+  revealDescription?: string;
+  rarity?: LootRarity;
+  value?: string;
+  // Weapon/armor mechanics carry straight through to the inventory item, same as any
+  // HomebrewEquipment, when the generator rolls a mundane weapon or armor piece.
+  damageDice?: string;
+  damageType?: string;
+  weaponRange?: WeaponRange;
+  properties?: string[];
+  armorType?: ArmorType;
+  baseAc?: number;
+}
+
+/** A living, opted-in player's Investigation roll during a loot search. */
+export interface LootRoller {
+  characterId: string;
+  name: string;
+  roll: number;
+}
+
+/**
+ * Backlog item 1 (loot generator), settled Oct 9, 2026: the GM triggers a scene-wide loot
+ * search after a fight; each living, non-downed player can opt in and roll Investigation.
+ * Resolution is automatic (no GM "resolve" click) — the GM's own client watches `lastRollAt`
+ * and resolves a short grace period after the last roll comes in, same as this file's other
+ * ephemeral shared-session state (initiative, pings). `resolved` is filled in once that happens
+ * and stays there until the GM starts a new search or clears this one.
+ */
+export interface LootSearchState {
+  active: boolean;
+  /** Defeated tokens this search covers — context only (what the pool was generated from). */
+  tokenIds: string[];
+  pool: { items: GeneratedLootItem[]; gold: number };
+  /** Keyed by characterId. */
+  rollers: Record<string, LootRoller>;
+  /** ms epoch of the most recent roll — the auto-resolve grace-timer anchor. */
+  lastRollAt?: number;
+  resolved?: {
+    /** Gold per roller, already floored. */
+    goldEach: number;
+    /** Odd gp left over after the even floor-split, owed to the top roller. */
+    goldRemainder?: number;
+    /** itemId -> characterId, highest-roll-first pick order (looping back to the top roller if
+     *  there are more items than rollers). Empty when `splitEvenly` is set — every item is left
+     *  in the shared pool for the GM to hand out manually via the existing Give Loot flow. */
+    assignments: Record<string, string>;
+    splitEvenly?: boolean;
+    /** Items (and gold, via a synthetic 'gold' key) already paid out, so a GM re-render or a
+     *  second click can't double-give. */
+    claimed?: Record<string, true>;
+  };
 }
 
 /** A board map. The image is placed at the top-left and never stretched; a fixed grid
