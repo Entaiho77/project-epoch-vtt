@@ -101,6 +101,7 @@ export function LobbyPage() {
           <h1 className={styles.h1}>Your games</h1>
           <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
             <Button variant="secondary" onClick={() => navigate('/library')}>My Library</Button>
+            <Button variant="secondary" onClick={() => navigate('/dm-tools')}>DM Tools</Button>
             <Button onClick={() => setShowCreate(true)}>+ Create game</Button>
           </div>
         </div>

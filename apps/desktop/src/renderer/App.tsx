@@ -6,6 +6,7 @@ import { AuthPage } from './features/auth/AuthPage';
 import { LobbyPage } from './features/lobby/LobbyPage';
 import { GamePage } from './features/game/GamePage';
 import { CustomizePage } from './features/customize/CustomizePage';
+import { DmToolsPage } from './features/dmtools/DmToolsPage';
 import { SessionOverlay } from './features/session/SessionOverlay';
 
 function FullScreenMessage({ children }: { children: string }) {
@@ -51,6 +52,10 @@ function AppRoutes() {
       <Route
         path="/library"
         element={user ? <CustomizePage /> : <Navigate to="/" replace />}
+      />
+      <Route
+        path="/dm-tools"
+        element={user ? <DmToolsPage /> : <Navigate to="/" replace />}
       />
       <Route
         path="/game/:gameId/customize"

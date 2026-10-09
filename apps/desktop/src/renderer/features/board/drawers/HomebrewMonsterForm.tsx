@@ -59,8 +59,10 @@ export function HomebrewMonsterForm({
   const [alignment, setAlignment] = useState(existing?.alignment ?? 'unaligned');
   const [hp, setHp] = useState(String(existing?.hp ?? 10));
   const [ac, setAc] = useState(String(existing?.ac ?? 12));
+  const [initiative, setInitiative] = useState(existing?.initiative != null ? String(existing.initiative) : '');
   const [speed, setSpeed] = useState(String(existing?.speed ?? 30));
   const [cr, setCr] = useState(existing?.cr ?? '1');
+  const [lore, setLore] = useState(existing?.lore ?? '');
   const [scores, setScores] = useState<Record<string, string>>(() =>
     Object.fromEntries(ABILITIES.map((a) => [a, String(existing?.[a] ?? 10)])),
   );
@@ -71,6 +73,7 @@ export function HomebrewMonsterForm({
   const [attacks, setAttacks] = useState<HomebrewAttack[]>(Object.values(existing?.attacks ?? {}));
   const [traits, setTraits] = useState<HomebrewFeature[]>(Object.values(existing?.traits ?? {}));
   const [actions, setActions] = useState<HomebrewFeature[]>(Object.values(existing?.actions ?? {}));
+  const [reactions, setReactions] = useState<HomebrewFeature[]>(Object.values(existing?.reactions ?? {}));
   const [legendary, setLegendary] = useState<HomebrewFeature[]>(Object.values(existing?.legendaryActions ?? {}));
   const [loot, setLoot] = useState<string[]>(Object.keys(existing?.loot ?? {}));
   // Case-insensitive filter for the loot equipment list (helpful once a DM has many items).
@@ -91,6 +94,7 @@ export function HomebrewMonsterForm({
       alignment: alignment.trim(),
       hp: Number(hp) || 0,
       ac: Number(ac) || 0,
+      ...(initiative.trim() ? { initiative: Number(initiative) || 0 } : {}),
       speed: Number(speed) || 0,
       cr: cr.trim() || '0',
       str: Number(scores.str) || 10,
@@ -106,7 +110,9 @@ export function HomebrewMonsterForm({
       attacks: toMap(attacks),
       traits: toMap(traits),
       actions: toMap(actions),
+      reactions: toMap(reactions),
       legendaryActions: toMap(legendary),
+      ...(lore.trim() ? { lore: lore.trim() } : {}),
       ...(loot.length ? { loot: Object.fromEntries(loot.map((id) => [id, true as const])) } : {}),
     };
     try {
@@ -210,6 +216,7 @@ export function HomebrewMonsterForm({
         <div className={s.row}>
           <label style={label}>HP<input className={s.input} type="number" value={hp} onChange={(e) => setHp(e.target.value)} /></label>
           <label style={label}>AC<input className={s.input} type="number" value={ac} onChange={(e) => setAc(e.target.value)} /></label>
+          <label style={label}>Initiative<input className={s.input} type="number" value={initiative} onChange={(e) => setInitiative(e.target.value)} placeholder="uses DEX" /></label>
           <label style={label}>Speed<input className={s.input} type="number" value={speed} onChange={(e) => setSpeed(e.target.value)} /></label>
           <label style={label}>CR<input className={s.input} value={cr} onChange={(e) => setCr(e.target.value)} placeholder="1/4" /></label>
         </div>
@@ -234,7 +241,12 @@ export function HomebrewMonsterForm({
         {attackRows}
         {featureRows('Traits', traits, setTraits)}
         {featureRows('Actions', actions, setActions)}
+        {featureRows('Reactions', reactions, setReactions)}
         {featureRows('Legendary Actions', legendary, setLegendary)}
+
+        <label style={label}>Lore
+          <textarea className={s.input} value={lore} onChange={(e) => setLore(e.target.value)} rows={3} placeholder="Flavor text, shown in the creature's detail view." />
+        </label>
 
         <div>
           <span className={s.label}>Loot</span>

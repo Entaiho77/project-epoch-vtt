@@ -5,3 +5,5 @@ dist-electron/
 .env
 *.tsbuildinfo
 release/
+apps/desktop/src/renderer/public/tesseract/
+apps/desktop/src/renderer/public/pdfjs/

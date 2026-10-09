@@ -1,0 +1,564 @@
+.page {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  background: var(--surface-bar);
+  border-bottom: 1px solid var(--border-hairline);
+  position: sticky;
+  top: 0;
+  z-index: var(--z-header);
+}
+.titleBlock {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.glyph {
+  display: block;
+}
+.title {
+  font-weight: 700;
+  font-size: var(--text-lg);
+}
+.back {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  padding: 0;
+}
+.back:hover {
+  color: var(--text-primary);
+}
+
+.body {
+  flex: 1;
+  display: flex;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  align-items: flex-start;
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.leftPanel {
+  flex: 1 1 420px;
+  min-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  background: var(--surface-bar);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+}
+
+.rightPanel {
+  flex: 1 1 420px;
+  min-width: 320px;
+  background: var(--surface-bar);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  max-height: calc(100vh - 140px);
+  overflow-y: auto;
+  position: sticky;
+  top: calc(var(--space-5) + 56px);
+}
+
+/* --- Tool menu ------------------------------------------------------- */
+.toolMenu {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.toolMenuItem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  text-align: left;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  cursor: pointer;
+  color: var(--text-primary);
+}
+.toolMenuItem:hover {
+  border-color: var(--accent-teal);
+}
+.toolMenuItemLabel {
+  font-weight: 700;
+}
+.toolMenuItemDesc {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+/* --- Generic step scaffolding ----------------------------------------- */
+.step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.stepTitle {
+  font-size: var(--text-base);
+  font-weight: 700;
+  margin: 0;
+}
+.stepHint {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin: 0;
+}
+.stepActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.orDivider {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.pasteTextarea,
+.reviewTextarea {
+  width: 100%;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  padding: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  resize: vertical;
+}
+.hiddenFileInput {
+  display: none;
+}
+.partsCountSelect {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: 2px var(--space-1);
+  font-size: var(--text-sm);
+}
+
+.noteBox {
+  background: var(--amber-tint);
+  border: 1px solid var(--accent-amber);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+.errorBox {
+  background: var(--red-tint);
+  border: 1px solid var(--accent-red);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+.successBox {
+  background: var(--teal-tint);
+  border: 1px solid var(--accent-teal);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  font-size: var(--text-sm);
+}
+.successBox p {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+}
+
+/* --- Split screen (highlight left / preview right) --------------------- */
+.splitScreen {
+  display: flex;
+  gap: var(--space-4);
+  align-items: flex-start;
+}
+.splitLeft,
+.splitRight {
+  flex: 1 1 50%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* --- Highlight editor --------------------------------------------------- */
+.highlightEditor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  background: var(--surface-raised);
+  border-radius: var(--radius-md);
+}
+.toolbarBtn {
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+.toolbarBtnActive {
+  border-color: var(--text-primary);
+  box-shadow: inset 0 0 0 1px var(--text-primary);
+}
+.toolbarHint {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-left: var(--space-2);
+}
+
+.highlightText {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+  line-height: 1.6;
+  user-select: text;
+  cursor: text;
+  max-height: 480px;
+  overflow-y: auto;
+}
+.highlightSpan {
+  border-radius: 3px;
+  padding: 1px 0;
+  cursor: pointer;
+}
+
+.hiLore { background: var(--purple-tint); box-shadow: inset 0 -2px 0 var(--accent-purple); }
+.hiToHit { background: var(--teal-tint); box-shadow: inset 0 -2px 0 var(--accent-teal); }
+.hiRange { background: rgba(93, 202, 165, 0.08); box-shadow: inset 0 -2px 0 #3f8f74; }
+.hiDamage { background: var(--red-tint); box-shadow: inset 0 -2px 0 var(--accent-red); }
+.hiDc { background: var(--amber-tint); box-shadow: inset 0 -2px 0 var(--accent-amber); }
+
+.editPopover {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.editPopoverLabel {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  font-style: italic;
+}
+.editPopoverRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.editPopoverHint {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin: 0;
+}
+.removeBtn {
+  border: 1px solid var(--accent-red);
+  color: var(--accent-red);
+  background: transparent;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+.closeBtn {
+  border: 1px solid var(--border-hairline);
+  color: var(--text-muted);
+  background: transparent;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+
+/* --- Preview pane --------------------------------------------------- */
+.previewPane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-height: 560px;
+  overflow-y: auto;
+  padding-right: var(--space-1);
+}
+.warningsBox {
+  background: var(--amber-tint);
+  border: 1px solid var(--accent-amber);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+}
+.warningsBox ul {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+}
+.previewRow {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.previewField {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 70px;
+  flex: 1;
+}
+.previewFieldLabel {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+.previewValue {
+  text-align: left;
+  background: var(--surface-raised);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.previewValue:hover {
+  border-color: var(--border-hairline);
+}
+.previewInput {
+  background: var(--surface-raised);
+  border: 1px solid var(--accent-teal);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-sm);
+}
+.previewEmpty {
+  color: var(--text-muted);
+  font-style: italic;
+}
+.loreTextarea {
+  width: 100%;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.previewEditBox {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  align-items: flex-start;
+}
+.dragFixWrap {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.dragFixText {
+  width: 100%;
+  background: var(--surface-raised);
+  border: 1px solid var(--accent-teal);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: var(--space-2);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+  line-height: 1.5;
+  user-select: text;
+  cursor: text;
+}
+.dragFixHint {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.previewSection h4 {
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin: 0 0 var(--space-2);
+}
+.entryList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.entryCard {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.entryHeadRow {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+.entryNameInput {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-hairline);
+  color: var(--text-primary);
+  font-weight: 700;
+  font-size: var(--text-sm);
+  padding: 2px 0;
+}
+.entryDescInput {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  resize: vertical;
+}
+.entryMechRow {
+  display: flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+.entryMechInput {
+  flex: 1;
+  min-width: 80px;
+  background: var(--surface-board);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+  padding: var(--space-1);
+}
+.addEntryBtn {
+  align-self: flex-start;
+  background: none;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+
+/* --- Bestiary panel --------------------------------------------------- */
+.bestiaryPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.bestiarySearch {
+  width: 100%;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: var(--space-2);
+  font-size: var(--text-sm);
+}
+.bestiaryFieldToggles {
+  display: flex;
+  gap: var(--space-3);
+}
+.fieldToggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.bestiaryList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.bestiaryRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+}
+.bestiaryRow:hover {
+  background: var(--surface-raised);
+}
+.bestiaryRowHighlight {
+  background: var(--teal-tint);
+  box-shadow: inset 0 0 0 1px var(--accent-teal);
+}
+.bestiaryRowMain {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.bestiaryRowName {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bestiaryRowMeta {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.sourceTag {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.sourceTagHomebrew {
+  color: var(--accent-teal);
+}
+.editLink {
+  background: none;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+  padding: 2px var(--space-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.editLink:hover {
+  border-color: var(--accent-teal);
+}
