@@ -6,20 +6,22 @@
 }
 
 /* Toolbar rebalance (2026-10-09): rare/infrequent, non-canvas items (ambient audio, grid
- * settings, maps, bulk creature art) dock above the board instead of crowding a side strip. */
+ * settings, maps, bulk creature art) dock above the board instead of crowding a side strip.
+ * Full-width and flush against the top edge (mirrors the Initiative bar's bottom-docked,
+ * full-width treatment) rather than a floating pill — it reads as part of the board, not a
+ * stray popup sitting in the middle of the map. */
 .topBar {
   position: absolute;
   top: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 16;
+  left: 0;
+  right: 0;
+  z-index: var(--z-drawer);
   display: flex;
-  gap: var(--space-1);
-  padding: var(--space-1) var(--space-2);
-  border-radius: 0 0 var(--radius-md) var(--radius-md);
-  background: var(--surface-bar);
-  border: 1px solid var(--border-hairline);
-  border-top: none;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  background: rgba(25, 28, 35, 0.97);
+  border-bottom: 1px solid var(--border-hairline);
 }
 .topBarButton {
   display: flex;
