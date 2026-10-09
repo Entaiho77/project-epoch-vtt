@@ -99,4 +99,16 @@ describe('generateEncounter', () => {
     expect(result.members).toEqual([]);
     expect(result.underBudget).toBe(true);
   });
+
+  it('uses a direct xp override instead of monsterXp(cr) for entries with no real CR', () => {
+    // A comingled Solryn-bestiary creature: cr is 0 (no real 5e CR), but it carries its own
+    // authored XP reward. Without the override it would score 0 XP and never get picked.
+    const comingledPool: EncounterPoolEntry[] = [
+      { id: 'crag-hound', name: 'Crag Hound', cr: 0, xp: 10, type: 'Beast' },
+    ];
+    const result = generateEncounter(comingledPool, [3, 3, 3, 3], 'medium', {});
+    expect(result.members).toHaveLength(1);
+    expect(result.members[0].count).toBeGreaterThan(0);
+    expect(result.rawXp).toBeGreaterThan(0);
+  });
 });

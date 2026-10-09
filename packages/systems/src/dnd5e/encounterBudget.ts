@@ -63,6 +63,16 @@ export interface EncounterPoolEntry {
   /** Free-text creature type (e.g. "Humanoid"), for display/grouping — not matched against here;
    *  the caller filters the pool to whichever type(s) the GM picked before calling generate. */
   type?: string;
+  /** Direct XP override — for a creature with no real 5e CR to look up (e.g. a comingled
+   *  Solryn-bestiary creature, which carries its own authored XP reward instead). When set,
+   *  this is used in place of monsterXp(cr); `cr` can stay 0 on these entries. */
+  xp?: number;
+}
+
+/** A pool entry's XP value for budget math: its direct `xp` override if set, else the
+ *  standard monsterXp(cr) lookup. */
+function entryXp(entry: EncounterPoolEntry): number {
+  return entry.xp ?? monsterXp(entry.cr);
 }
 
 export interface GeneratedEncounterMember {
@@ -133,14 +143,14 @@ export function generateEncounter(
   } | null = null;
 
   for (const entry of usableGruntPool) {
-    const xp = monsterXp(entry.cr);
+    const xp = entryXp(entry);
     if (xp <= 0) continue;
 
     const secondaryCandidates = pool.filter((e) => e.id !== entry.id && e.type !== entry.type);
     const secondary = options.primaryType && secondaryCandidates.length
-      ? [...secondaryCandidates].sort((a, b) => monsterXp(a.cr) - monsterXp(b.cr))[0]
+      ? [...secondaryCandidates].sort((a, b) => entryXp(a) - entryXp(b))[0]
       : undefined;
-    const secondaryXp = secondary ? monsterXp(secondary.cr) : 0;
+    const secondaryXp = secondary ? entryXp(secondary) : 0;
 
     for (let count = 1; count <= 20; count++) {
       const secondaryCount = secondary ? Math.min(count - 1, Math.max(1, Math.round(count * SECONDARY_SHARE))) : 0;
@@ -155,12 +165,12 @@ export function generateEncounter(
   if (!best) {
     // Nothing fits even a single copy — hand back the cheapest option so the GM sees *something*
     // rather than an empty encounter, flagged under budget-less-than-reality via underBudget.
-    const cheapest = [...pool].sort((a, b) => monsterXp(a.cr) - monsterXp(b.cr))[0];
+    const cheapest = [...pool].sort((a, b) => entryXp(a) - entryXp(b))[0];
     return {
       members: [{ id: cheapest.id, name: cheapest.name, cr: cheapest.cr, count: 1, role: 'grunt' }],
       budget,
-      rawXp: monsterXp(cheapest.cr),
-      adjustedXp: adjustedXp(monsterXp(cheapest.cr), 1, partySize),
+      rawXp: entryXp(cheapest),
+      adjustedXp: adjustedXp(entryXp(cheapest), 1, partySize),
       underBudget: false,
     };
   }
@@ -176,9 +186,12 @@ export function generateEncounter(
     members.push({ id: secondary.id, name: secondary.name, cr: secondary.cr, count: secondaryCount, role: 'secondary' });
   }
   let totalCount = gruntCount + secondaryCount;
-  let rawXp = monsterXp(best.entry.cr) * gruntCount + (secondary ? monsterXp(secondary.cr) * secondaryCount : 0);
+  let rawXp = entryXp(best.entry) * gruntCount + (secondary ? entryXp(secondary) * secondaryCount : 0);
 
   if (options.includeMiniboss) {
+    // CR-proximity only means something for entries with a real CR (the common case — SRD
+    // creatures). A comingled entry with no CR (cr defaults to 0) just won't be favored here;
+    // known soft limitation, not a crash — the budget check below still applies regardless.
     const targetCr = best.entry.cr + 2.5; // midpoint of the spec's "CR +2 or +3"
     const miniboss = [...pool]
       .filter((e) => e.cr > best!.entry.cr)
@@ -186,7 +199,7 @@ export function generateEncounter(
     if (miniboss) {
       members.push({ id: miniboss.id, name: miniboss.name, cr: miniboss.cr, count: 1, role: 'miniboss' });
       totalCount += 1;
-      rawXp += monsterXp(miniboss.cr);
+      rawXp += entryXp(miniboss);
     }
   }
 
