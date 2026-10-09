@@ -1,5 +1,6 @@
 import type { BestiaryEntry, StatBlockShape } from '@solryn/shared-types';
 import { generatedBestiary } from './bestiary.generated';
+import { comingledBestiaryFor } from '../bestiary/comingled';
 
 /**
  * Stat-block shapes drive the add-creature form's fields by category. Solryn creatures
@@ -32,9 +33,10 @@ export const statBlockShapes: StatBlockShape[] = [
 ];
 
 /**
- * The full Solryn bestiary. Every entry — the 10 canonical v1.2 starters and the
- * SRD/Eribor conversions — flows through one generator path: data/bestiary-source.json
- * is the source of truth, and scripts/genBestiary.ts flattens it into
- * bestiary.generated.ts (run `npm run gen:bestiary`). Edit creatures there, not here.
+ * The full Solryn bestiary. The hand-authored half (the 10 canonical v1.2 starters and
+ * the SRD/Eribor conversions) flows through data/bestiary-source.json ->
+ * scripts/genBestiary.ts -> bestiary.generated.ts (run `npm run gen:bestiary`) — edit
+ * creatures there, not here. The comingled half (Solryn Bestiary volumes, tagged for
+ * Solryn use) comes from ../bestiary/comingled.ts.
  */
-export const bestiary: BestiaryEntry[] = generatedBestiary;
+export const bestiary: BestiaryEntry[] = [...generatedBestiary, ...comingledBestiaryFor('solryn')];
