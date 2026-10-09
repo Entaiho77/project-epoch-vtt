@@ -3,22 +3,28 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node scripts/prepare-swarm.mjs && tauri dev",
+    "dev": "node scripts/prepare-swarm.mjs && node scripts/prepare-parser-assets.mjs && tauri dev",
     "build": "node scripts/build.mjs",
-    "dev:web": "vite",
-    "build:web": "vite build",
+    "dev:web": "node scripts/prepare-parser-assets.mjs && vite",
+    "build:web": "node scripts/prepare-parser-assets.mjs && vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "prepare:swarm": "node scripts/prepare-swarm.mjs"
+    "prepare:swarm": "node scripts/prepare-swarm.mjs",
+    "prepare:parser-assets": "node scripts/prepare-parser-assets.mjs"
   },
   "dependencies": {
     "@epoch/engine": "*",
     "@epoch/protocol": "*",
     "@epoch/shared-types": "*",
     "@epoch/systems": "*",
+    "@tesseract.js-data/eng": "^1.0.0",
+    "mammoth": "^1.13.0",
+    "pdfjs-dist": "^6.4.299",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.18.0",
+    "tesseract.js": "^7.0.0",
+    "tesseract.js-core": "^6.1.2",
     "three": "^0.186.1",
     "ws": "^8.18.0"
   },

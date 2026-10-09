@@ -40,10 +40,20 @@ export interface HomebrewAttack {
   damageType: string;
 }
 
-/** A named text feature (trait / action / legendary action). */
+/** A named text feature (trait / action / reaction / legendary action). The three mechanical
+ *  fields are free text (not parsed back into numbers) and are only ever set by the paste-parser
+ *  when the DM highlights that piece — the description always carries the full stat-block prose
+ *  either way, so a feature with no highlights is identical to one hand-typed in the form. */
 export interface HomebrewFeature {
   name: string;
   description: string;
+  /** e.g. "+5 to hit" or "reach 5 ft." for range — kept as the DM highlighted it, not parsed. */
+  toHit?: string;
+  range?: string;
+  /** e.g. "5 (1d4 + 3) piercing damage". */
+  damage?: string;
+  /** Save DC called out in the text, e.g. "DC 12 Wisdom". */
+  dc?: string;
 }
 
 export interface HomebrewMonster {
@@ -56,6 +66,9 @@ export interface HomebrewMonster {
   alignment: string;
   hp: number;
   ac: number;
+  /** Initiative bonus, when the stat block states one directly (rare — most 5e blocks don't;
+   *  DEX modifier is used for initiative rolls either way). */
+  initiative?: number;
   /** Walking speed in feet. */
   speed: number;
   /** Challenge rating label, e.g. "1/4", "1", "5". */
@@ -74,7 +87,11 @@ export interface HomebrewMonster {
   attacks: Record<string, HomebrewAttack>;
   traits: Record<string, HomebrewFeature>;
   actions: Record<string, HomebrewFeature>;
+  reactions?: Record<string, HomebrewFeature>;
   legendaryActions: Record<string, HomebrewFeature>;
+  /** Flavor text (lore), kept separate from the mechanical fields and shown as written —
+   *  set by the paste-parser's "lore" highlight, or typed by hand. */
+  lore?: string;
   /** Homebrew-equipment ids carried as loot (object-keyed set — never an array). Distributed to
    *  players from a spawned instance's stat card (Phase B1). Equipment ids reference the DM's
    *  account-wide library. */
@@ -218,6 +235,8 @@ export function homebrewToBestiaryEntry(hb: HomebrewMonster): BestiaryEntry {
   if (hb.damageVulnerabilities?.length) stats.vulnerabilities = hb.damageVulnerabilities.join(', ');
   if (hb.conditionImmunities?.length) stats.conditionImmunities = hb.conditionImmunities.join(', ');
 
+  if (hb.initiative != null) stats.initiative = hb.initiative;
+
   const attacks = Object.values(hb.attacks ?? {}).map((a) => ({
     name: a.name,
     diceExpr: a.damageDice,
@@ -225,10 +244,23 @@ export function homebrewToBestiaryEntry(hb: HomebrewMonster): BestiaryEntry {
     attackBonus: a.toHit,
   }));
 
+  // A paste-parser highlight (toHit/range/damage/dc) is appended in parentheses after the prose
+  // description, same line, so the stat card shows it without a special case per feature kind.
+  const withMech = (f: HomebrewFeature) => {
+    const tags = [
+      f.toHit && `To Hit: ${f.toHit}`,
+      f.range && `Range: ${f.range}`,
+      f.damage && `Damage: ${f.damage}`,
+      f.dc && `Save: ${f.dc}`,
+    ].filter(Boolean);
+    return tags.length ? `${f.description} (${tags.join('; ')})` : f.description;
+  };
+
   const abilities = [
-    ...Object.values(hb.traits ?? {}).map((t) => `${t.name}: ${t.description}`),
-    ...Object.values(hb.actions ?? {}).map((a) => `${a.name}: ${a.description}`),
-    ...Object.values(hb.legendaryActions ?? {}).map((l) => `${l.name} (Legendary): ${l.description}`),
+    ...Object.values(hb.traits ?? {}).map((t) => `${t.name}: ${withMech(t)}`),
+    ...Object.values(hb.actions ?? {}).map((a) => `${a.name}: ${withMech(a)}`),
+    ...Object.values(hb.reactions ?? {}).map((r) => `${r.name} (Reaction): ${withMech(r)}`),
+    ...Object.values(hb.legendaryActions ?? {}).map((l) => `${l.name} (Legendary): ${withMech(l)}`),
   ];
 
   return {
@@ -239,6 +271,7 @@ export function homebrewToBestiaryEntry(hb: HomebrewMonster): BestiaryEntry {
     stats,
     ...(attacks.length ? { attacks } : {}),
     ...(abilities.length ? { abilities } : {}),
+    ...(hb.lore ? { lore: hb.lore } : {}),
   };
 }
 
