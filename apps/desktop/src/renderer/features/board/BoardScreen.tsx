@@ -40,6 +40,7 @@ import { MapsDrawer } from './drawers/MapsDrawer';
 import { FogDrawer } from './drawers/FogDrawer';
 import { AddCreatureDrawer } from './drawers/AddCreatureDrawer';
 import { RandomEncounterDrawer } from './drawers/RandomEncounterDrawer';
+import { LootSearchDrawer } from './drawers/LootSearchDrawer';
 import { DiceDrawer } from './drawers/DiceDrawer';
 import { RulesDrawer } from './drawers/RulesDrawer';
 import { ChatDrawer } from './drawers/ChatDrawer';
@@ -53,6 +54,7 @@ import { playChime } from '../voice/chime';
 import { dice3dEnabled, playDice } from '../dice3d/dice3d';
 import { hitChanges, hitNote, isDefeated } from '../../data/damage';
 import { creatureCombatant, groupRoll, joinCombat, leaveCombat, mayMoveNow, rollInitiative, turnBlockReason } from '../../data/combat';
+import { dueToResolve, resolveLootSearch } from '../../data/loot';
 import { initiativeModifier } from '../../data/initiativeModifier';
 import { useGameCharacters } from '../../data/characters';
 import { canSeeMessage, useChat } from '../../data/chat';
@@ -160,6 +162,18 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
     : undefined;
   // Playtest #2: moving a token during combat follows the same turn gate attacks already do.
   const mayMoveToken = (tokenId: string) => mayMoveNow(initState, { uid, tokenId });
+
+  // Backlog item 1 (loot generator): auto-resolve the loot search a short grace period after
+  // the last roll comes in — no GM click needed. Watched here (not inside the drawer) so it
+  // still fires while the GM has that drawer closed.
+  const lootSearch = game.lootSearch;
+  useEffect(() => {
+    if (role !== 'gm' || !lootSearch?.active || lootSearch.resolved) return;
+    const timer = setInterval(() => {
+      if (dueToResolve(lootSearch)) void resolveLootSearch(gameId);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [role, gameId, lootSearch]);
 
   const [openLeft, setOpenLeft] = useState<string | null>(null);
   const [openRight, setOpenRight] = useState<string | null>(
@@ -705,6 +719,30 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
           />
         ),
       },
+      ...(isClassAndLevel(system)
+        ? [
+            {
+              kind: 'drawer' as const,
+              id: 'lootsearch',
+              label: 'Loot search',
+              short: 'Loot search',
+              glyph: <Ico src={icoLoot} alt="Loot search" />,
+              content: (
+                <LootSearchDrawer
+                  gameId={gameId}
+                  system={system}
+                  role="gm"
+                  tokens={tokens}
+                  activeMapId={activeMap?.id}
+                  gameCharacters={gameCharacters.filter((c) => c.buildComplete)}
+                  equipment={Object.values(library?.equipment ?? {})}
+                  lootSearch={game.lootSearch}
+                  postRoll={(text) => postRollText(text)}
+                />
+              ),
+            },
+          ]
+        : []),
       { kind: 'divider', id: 'd2' },
       {
         kind: 'drawer',
@@ -739,6 +777,31 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
       ambientAudio,
       shapes,
       { kind: 'drawer', id: 'grid', label: 'Grid', short: 'Grid', glyph: <Ico src={icoGrid} alt="Grid settings" />, content: <GridDrawer /> },
+      ...(isClassAndLevel(system)
+        ? [
+            {
+              kind: 'drawer' as const,
+              id: 'lootsearch',
+              label: 'Loot search',
+              short: 'Loot search',
+              glyph: <Ico src={icoLoot} alt="Loot search" />,
+              content: (
+                <LootSearchDrawer
+                  gameId={gameId}
+                  system={system}
+                  role="player"
+                  character={character}
+                  tokens={tokens}
+                  activeMapId={activeMap?.id}
+                  gameCharacters={[]}
+                  equipment={[]}
+                  lootSearch={game.lootSearch}
+                  postRoll={(text) => postRollText(text)}
+                />
+              ),
+            },
+          ]
+        : []),
       { kind: 'divider', id: 'pd1' },
       {
         kind: 'drawer',
