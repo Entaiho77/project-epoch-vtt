@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useRollLog } from '../rolllog/rollLog';
 import { isClassAndLevel } from '@epoch/systems/registry';
 import { pcDerived } from '@epoch/systems/dnd5e/character';
 import type { SystemDefinition } from '@epoch/shared-types';
@@ -39,10 +38,12 @@ export function TokenCard({
 }) {
   const view = tokenVisibility(token, uid, role);
   const [harvestOpen, setHarvestOpen] = useState(false);
-  const [searched, setSearched] = useState(false);
-  const { postRoll } = useRollLog();
-  // Solryn harvests corpses with crafting skills; 5e has no harvest — you search and the GM
-  // decides what's found (Give loot / the monster's loot list).
+  // Solryn harvests corpses with crafting skills via this card's Harvest button. 5e has no
+  // harvest — loot there comes from the GM's right-click "Search for loot" (a monster's own
+  // curated loot list) or the GM-triggered loot search in the board toolbar (backlog item 1);
+  // this card used to also show a dead, cosmetic "Search for loot" button for 5e with no roll
+  // or generator behind it — removed Oct 9, 2026 (Matthew: "the dead one") now that both real
+  // paths exist elsewhere.
   const lootByHarvest = !isClassAndLevel(system);
   const canLoot =
     token.kind !== 'character' && Boolean(token.defeated) && Boolean(viewerCharacter);
@@ -186,27 +187,11 @@ export function TokenCard({
         </button>
       </div>
       {body()}
-      {canLoot && (
+      {canLoot && lootByHarvest && (
         <div className={styles.loot}>
-          {lootByHarvest ? (
-            <Button full size="sm" onClick={() => setHarvestOpen(true)}>
-              Harvest
-            </Button>
-          ) : searched ? (
-            <p className={styles.lootNote}>You searched it — the GM will hand over anything you find.</p>
-          ) : (
-            <Button
-              full
-              size="sm"
-              onClick={() => {
-                // 5e: searching a body is the GM's call — tell the table; the GM gives the items.
-                postRoll(`searches the ${token.name} for loot`);
-                setSearched(true);
-              }}
-            >
-              Search for loot
-            </Button>
-          )}
+          <Button full size="sm" onClick={() => setHarvestOpen(true)}>
+            Harvest
+          </Button>
         </div>
       )}
       {canLoot && lootByHarvest && viewerCharacter && (
