@@ -27,7 +27,8 @@
   align-items: center;
   justify-content: center;
   gap: 2px;
-  padding: var(--space-1) var(--space-2);
+  width: 48px;
+  padding: var(--space-1);
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
   background: transparent;
@@ -39,6 +40,15 @@
 .topBarGlyph {
   font-size: 1.3rem;
   line-height: 1;
+}
+/* Icons are plain <img>s with no intrinsic sizing in markup — without this, each renders at
+ * its native pixel size (the bug: huge tiles filling the top of the board). Match the side
+ * strips' icon-tile sizing instead. */
+.topBarGlyph img {
+  width: 28px;
+  height: 28px;
+  display: block;
+  border-radius: 4px;
 }
 .topBarLabel {
   font-size: 0.625rem;
