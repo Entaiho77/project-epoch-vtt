@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Modal } from '../../components/ui/Modal';
 import type { SystemDefinition } from '@epoch/shared-types';
 import type { Character, Game, Role, ShapeKind, Token } from '@epoch/shared-types';
 import { homebrewList, homebrewToBestiaryEntry, useLibrary, useRules } from '../../data/homebrew';
@@ -182,6 +183,9 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
   const [openRight, setOpenRight] = useState<string | null>(
     role === 'player' ? 'character' : null,
   );
+  // Toolbar rebalance (2026-10-09): rare/infrequent items live in a top row above the board,
+  // each opening in a plain modal rather than a side drawer — only one open at a time.
+  const [topModal, setTopModal] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // Click-to-target combat: a per-user, local current target whose defense is read from the
   // token's stat block when an attack resolves (5e → AC, Solryn → DR); no typed number.
@@ -642,16 +646,49 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
     ),
   };
 
-  // Ambient audio (2026-10-07 MVP backlog): one looping scene track, GM-controlled, everyone's
-  // own volume local to them. Available to the GM and any player — see AmbientAudioDrawer.
-  const ambientAudio: BarItem = {
-    kind: 'drawer',
+  // Toolbar rebalance (2026-10-09, Matthew): rare/set-once-per-session items — ones that don't
+  // interact with the canvas and aren't needed mid-combat — move to a top row above the board
+  // instead of crowding the side strips. Ambient audio (one looping scene track, GM-controlled,
+  // everyone's own volume local to them), Grid settings, Maps, and (GM-only) Bulk creature art.
+  interface TopItem {
+    id: string;
+    label: string;
+    glyph: ReactNode;
+    content: ReactNode;
+  }
+  const topAmbient: TopItem = {
     id: 'ambient',
     label: 'Ambient audio',
-    short: 'Audio',
     glyph: <Ico src={icoAmbient} alt="Ambient audio" />,
     content: <AmbientAudioDrawer gameId={gameId} activeMap={activeMap} role={role} />,
   };
+  const topGrid: TopItem = {
+    id: 'grid',
+    label: 'Grid',
+    glyph: <Ico src={icoGrid} alt="Grid settings" />,
+    content: (
+      <GridDrawer
+        gmToggle={
+          role === 'gm' && activeMap
+            ? { on: activeMap.gridVisible, onChange: (on) => void setGridVisible(gameId, activeMap.id, on) }
+            : undefined
+        }
+      />
+    ),
+  };
+  const topMaps: TopItem = {
+    id: 'maps',
+    label: 'Maps',
+    glyph: <Ico src={icoMap} alt="Maps" />,
+    content: <MapsDrawer system={system} gameId={gameId} game={game} />,
+  };
+  const topBulkArt: TopItem = {
+    id: 'bulk-art',
+    label: 'Bulk creature art',
+    glyph: <Ico src={icoBulkArt} alt="Bulk creature art" />,
+    content: <BulkCreatureArtDrawer uid={game.createdBy} pool={bulkArtPool} creatureArt={creatureArt} />,
+  };
+  const topItems: TopItem[] = role === 'gm' ? [topBulkArt, topAmbient, topGrid, topMaps] : [topAmbient, topGrid];
 
   // Shapes are scoped to the active map; hidden shapes are GM-only (filtered like tokens).
   const visibleShapes = Object.values(game.shapes ?? {}).filter(
@@ -688,9 +725,29 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
     glyph: <Ico src={icoNotes} alt="Campaign notes" />,
     content: <NotesDrawer uid={uid} gameId={gameId} />,
   };
+  // Give loot (2026-10-09 rebalance): used often enough to pair with the other GM reference
+  // panels, but never while the canvas is being clicked/dragged — moved to the left bar.
+  const giveLoot: BarItem = {
+    kind: 'drawer',
+    id: 'giveloot',
+    label: 'Give loot',
+    short: 'Loot',
+    glyph: <Ico src={icoLoot} alt="Give loot" />,
+    content: (
+      <GiveLootModal
+        gameId={gameId}
+        gmUid={uid}
+        gmName={myName}
+        characters={gameCharacters}
+        equipment={Object.values(library?.equipment ?? {})}
+        initialCharacterId={giveLootFor || undefined}
+        announce={(text) => postRollText(text)}
+      />
+    ),
+  };
   const left: BarItem[] =
     role === 'gm'
-      ? [initiative, dice, log, chat, campaignNotes, rulesBar]
+      ? [initiative, dice, log, chat, campaignNotes, rulesBar, giveLoot]
       : [
           dice,
           log,
@@ -705,7 +762,6 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
       measureAction,
       pingAction,
       lightPenAction,
-      ambientAudio,
       shapes,
       multiRemoveAction,
       { kind: 'divider', id: 'd1' },
@@ -754,32 +810,6 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
           />
         ),
       },
-      {
-        kind: 'drawer',
-        id: 'bulk-art',
-        label: 'Bulk creature art',
-        short: 'Art',
-        glyph: <Ico src={icoBulkArt} alt="Bulk creature art" />,
-        content: <BulkCreatureArtDrawer uid={game.createdBy} pool={bulkArtPool} creatureArt={creatureArt} />,
-      },
-      {
-        kind: 'drawer',
-        id: 'giveloot',
-        label: 'Give loot',
-        short: 'Loot',
-        glyph: <Ico src={icoLoot} alt="Give loot" />,
-        content: (
-          <GiveLootModal
-            gameId={gameId}
-            gmUid={uid}
-            gmName={myName}
-            characters={gameCharacters}
-            equipment={Object.values(library?.equipment ?? {})}
-            initialCharacterId={giveLootFor || undefined}
-            announce={(text) => postRollText(text)}
-          />
-        ),
-      },
       ...(isClassAndLevel(system)
         ? [
             {
@@ -804,40 +834,13 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
             },
           ]
         : []),
-      { kind: 'divider', id: 'd2' },
-      {
-        kind: 'drawer',
-        id: 'grid',
-        label: 'Grid',
-        short: 'Grid',
-        glyph: <Ico src={icoGrid} alt="Grid settings" />,
-        content: (
-          <GridDrawer
-            gmToggle={
-              activeMap
-                ? { on: activeMap.gridVisible, onChange: (on) => void setGridVisible(gameId, activeMap.id, on) }
-                : undefined
-            }
-          />
-        ),
-      },
-      {
-        kind: 'drawer',
-        id: 'maps',
-        label: 'Maps',
-        short: 'Maps',
-        glyph: <Ico src={icoMap} alt="Maps" />,
-        content: <MapsDrawer system={system} gameId={gameId} game={game} />,
-      },
     ];
   } else if (character) {
     right = [
       measureAction,
       pingAction,
       lightPenAction,
-      ambientAudio,
       shapes,
-      { kind: 'drawer', id: 'grid', label: 'Grid', short: 'Grid', glyph: <Ico src={icoGrid} alt="Grid settings" />, content: <GridDrawer /> },
       ...(isClassAndLevel(system)
         ? [
             {
@@ -978,6 +981,34 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
           track={imageSrc(activeMap?.ambientAudio?.track)}
           playing={!!activeMap?.ambientAudio?.playing}
         />
+        <div className={styles.topBar}>
+          {topItems.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={styles.topBarButton}
+              title={item.label}
+              aria-label={item.label}
+              onClick={() => setTopModal(item.id)}
+            >
+              <span className={styles.topBarGlyph} aria-hidden="true">
+                {item.glyph}
+              </span>
+              <span className={styles.topBarLabel}>{item.label}</span>
+            </button>
+          ))}
+        </div>
+        {topItems.map((item) => (
+          <Modal
+            key={item.id}
+            open={topModal === item.id}
+            onClose={() => setTopModal(null)}
+            title={item.label}
+            width={420}
+          >
+            {item.content}
+          </Modal>
+        ))}
         {activeMap ? (
           <BoardCanvas
             map={activeMap}
