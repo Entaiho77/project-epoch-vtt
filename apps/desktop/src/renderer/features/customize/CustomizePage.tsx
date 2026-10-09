@@ -10,10 +10,12 @@ import {
   deleteHomebrewFeat,
   deleteHomebrewMonster,
   deleteHomebrewRace,
+  deleteHomebrewSolrynMonster,
   equipmentList,
   featOptionList,
   homebrewList,
   raceOptionList,
+  solrynHomebrewList,
   useLibrary,
   type HomebrewBackground,
   type HomebrewClass,
@@ -30,6 +32,7 @@ import { HomebrewBackgroundForm } from '../board/drawers/HomebrewBackgroundForm'
 import { HomebrewFeatForm } from '../board/drawers/HomebrewFeatForm';
 import { HomebrewRaceForm } from '../board/drawers/HomebrewRaceForm';
 import { HomebrewClassForm } from '../board/drawers/HomebrewClassForm';
+import { ConvertToSolrynModal } from './ConvertToSolrynModal';
 import { RulesEditor } from './RulesEditor';
 import d from '../board/drawers/drawers.module.css';
 import s from './CustomizePage.module.css';
@@ -64,8 +67,10 @@ export function CustomizePage() {
   const [featForm, setFeatForm] = useState<HomebrewFeat | null | undefined>(undefined);
   const [raceForm, setRaceForm] = useState<HomebrewRace | null | undefined>(undefined);
   const [classForm, setClassForm] = useState<HomebrewClass | null | undefined>(undefined);
+  const [convertOpen, setConvertOpen] = useState(false);
 
   const monsters = homebrewList(library?.monsters);
+  const solrynMonsters = solrynHomebrewList(library?.solrynMonsters);
   const equipment = equipmentList(library?.equipment);
   const backgrounds = backgroundOptionList(library?.playerOptions?.backgrounds);
   const feats = featOptionList(library?.playerOptions?.feats);
@@ -145,17 +150,52 @@ export function CustomizePage() {
           ))}
         </div>
 
-        {tab === 'monsters' &&
-          listBlock(
-            'Monsters',
-            '+ New Monster',
-            monsters,
-            (m) => `${m.size} ${m.type} · HP ${m.hp} · AC ${m.ac} · CR ${m.cr}`,
-            () => setMonsterForm(null),
-            (m) => setMonsterForm(m),
-            (id) => void deleteHomebrewMonster(uid, id),
-            'No monsters yet. Create one, then spawn it from any of your games.',
-          )}
+        {tab === 'monsters' && (
+          <>
+            <div className={s.sectionHead}>
+              <span />
+              <Button size="sm" variant="secondary" onClick={() => setConvertOpen(true)}>
+                Convert 5e → Solryn…
+              </Button>
+            </div>
+            {listBlock(
+              'Monsters (5e)',
+              '+ New Monster',
+              monsters,
+              (m) => `${m.size} ${m.type} · HP ${m.hp} · AC ${m.ac} · CR ${m.cr}`,
+              () => setMonsterForm(null),
+              (m) => setMonsterForm(m),
+              (id) => void deleteHomebrewMonster(uid, id),
+              'No monsters yet. Create one, then spawn it from any of your games.',
+            )}
+            <div className={s.section}>
+              <div className={s.sectionHead}>
+                <span className={s.sectionTitle}>Solryn creatures (converted from 5e)</span>
+              </div>
+              <div className={d.list}>
+                {solrynMonsters.length === 0 && (
+                  <p className={d.hint}>None yet — use "Convert 5e → Solryn" above.</p>
+                )}
+                {solrynMonsters.map((m) => (
+                  <div key={m.id} className={d.item}>
+                    <span className={d.itemMain}>
+                      <span className={d.itemName}>{m.name}</span>
+                      <span className={d.itemMeta}>HP {m.stats.hp} · DR {m.stats.dr}</span>
+                    </span>
+                    <button
+                      className={d.place}
+                      style={{ color: 'var(--accent-red)', borderColor: 'var(--accent-red)' }}
+                      onClick={() => void deleteHomebrewSolrynMonster(uid, m.id)}
+                      aria-label={`Delete ${m.name}`}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
 
         {tab === 'equipment' &&
           listBlock(
@@ -243,6 +283,14 @@ export function CustomizePage() {
       )}
       {classForm !== undefined && (
         <HomebrewClassForm uid={uid} skills={skillOptions} existing={classForm ?? undefined} onClose={() => setClassForm(undefined)} />
+      )}
+      {convertOpen && (
+        <ConvertToSolrynModal
+          uid={uid}
+          srdBestiary={dnd5eSystem.bestiary}
+          homebrewMonsters={monsters}
+          onClose={() => setConvertOpen(false)}
+        />
       )}
     </div>
   );

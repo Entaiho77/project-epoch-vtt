@@ -103,6 +103,32 @@ export function homebrewList(
   return Object.values(monsters ?? {}).sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// --- Solryn homebrew monsters (backlog item 6: 5e -> Solryn converter) -----
+// Unlike 5e, Solryn has no separate homebrew-monster shape — a Solryn creature (SRD or
+// homebrew) is just a BestiaryEntry, so a GM's homebrew Solryn creatures are stored as plain
+// BestiaryEntry records at users/$uid/library/solrynMonsters/$id, parallel to .../monsters.
+
+/** Create or overwrite a Solryn creature in the DM's library (owner-only per security rules). */
+export async function saveHomebrewSolrynMonster(
+  uid: string,
+  entry: Omit<BestiaryEntry, 'id'> & { id?: string },
+): Promise<string> {
+  const id = entry.id ?? newKey(`users/${uid}/library/solrynMonsters`);
+  await writeValue(`users/${uid}/library/solrynMonsters/${id}`, pruneUndefined({ ...entry, id }));
+  return id;
+}
+
+export function deleteHomebrewSolrynMonster(uid: string, id: string): Promise<void> {
+  return writeValue(`users/${uid}/library/solrynMonsters/${id}`, null);
+}
+
+/** Homebrew Solryn creatures as a sorted array (from the library's object map). */
+export function solrynHomebrewList(
+  monsters: Record<string, BestiaryEntry> | undefined,
+): BestiaryEntry[] {
+  return Object.values(monsters ?? {}).sort((a, b) => a.name.localeCompare(b.name));
+}
+
 // --- Homebrew equipment (Phase B1) ------------------------------------------
 // The equipment/inventory shapes are part of the shared data model (Character.inventory uses
 // InventoryItem), so they live in ./types; imported for local use and re-exported for callers.
@@ -321,6 +347,8 @@ export interface HomebrewPlayerOptions {
  */
 export interface Library {
   monsters?: Record<string, HomebrewMonster>;
+  /** GM's homebrew Solryn creatures (BestiaryEntry shape — see saveHomebrewSolrynMonster). */
+  solrynMonsters?: Record<string, BestiaryEntry>;
   equipment?: Record<string, HomebrewEquipment>;
   playerOptions?: HomebrewPlayerOptions;
   rules?: Partial<CampaignRules>;
