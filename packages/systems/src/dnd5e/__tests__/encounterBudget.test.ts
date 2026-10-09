@@ -67,6 +67,25 @@ describe('generateEncounter', () => {
     expect(miniboss!.cr).toBeGreaterThanOrEqual(grunt.cr + 1);
   });
 
+  it('mixes in a minority of a secondary type when primaryType is set and other types are in the pool', () => {
+    // 4 level-5 characters, medium: budget = 4 * 500 = 2000 — plenty of room for a mix.
+    const result = generateEncounter(pool, [5, 5, 5, 5], 'medium', { primaryType: 'Humanoid' });
+    const grunt = result.members.find((m) => m.role === 'grunt')!;
+    const secondary = result.members.find((m) => m.role === 'secondary');
+    expect(grunt.cr).toBe(0.125); // the bandit, since primaryType pins the grunt search to Humanoid
+    expect(secondary).toBeDefined();
+    expect(secondary!.cr).toBe(0.25); // the wolf, the only non-Humanoid in the pool
+    expect(secondary!.count).toBeGreaterThan(0);
+    expect(secondary!.count).toBeLessThan(grunt.count); // minority, not an even split
+    expect(result.adjustedXp).toBeLessThanOrEqual(result.budget);
+  });
+
+  it('does not add a secondary when the pool has only one type', () => {
+    const singleTypePool: EncounterPoolEntry[] = [{ id: 'bandit', name: 'Bandit', cr: 0.125, type: 'Humanoid' }];
+    const result = generateEncounter(singleTypePool, [5, 5, 5, 5], 'medium', { primaryType: 'Humanoid' });
+    expect(result.members.some((m) => m.role === 'secondary')).toBe(false);
+  });
+
   it('flags underBudget: false when nothing in the pool fits even one copy', () => {
     const expensivePool: EncounterPoolEntry[] = [{ id: 'dragon', name: 'Ancient Dragon', cr: 24 }];
     // 1 level-1 character, easy: budget = 25 — nowhere close to a CR24 monster's XP.

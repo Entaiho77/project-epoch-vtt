@@ -70,7 +70,7 @@ export interface GeneratedEncounterMember {
   name: string;
   cr: number;
   count: number;
-  role: 'grunt' | 'miniboss';
+  role: 'grunt' | 'secondary' | 'miniboss';
 }
 
 export interface GeneratedEncounter {
@@ -83,21 +83,30 @@ export interface GeneratedEncounter {
   underBudget: boolean;
 }
 
+/** Share of the grunt group's slots that get swapped for secondary-type creatures when the GM
+ *  picks more than one type (e.g. bandits leading trained wolves) — a minority presence, not an
+ *  even split. Tunable; this is a first guess, not something the spec pinned down. */
+const SECONDARY_SHARE = 0.3;
+
 /**
- * Builds a same-type (or pooled-multi-type, if the caller already filtered the pool to several
- * selected types) encounter against a party's XP budget.
+ * Builds an encounter against a party's XP budget from a pool of creatures the GM already
+ * filtered down to their chosen type(s).
  *
- * Picks ONE base "grunt" species from the pool (the one whose repeated use best fills the
- * budget) and adds as many as fit under the adjusted-XP multiplier, then optionally tops it
- * with one miniboss: the pool's highest-CR entry whose CR is roughly base CR + 2 to + 3, added
- * as a single extra body (counted in `count` for the multiplier, same as the DMG treats a mixed
- * group of different-CR monsters as one encounter).
+ * Single type selected: picks the one species whose repeated use best fills the budget
+ * ("grunts"), optionally topped with one miniboss (the pool's entry whose CR is roughly the
+ * grunt's CR + 2 to + 3, added as a single extra body).
+ *
+ * Multiple types selected: pass `primaryType` to name which one is the bulk of the group — the
+ * grunt search only considers that type. A minority of those slots (SECONDARY_SHARE, trimmed if
+ * it would blow the budget) then get swapped for the cheapest entry from the *other* selected
+ * type(s), so "bandits + wolves" reliably comes back with some of both instead of collapsing to
+ * whichever single species is most budget-efficient.
  */
 export function generateEncounter(
   pool: EncounterPoolEntry[],
   partyLevels: number[],
   difficulty: EncounterDifficulty,
-  options: { includeMiniboss?: boolean } = {},
+  options: { includeMiniboss?: boolean; primaryType?: string } = {},
 ): GeneratedEncounter {
   const budget = partyBudget(partyLevels, difficulty);
   const partySize = partyLevels.length || 1;
@@ -106,16 +115,40 @@ export function generateEncounter(
     return { members: [], budget, rawXp: 0, adjustedXp: 0, underBudget: true };
   }
 
-  // Try each pool entry as the "grunt" species, find the best count for each, keep whichever
-  // uses the most of the budget without going over.
-  let best: { entry: EncounterPoolEntry; count: number; adjusted: number } | null = null;
-  for (const entry of pool) {
+  const gruntCandidates = options.primaryType
+    ? pool.filter((e) => e.type === options.primaryType)
+    : pool;
+  const usableGruntPool = gruntCandidates.length ? gruntCandidates : pool;
+
+  // Try each candidate as the "grunt" species. When a primary type is set and other types are
+  // present, search jointly over the TOTAL group size (not the primary-only size first) so a
+  // secondary always has room — reserving its share up front rather than trying to carve it out
+  // of an already-budget-saturated primary-only count after the fact.
+  let best: {
+    entry: EncounterPoolEntry;
+    count: number;
+    adjusted: number;
+    secondary?: EncounterPoolEntry;
+    secondaryCount: number;
+  } | null = null;
+
+  for (const entry of usableGruntPool) {
     const xp = monsterXp(entry.cr);
     if (xp <= 0) continue;
+
+    const secondaryCandidates = pool.filter((e) => e.id !== entry.id && e.type !== entry.type);
+    const secondary = options.primaryType && secondaryCandidates.length
+      ? [...secondaryCandidates].sort((a, b) => monsterXp(a.cr) - monsterXp(b.cr))[0]
+      : undefined;
+    const secondaryXp = secondary ? monsterXp(secondary.cr) : 0;
+
     for (let count = 1; count <= 20; count++) {
-      const adjusted = adjustedXp(xp * count, count, partySize);
+      const secondaryCount = secondary ? Math.min(count - 1, Math.max(1, Math.round(count * SECONDARY_SHARE))) : 0;
+      const gruntCount = count - secondaryCount;
+      const raw = xp * gruntCount + secondaryXp * secondaryCount;
+      const adjusted = adjustedXp(raw, count, partySize);
       if (adjusted > budget) break;
-      if (!best || adjusted > best.adjusted) best = { entry, count, adjusted };
+      if (!best || adjusted > best.adjusted) best = { entry, count, adjusted, secondary, secondaryCount };
     }
   }
 
@@ -132,11 +165,18 @@ export function generateEncounter(
     };
   }
 
+  const gruntCount = best.count - best.secondaryCount;
+  const secondaryCount = best.secondaryCount;
+  const secondary = best.secondary;
+
   const members: GeneratedEncounterMember[] = [
-    { id: best.entry.id, name: best.entry.name, cr: best.entry.cr, count: best.count, role: 'grunt' },
+    { id: best.entry.id, name: best.entry.name, cr: best.entry.cr, count: gruntCount, role: 'grunt' },
   ];
-  let totalCount = best.count;
-  let rawXp = monsterXp(best.entry.cr) * best.count;
+  if (secondary && secondaryCount > 0) {
+    members.push({ id: secondary.id, name: secondary.name, cr: secondary.cr, count: secondaryCount, role: 'secondary' });
+  }
+  let totalCount = gruntCount + secondaryCount;
+  let rawXp = monsterXp(best.entry.cr) * gruntCount + (secondary ? monsterXp(secondary.cr) * secondaryCount : 0);
 
   if (options.includeMiniboss) {
     const targetCr = best.entry.cr + 2.5; // midpoint of the spec's "CR +2 or +3"
