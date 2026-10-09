@@ -39,6 +39,7 @@ import { ShapesDrawer } from './drawers/ShapesDrawer';
 import { MapsDrawer } from './drawers/MapsDrawer';
 import { FogDrawer } from './drawers/FogDrawer';
 import { AddCreatureDrawer } from './drawers/AddCreatureDrawer';
+import { RandomEncounterDrawer } from './drawers/RandomEncounterDrawer';
 import { DiceDrawer } from './drawers/DiceDrawer';
 import { RulesDrawer } from './drawers/RulesDrawer';
 import { ChatDrawer } from './drawers/ChatDrawer';
@@ -88,6 +89,7 @@ import icoShapes from '../../assets/icons/icon-shape-tools.png';
 import icoToken from '../../assets/icons/icon-token.png';
 import icoRules from '../../assets/icons/icon-rules.png';
 import icoLoot from '../../assets/icons/icon-loot.png';
+import icoEncounter from '../../assets/icons/icon-gm.png';
 // Imported for future use in the voice top-bar button (not yet wired up);
 // the `void` reference keeps both eslint and tsc quiet about the unused import.
 import icoVoice from '../../assets/icons/icon-voice.png';
@@ -654,6 +656,24 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
             uid={uid}
             activeMap={activeMap}
             tokens={tokens}
+            groupInitiative={rules?.groupInitiative}
+            initiativeOrder={initState?.order}
+          />
+        ),
+      },
+      {
+        kind: 'drawer',
+        id: 'encounter',
+        label: 'Random encounter',
+        short: 'Encounter',
+        glyph: <Ico src={icoEncounter} alt="Random encounter" />,
+        content: (
+          <RandomEncounterDrawer
+            systemId={game.systemId}
+            gameId={gameId}
+            activeMap={activeMap}
+            tokens={tokens}
+            gameCharacters={gameCharacters}
             groupInitiative={rules?.groupInitiative}
             initiativeOrder={initState?.order}
           />
