@@ -147,6 +147,14 @@
 .hiddenFileInput {
   display: none;
 }
+.partsCountSelect {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: 2px var(--space-1);
+  font-size: var(--text-sm);
+}
 
 .noteBox {
   background: var(--amber-tint);

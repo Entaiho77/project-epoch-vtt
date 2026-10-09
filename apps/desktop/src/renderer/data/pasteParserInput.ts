@@ -11,6 +11,40 @@
 
 export type InputKind = 'text' | 'image' | 'pdf' | 'docx' | 'doc' | 'unsupported';
 
+/** Lowercased, whitespace-collapsed form of a line, for comparing two lines that may differ only
+ *  in incidental whitespace or case (common after OCR) when looking for an overlap. */
+function normalizeLine(line: string): string {
+  return line.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+/** Join two chunks of a stat block that may have been captured as separate screenshots/pastes
+ *  of the same creature (Matthew, voice, 2026-10-09): D&D Beyond's page doesn't scroll in the
+ *  snipping tool, so a long stat block sometimes has to be captured in pieces, and the pieces
+ *  often overlap by a line or two where the DM re-captured a bit of the previous shot to make
+ *  sure nothing was missed. Finds the longest run of trailing lines in `a` that matches the
+ *  leading lines of `b` and merges on that seam; if no overlap is found, the two chunks are just
+ *  joined as-is — either way the DM reviews the result before it's parsed, so a bad seam is
+ *  still visible and fixable there rather than silently mangling the creature. */
+function mergeOverlap(a: string, b: string): string {
+  const linesA = a.split('\n');
+  const linesB = b.split('\n');
+  const maxOverlap = Math.min(linesA.length, linesB.length, 15); // don't scan the whole document
+  for (let k = maxOverlap; k >= 1; k--) {
+    const tail = linesA.slice(linesA.length - k).map(normalizeLine).join('\n');
+    const head = linesB.slice(0, k).map(normalizeLine).join('\n');
+    if (tail.length > 0 && tail === head) {
+      return [...linesA, ...linesB.slice(k)].join('\n');
+    }
+  }
+  return [...linesA, ...linesB].join('\n');
+}
+
+/** Stitch however many parts a split stat block was captured in, in order, into one block of
+ *  text — ready for the DM to review/edit before anything is parsed or highlighted. */
+export function stitchParts(parts: string[]): string {
+  return parts.filter((p) => p.trim().length > 0).reduce((acc, part) => (acc ? mergeOverlap(acc, part) : part), '');
+}
+
 export interface ExtractResult {
   text: string;
   /** Whether this text came from OCR, so the UI can nudge the DM to review it a little more
