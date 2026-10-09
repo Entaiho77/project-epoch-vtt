@@ -370,6 +370,37 @@
   font-size: var(--text-sm);
 }
 
+.previewEditBox {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  align-items: flex-start;
+}
+.dragFixWrap {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.dragFixText {
+  width: 100%;
+  background: var(--surface-raised);
+  border: 1px solid var(--accent-teal);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: var(--space-2);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+  line-height: 1.5;
+  user-select: text;
+  cursor: text;
+}
+.dragFixHint {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin: 0;
+}
+
 .previewSection h4 {
   font-size: var(--text-sm);
   text-transform: uppercase;

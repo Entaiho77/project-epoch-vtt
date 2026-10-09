@@ -1,8 +1,75 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { ParsedCreature, ParsedEntry } from '../../data/pasteParser';
+import { getSelectionOffsets } from './textOffsets';
 import s from './dmtools.module.css';
 
-/** One scalar field, shown as text with a small Edit toggle that swaps it for an input. */
+/**
+ * Shows a field's full text and lets the DM drag-select just the part that's wrong, then fix
+ * only that piece in a small popup (Matthew, voice, 2026-10-09): a plain click-to-edit box loses
+ * the surrounding context, so if the parser jumbles a whole sentence there's no way to see how
+ * much of it is actually broken. Dragging across text here works the same way the highlight
+ * editor's drag-to-mark does — select, then act on just that span.
+ */
+function DragFixText({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  const [sel, setSel] = useState<{ start: number; end: number; draft: string } | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  function handleMouseUp() {
+    const container = containerRef.current;
+    if (!container) return;
+    const offsets = getSelectionOffsets(container);
+    window.getSelection()?.removeAllRanges();
+    if (!offsets || offsets.end === offsets.start) return;
+    setSel({ start: offsets.start, end: offsets.end, draft: value.slice(offsets.start, offsets.end) });
+  }
+
+  function applyFix() {
+    if (!sel) return;
+    onChange(value.slice(0, sel.start) + sel.draft + value.slice(sel.end));
+    setSel(null);
+  }
+
+  return (
+    <div className={s.dragFixWrap}>
+      <div ref={containerRef} className={s.dragFixText} onMouseUp={handleMouseUp}>
+        {value || <span className={s.previewEmpty}>{placeholder ?? 'not found — type below to fill in'}</span>}
+      </div>
+      <p className={s.dragFixHint}>Drag over just the part that's wrong to fix only that piece.</p>
+
+      {sel && (
+        <div className={s.editPopover}>
+          <span className={s.editPopoverLabel}>Fix “{value.slice(sel.start, sel.end).slice(0, 60)}”</span>
+          <input
+            className={s.previewInput}
+            autoFocus
+            value={sel.draft}
+            onChange={(e) => setSel({ ...sel, draft: e.target.value })}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') applyFix();
+              if (e.key === 'Escape') setSel(null);
+            }}
+          />
+          <div className={s.editPopoverRow}>
+            <button type="button" className={s.toolbarBtn} onClick={applyFix}>Replace</button>
+            <button type="button" className={s.closeBtn} onClick={() => setSel(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** One scalar field: shown as text with a small Edit toggle. Editing an empty field (nothing yet
+ *  to drag-select) falls back to a plain input — there's no "wrong part" to isolate until
+ *  there's something there. Editing a filled-in field opens the drag-to-fix view above. */
 function EditableField({
   label,
   value,
@@ -19,17 +86,24 @@ function EditableField({
     <div className={s.previewField}>
       <span className={s.previewFieldLabel}>{label}</span>
       {editing ? (
-        <input
-          className={s.previewInput}
-          autoFocus
-          defaultValue={value}
-          placeholder={placeholder}
-          onBlur={(e) => { onChange(e.target.value); setEditing(false); }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-            if (e.key === 'Escape') setEditing(false);
-          }}
-        />
+        value ? (
+          <div className={s.previewEditBox}>
+            <DragFixText value={value} onChange={onChange} placeholder={placeholder} />
+            <button type="button" className={s.closeBtn} onClick={() => setEditing(false)}>Done</button>
+          </div>
+        ) : (
+          <input
+            className={s.previewInput}
+            autoFocus
+            defaultValue={value}
+            placeholder={placeholder}
+            onBlur={(e) => { onChange(e.target.value); setEditing(false); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+              if (e.key === 'Escape') setEditing(false);
+            }}
+          />
+        )
       ) : (
         <button type="button" className={s.previewValue} onClick={() => setEditing(true)}>
           {value || <span className={s.previewEmpty}>{placeholder ?? 'not found — click to fill in'}</span>}
@@ -68,11 +142,12 @@ function EntryEditor({
             />
             <button type="button" className={s.removeBtn} onClick={() => remove(i)}>Remove</button>
           </div>
-          <textarea
-            className={s.entryDescInput}
+          {/* Descriptions are where a jumbled sentence shows up most — drag-select just the
+              broken part instead of retyping the whole thing. */}
+          <DragFixText
             value={e.description}
-            onChange={(ev) => update(i, { description: ev.target.value })}
-            rows={2}
+            onChange={(v) => update(i, { description: v })}
+            placeholder="description"
           />
           <div className={s.entryMechRow}>
             {(['toHit', 'range', 'damage', 'dc'] as const).map((field) => (
@@ -100,8 +175,9 @@ function EntryEditor({
 
 /**
  * The right-hand side of the split screen (Matthew, voice, 2026-10-09): a live preview of the
- * parsed creature, editable field by field — click Edit, type the correction, done. Nothing here
- * is read-only; every field the parser got wrong or missed can be fixed before saving.
+ * parsed creature. Click Edit on a field to see its full text and drag over just the part
+ * that's wrong — gives a proper view of the whole field so a jumbled sentence is visible in
+ * context, rather than guessing from a single-line box.
  */
 export function PreviewPane({
   creature,
@@ -154,12 +230,10 @@ export function PreviewPane({
 
       <div className={s.previewField}>
         <span className={s.previewFieldLabel}>Lore</span>
-        <textarea
-          className={s.loreTextarea}
+        <DragFixText
           value={creature.lore ?? ''}
-          onChange={(e) => patch({ lore: e.target.value || null })}
+          onChange={(v) => patch({ lore: v || null })}
           placeholder="Flavor text — highlight it on the left as “Lore”, or type it here directly."
-          rows={3}
         />
       </div>
 
