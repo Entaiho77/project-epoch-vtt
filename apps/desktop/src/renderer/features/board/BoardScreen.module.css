@@ -52,6 +52,30 @@
   display: block;
   border-radius: 4px;
 }
+/* Portaled into GamePage's header (see headerPortal) — matches that header's own
+ * Library/Settings icon-tile buttons exactly, so the board's top items read as part of the
+ * same bar rather than a visually distinct insert. */
+.headerToolButton {
+  width: 64px;
+  height: 64px;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background: transparent;
+  cursor: pointer;
+}
+.headerToolButton:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.headerToolButton img {
+  width: 56px;
+  height: 56px;
+  border-radius: 5px;
+  display: block;
+}
 .topBarLabel {
   font-size: 0.625rem;
   line-height: 1.1;

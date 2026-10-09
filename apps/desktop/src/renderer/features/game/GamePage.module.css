@@ -59,6 +59,15 @@
   gap: var(--space-3);
 }
 
+/* Portal target for the board's rare/infrequent buttons (bulk creature art, ambient audio,
+ * grid, maps) — BoardScreen renders its buttons here via createPortal so they sit in this
+ * same header bar, next to Library/Settings, instead of a separate strip over the map. */
+.headerTools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 /* Header icon buttons (Library, Settings): same "icon tile IS the button" look as the
  * board's own icon strips (BoardShell.module.css .toolIcon) — a bare stone-plaque icon
  * with no extra button chrome around it, instead of sitting inside a generic Button's

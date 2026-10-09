@@ -43,6 +43,12 @@ export function GamePage() {
   const { library } = useLibrary(game?.gmUid ?? game?.createdBy ?? null);
   const [showSettings, setShowSettings] = useState(false);
   const [wantsNewChar, setWantsNewChar] = useState(false);
+  // Toolbar rebalance (2026-10-09): the board's rare/infrequent buttons (bulk creature art,
+  // ambient audio, grid, maps) portal into this header slot, next to Library/Settings, instead
+  // of a separate bar — Matthew's point was they belong in the "same bar as lobby and settings."
+  // BoardScreen keeps owning the data (activeMap/bulkArtPool/creatureArt) and just teleports its
+  // already-built buttons here via createPortal, so nothing needs to be recomputed in this file.
+  const [headerToolsEl, setHeaderToolsEl] = useState<HTMLDivElement | null>(null);
   // Characters this player owns in OTHER games (available to import).
   // Must stay above the early returns below: hooks have to run on every render.
   const importable = useMemo(
@@ -95,7 +101,9 @@ export function GamePage() {
   if (!system) {
     content = <p className={styles.muted}>Unknown system “{game.systemId}”.</p>;
   } else if (role === 'gm') {
-    content = <BoardScreen system={system} game={game} role={role} uid={user.uid} />;
+    content = (
+      <BoardScreen system={system} game={game} role={role} uid={user.uid} headerPortal={headerToolsEl} />
+    );
     isBoard = true;
   } else if (charLoading) {
     content = <p className={styles.muted}>Loading your character…</p>;
@@ -131,6 +139,7 @@ export function GamePage() {
         role={role}
         uid={user.uid}
         character={character ?? undefined}
+        headerPortal={headerToolsEl}
       />
     );
     isBoard = true;
@@ -168,6 +177,7 @@ export function GamePage() {
           <span className={styles.gameName}>{game.name}</span>
           <span className={styles.systemLabel}>{game.systemName}</span>
         </div>
+        {isBoard && <div className={styles.headerTools} ref={setHeaderToolsEl} />}
         <div className={styles.headerRight}>
           {session.roomCode && session.gameId === game.id && (
             <span className={styles.systemLabel}>Room {session.roomCode}</span>

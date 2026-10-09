@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Modal } from '../../components/ui/Modal';
 import type { SystemDefinition } from '@epoch/shared-types';
 import type { Character, Game, Role, ShapeKind, Token } from '@epoch/shared-types';
@@ -111,12 +112,16 @@ interface BoardScreenProps {
   role: Role;
   uid: string;
   character?: Character;
+  /** GamePage's header slot (2026-10-09 rebalance) — when present, the rare/infrequent top
+   *  buttons (bulk creature art, ambient audio, grid, maps) portal there instead of rendering
+   *  their own bar over the board, so they sit in the same bar as Lobby/Library/Settings. */
+  headerPortal?: HTMLElement | null;
 }
 
 /** The left slot's id while it shows the selected creature's stat card. */
 const MONSTER_PANEL = '__monster';
 
-export function BoardScreen({ system, game, role, uid, character }: BoardScreenProps) {
+export function BoardScreen({ system, game, role, uid, character, headerPortal }: BoardScreenProps) {
   const gameId = game.id;
   const gmUid = game.gmUid ?? game.createdBy;
   // The GM's account-wide library (monsters/equipment/player options), read live for this session.
@@ -981,23 +986,48 @@ export function BoardScreen({ system, game, role, uid, character }: BoardScreenP
           track={imageSrc(activeMap?.ambientAudio?.track)}
           playing={!!activeMap?.ambientAudio?.playing}
         />
-        <div className={styles.topBar}>
-          {topItems.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={styles.topBarButton}
-              title={item.label}
-              aria-label={item.label}
-              onClick={() => setTopModal(item.id)}
-            >
-              <span className={styles.topBarGlyph} aria-hidden="true">
-                {item.glyph}
-              </span>
-              <span className={styles.topBarLabel}>{item.label}</span>
-            </button>
-          ))}
-        </div>
+        {headerPortal ? (
+          // Same bar as Lobby/Library/Settings (2026-10-09, Matthew): portal into GamePage's
+          // header instead of drawing a second bar over the board. Icon-tile style to match
+          // those buttons (no label underneath, just the tooltip).
+          createPortal(
+            <>
+              {topItems.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={styles.headerToolButton}
+                  title={item.label}
+                  aria-label={item.label}
+                  onClick={() => setTopModal(item.id)}
+                >
+                  {item.glyph}
+                </button>
+              ))}
+            </>,
+            headerPortal,
+          )
+        ) : (
+          // Fallback (no header slot wired up, e.g. a screen that embeds BoardScreen directly):
+          // a flush full-width bar docked to the top of the board itself.
+          <div className={styles.topBar}>
+            {topItems.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={styles.topBarButton}
+                title={item.label}
+                aria-label={item.label}
+                onClick={() => setTopModal(item.id)}
+              >
+                <span className={styles.topBarGlyph} aria-hidden="true">
+                  {item.glyph}
+                </span>
+                <span className={styles.topBarLabel}>{item.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
         {topItems.map((item) => (
           <Modal
             key={item.id}
