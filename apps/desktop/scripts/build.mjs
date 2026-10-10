@@ -26,7 +26,6 @@ writeFileSync(configFile, JSON.stringify({ version }, null, 2) + '\n');
 console.log(`[build] Project Epoch VTT ${version}`);
 
 run('node', ['scripts/prepare-swarm.mjs']);
-run('node', ['scripts/prepare-parser-assets.mjs']);
 run('npx', ['tauri', 'build', '--config', 'src-tauri/tauri.version.json']);
 console.log(`\n[build] Done: Project Epoch VTT ${version}`);
 console.log('[build] Installer: src-tauri\\target\\release\\bundle\\nsis\\');
