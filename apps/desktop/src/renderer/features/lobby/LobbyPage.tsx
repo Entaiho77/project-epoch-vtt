@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthProvider';
-import { useUserGames } from '../../data/games';
+import { deleteGame, useUserGames } from '../../data/games';
 import { hostSession, joinSession, useSession } from '../../data/realtime';
 import type { Game } from '@epoch/shared-types';
 import { roleOf } from '../../permissions';
@@ -44,6 +44,19 @@ export function LobbyPage() {
     try {
       await hostSession(game.id, { uid: user.uid, displayName });
       navigate(`/game/${game.id}`);
+    } catch (err) {
+      setJoinError((err as Error).message);
+    }
+  }
+
+  /** GM: permanently delete a finished campaign. Was previously only reachable from inside a
+   *  running game's Settings modal — there was no way to clear out an over-and-done campaign
+   *  without opening it first. */
+  async function handleDelete(game: Game) {
+    if (!confirm(`Delete "${game.name}"? This cannot be undone.`)) return;
+    setJoinError('');
+    try {
+      await deleteGame(game);
     } catch (err) {
       setJoinError((err as Error).message);
     }
@@ -136,6 +149,9 @@ export function LobbyPage() {
                       </Button>
                       <Button variant="secondary" size="sm" onClick={() => navigate(`/game/${g.id}/customize`)}>
                         Library
+                      </Button>
+                      <Button variant="danger" size="sm" onClick={() => void handleDelete(g)}>
+                        Delete
                       </Button>
                     </>
                   )}

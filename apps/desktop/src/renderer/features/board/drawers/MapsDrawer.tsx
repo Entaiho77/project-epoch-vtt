@@ -110,9 +110,15 @@ export function MapsDrawer({
                 }
               />
             </label>
-            <Button onClick={add} full>
-              Add to board
-            </Button>
+            {/* Explicit finish/back-out pair — the only way to confirm used to be this one
+                button buried in the drawer body, easy to miss next to the modal's × close,
+                which just discards the staged map instead of placing it. */}
+            <div className={s.confirmBar}>
+              <Button variant="secondary" onClick={() => setPending(null)}>
+                Cancel
+              </Button>
+              <Button onClick={add}>Add to board</Button>
+            </div>
           </>
         )}
       </div>

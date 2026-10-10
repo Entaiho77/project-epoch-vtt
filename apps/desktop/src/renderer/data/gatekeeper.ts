@@ -229,6 +229,30 @@ async function checkAssignment(
       // games/{id}/voice/{uid} = true while you're in the voice call; only your own mark.
       if (c !== uid || rest.length !== 0) return deny('you can only mark yourself in voice');
       return value === true || value === null ? OK : deny('bad voice mark');
+    case 'pings':
+      // games/{id}/pings/{uid}: your own "look over here" ping marker (or null to clear it).
+      // Missing from this switch was the root cause of pings never reaching the GM or anyone
+      // else — every player-authored write here used to fall through to the default GM-only
+      // deny below.
+      if (c !== uid || rest.length !== 0) return deny('you can only drop your own ping');
+      if (value === null) return OK;
+      if (!isObj(value) || value.ownerUid !== uid || !isStr(value.ownerName, 64) || !isStr(value.mapId, 64)) return deny('bad ping');
+      if (typeof value.x !== 'number' || typeof value.y !== 'number') return deny('bad ping');
+      if (typeof value.createdAt !== 'number') return deny('bad ping');
+      return OK;
+    case 'lightPen':
+      // games/{id}/lightPen/{uid}: your own light-pen stroke (or null to clear it). Same gap
+      // as 'pings' above — this case was missing entirely, so player-drawn strokes never synced.
+      if (c !== uid || rest.length !== 0) return deny('you can only change your own light-pen stroke');
+      if (value === null) return OK;
+      if (!isObj(value) || value.ownerUid !== uid || !isStr(value.ownerName, 64) || !isStr(value.mapId, 64) || !isStr(value.color, 32)) {
+        return deny('bad light-pen stroke');
+      }
+      if (!Array.isArray(value.points) || value.points.length > 1000) return deny('bad light-pen stroke');
+      if (!value.points.every((p: unknown) => isObj(p) && typeof p.x === 'number' && typeof p.y === 'number' && typeof p.t === 'number')) {
+        return deny('bad light-pen stroke');
+      }
+      return OK;
     default:
       void all;
       return deny('GM only');

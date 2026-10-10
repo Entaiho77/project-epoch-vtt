@@ -1074,14 +1074,14 @@ export function BoardScreen({ system, game, role, uid, character, headerPortal }
             }
             onClearMeasures={() => void (role === 'gm' ? clearAllMeasures(gameId) : setMyMeasure(gameId, uid, null))}
             pings={Object.values(game.pings ?? {}).filter((p) => p.mapId === activeMap?.id)}
-            onCommitPing={(col, row) => {
+            onCommitPing={(x, y) => {
               if (!activeMap) return;
               void setMyPing(gameId, uid, {
                 ownerUid: uid,
                 ownerName: character?.name ?? myName,
                 mapId: activeMap.id,
-                col,
-                row,
+                x,
+                y,
                 createdAt: Date.now(),
               });
               setTimeout(() => void setMyPing(gameId, uid, null), PING_LIFETIME_MS);
@@ -1128,7 +1128,7 @@ export function BoardScreen({ system, game, role, uid, character, headerPortal }
         ) : (
           <div className={styles.empty}>
             {role === 'gm'
-              ? 'Open Maps (right edge) to upload a map and start your board.'
+              ? 'Open Maps from the header bar above to upload a map and start your board.'
               : 'The GM hasn’t set up a map yet.'}
           </div>
         )}

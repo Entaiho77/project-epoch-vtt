@@ -1,7 +1,7 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthProvider';
-import { useSession, useValue } from '../../data/realtime';
+import { hostSession, useSession, useValue } from '../../data/realtime';
 import {
   cloneCharacterToGame,
   createCharacter,
@@ -29,7 +29,7 @@ import styles from './GamePage.module.css';
 export function GamePage() {
   const { gameId } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, displayName } = useAuth();
   const session = useSession();
   const { value: game, loading } = useValue<Game>(
     gameId ? `games/${gameId}` : null,
@@ -55,6 +55,20 @@ export function GamePage() {
     () => otherChars.filter((c) => c.gameId !== game?.id),
     [otherChars, game?.id],
   );
+
+  // GM: open the live P2P session automatically on entering the game, instead of requiring a
+  // detour back through the lobby's "Host session" button first — players couldn't join until
+  // the GM remembered that extra step. Guarded on session.role === 'idle' so this only fires
+  // once per app-session and never fights a session already in progress (hosting, connecting,
+  // or already open). A failure here (e.g. no invite code yet) is silent: the lobby's own
+  // "Host session" button still works as a fallback.
+  useEffect(() => {
+    if (!game || !user || session.role !== 'idle') return;
+    const myRole = roleOf(game, user.uid);
+    if (myRole !== 'gm') return;
+    void hostSession(game.id, { uid: user.uid, displayName }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game?.id, user?.uid, session.role]);
 
   if (loading) return <div className={styles.center}>Loading game…</div>;
   if (!game || !user) {

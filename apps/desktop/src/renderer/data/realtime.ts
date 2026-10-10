@@ -222,6 +222,9 @@ const session: SessionState = {
 let hostUid: string | null = null;
 /** GM: who's hosting, so hosting can be restarted after a dropped connection. */
 let hostIdentity: SessionIdentity | null = null;
+/** This computer's own uid for the current session, GM or player — needed by 'kicked' to
+ *  clean up this player's own local lobby index (see endSession's caller below). */
+let myUid: string | null = null;
 
 initAssetSync({
   send: (op) => void window.relay.send({ type: 'game-message', payload: { data: op } }),
@@ -693,6 +696,10 @@ async function handleRelayMessage(msg: RelayServerMessage): Promise<void> {
       break;
 
     case 'kicked':
+      // Drop this game from the player's own local lobby index too — the GM's removeMember()
+      // already cleared the GM's copy, but the player's own SQLite mirror still has it, which
+      // is why a kicked player used to keep seeing the game in their lobby.
+      if (myUid && session.gameId) void window.db.write(`userGames/${myUid}/${session.gameId}`, null);
       endSession('The GM removed you from the session.');
       break;
 
@@ -735,6 +742,7 @@ export async function hostSession(gameId: string, identity: SessionIdentity): Pr
   if (!code) throw new Error('This game has no invite code yet. Regenerate one in game settings.');
   hostUid = identity.uid;
   hostIdentity = identity;
+  myUid = identity.uid;
   session.role = 'gm';
   session.status = 'connecting';
   session.gameId = gameId;
@@ -760,6 +768,7 @@ const APPROVAL_MS = 5 * 60_000;
  * has let you in and sent the game. */
 export async function joinSession(roomCode: string, identity: SessionIdentity): Promise<string> {
   wireBridges();
+  myUid = identity.uid;
   session.role = 'player';
   session.status = 'connecting';
   session.gameId = null;

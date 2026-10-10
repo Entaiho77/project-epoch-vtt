@@ -1,0 +1,20 @@
+/* Shown only when the browser silently blocked autoplay (no user gesture yet) — a player
+ * joining a session with ambient audio already playing needs an obvious, clickable way to
+ * start hearing it, since nothing else on the board asks for that gesture on their behalf. */
+.enableSound {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  z-index: 16;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-overlay);
+  border: 1px solid var(--accent-teal);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.enableSound:hover {
+  border-color: var(--accent-teal);
+  background: var(--teal-tint);
+}

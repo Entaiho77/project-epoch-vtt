@@ -324,16 +324,18 @@ export interface SharedMeasure {
 }
 
 /**
- * A "look over here" ping: a marker that pulses at a grid cell for everyone, then clears
+ * A "look over here" ping: a marker that pulses at a map location for everyone, then clears
  * itself a couple seconds later. One per person, at games/{id}/pings/{uid} — a new ping
- * replaces your last one, same discipline as SharedMeasure.
+ * replaces your last one, same discipline as SharedMeasure. `x`/`y` are world (map) pixels,
+ * not grid cells — a ping deliberately ignores the grid so it can point at exactly where you
+ * clicked, the same way the light-pen trail does.
  */
 export interface SharedPing {
   ownerUid: string;
   ownerName: string;
   mapId: string;
-  col: number;
-  row: number;
+  x: number;
+  y: number;
   createdAt: number;
 }
 

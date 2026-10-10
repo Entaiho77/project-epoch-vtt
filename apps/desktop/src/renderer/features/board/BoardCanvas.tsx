@@ -119,8 +119,9 @@ interface BoardCanvasProps {
   onClearMeasures?: () => void;
   /** Board pointers (2026-10-07): "look over here" pings everyone sees, on this map. */
   pings?: SharedPing[];
-  /** Drop a ping at this grid cell (self-clears after PING_LIFETIME_MS — see BoardScreen). */
-  onCommitPing?: (col: number, row: number) => void;
+  /** Drop a ping at this world-pixel position — raw cursor position, not grid-snapped (self-clears
+   *  after PING_LIFETIME_MS — see BoardScreen). */
+  onCommitPing?: (x: number, y: number) => void;
   /** Board pointers (2026-10-07): light-pen trails everyone sees, on this map. */
   lightPenStrokes?: SharedLightPenStroke[];
   /** Sync my light-pen stroke's points as I drag (called often, lightly throttled). */
@@ -814,21 +815,24 @@ export function BoardCanvas({
       ctx.restore();
     }
 
-    // Pings: an expanding, fading ring at the cell someone clicked — "look over here." Drawn
-    // from shared state only; a ping vanishing here even before the owner's clear-write lands
-    // is deliberate (defensive — see PING_LIFETIME_MS).
+    // Pings: an expanding, fading ring at the exact point someone clicked — "look over here."
+    // Drawn from shared state only; a ping vanishing here even before the owner's clear-write
+    // lands is deliberate (defensive — see PING_LIFETIME_MS). Drawn at the ping's raw world
+    // pixel position rather than a cell center, so it ignores the grid; pulses twice (the ring
+    // expands-and-fades, resets, and does it again) across the ping's lifetime, and is bolder
+    // than a measuring line so it reads clearly at a glance.
     const now = Date.now();
     for (const ping of pings ?? []) {
       const age = now - ping.createdAt;
       if (age < 0 || age > PING_LIFETIME_MS) continue;
       const t = age / PING_LIFETIME_MS; // 0 = just placed, 1 = about to disappear
-      const c = cellCenter(ping.col, ping.row, g);
+      const local = (t * 2) % 1; // two expand-and-fade pulses across the lifetime
       ctx.save();
-      ctx.globalAlpha = 1 - t;
+      ctx.globalAlpha = 1 - local;
       ctx.strokeStyle = COLORS.amber;
-      ctx.lineWidth = 3 / cam.zoom;
+      ctx.lineWidth = 5 / cam.zoom;
       ctx.beginPath();
-      ctx.arc(c.x, c.y, g * (0.25 + t * 0.55), 0, Math.PI * 2);
+      ctx.arc(ping.x, ping.y, g * (0.25 + local * 0.55), 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
     }
@@ -927,7 +931,10 @@ export function BoardCanvas({
     }
 
     if (tool === 'ping') {
-      onCommitPing?.(col, row);
+      // Raw world-pixel position, not the grid-snapped col/row above — a ping should land
+      // exactly where you clicked, not snap to a cell.
+      const w = screenToWorld(camera.current, e.nativeEvent.offsetX, e.nativeEvent.offsetY);
+      onCommitPing?.(w.x, w.y);
       return;
     }
 
