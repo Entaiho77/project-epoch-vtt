@@ -38,22 +38,71 @@ export interface HomebrewAttack {
   /** Damage dice term (parseDice-compatible), e.g. "2d6+4". */
   damageDice: string;
   damageType: string;
+  /** Second damage line on the same attack, e.g. a weapon hit that also deals fire damage. */
+  damageDice2?: string;
+  damageType2?: string;
 }
 
-/** A named text feature (trait / action / reaction / legendary action). The three mechanical
- *  fields are free text (not parsed back into numbers) and are only ever set by the paste-parser
- *  when the DM highlights that piece — the description always carries the full stat-block prose
- *  either way, so a feature with no highlights is identical to one hand-typed in the form. */
+export type HomebrewAbility = 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha';
+
+/** A named text feature (trait / action / bonus action / reaction / legendary / lair / regional /
+ *  mythic action). `description` always carries the full stat-block prose; the fields below are
+ *  additive structured data pulled out of that prose so the engine and stat card can use the
+ *  numbers (DC, recharge, uses, legendary-action cost, …) instead of them being locked in text.
+ *  All optional and additive — a feature with none of them set behaves exactly as before. */
 export interface HomebrewFeature {
   name: string;
   description: string;
-  /** e.g. "+5 to hit" or "reach 5 ft." for range — kept as the DM highlighted it, not parsed. */
+  /** e.g. "+5 to hit" or "reach 5 ft." for range — free text, shown alongside the description. */
   toHit?: string;
   range?: string;
   /** e.g. "5 (1d4 + 3) piercing damage". */
   damage?: string;
-  /** Save DC called out in the text, e.g. "DC 12 Wisdom". */
+  /** A second damage line on the same action, e.g. "plus 10 (3d6) fire damage". */
+  damage2?: string;
+  /** Healing dealt by this feature (e.g. to the creature itself), e.g. "equal to the damage dealt". */
+  healing?: string;
+  /** Legacy free-text save description, e.g. "DC 12 Wisdom" — kept for anything already saved
+   *  this way. New entries should use saveAbility/saveDc/saveEffect instead, which convert
+   *  into a structured CreatureSave the stat card already knows how to use. */
   dc?: string;
+  /** Ability the target saves with, e.g. "con". */
+  saveAbility?: HomebrewAbility;
+  /** Save DC number. */
+  saveDc?: number;
+  /** What a successful save does. */
+  saveEffect?: 'half' | 'none';
+  /** Recharge value, e.g. "5-6" (Recharge 5-6) or "6" (Recharge 6). */
+  recharge?: string;
+  /** Limited-use tag, e.g. "3/Day" or "1/Turn". */
+  uses?: string;
+  /** Action-point cost for a legendary action (most cost 1; some cost 2 or 3). */
+  cost?: number;
+}
+
+/** Walking speed is the always-present `speed` field on HomebrewMonster; everything else a
+ *  stat block can have goes here, additively. */
+export interface HomebrewSpeeds {
+  fly?: number;
+  swim?: number;
+  climb?: number;
+  burrow?: number;
+  /** Tags the fly speed as "(hover)". */
+  hover?: boolean;
+}
+
+/** Spellcasting as its own section (not crammed into a trait), so spell lists and the save DC
+ *  are real data instead of text. All optional — a non-caster simply omits this entirely. */
+export interface HomebrewSpellcasting {
+  ability?: HomebrewAbility;
+  saveDc?: number;
+  attackBonus?: number;
+  /** At-will spell names (object-keyed set, per the data convention — never an array). */
+  atWill?: Record<string, true>;
+  /** Per-day spell names mapped to how many times per day. */
+  perDay?: Record<string, number>;
+  /** Anything that doesn't fit the lists above (components, caster level, etc.). */
+  notes?: string;
 }
 
 export interface HomebrewMonster {
@@ -71,8 +120,12 @@ export interface HomebrewMonster {
   initiative?: number;
   /** Walking speed in feet. */
   speed: number;
+  /** Fly/swim/climb/burrow speeds and hover, when the block has any — additive to `speed`. */
+  otherSpeeds?: HomebrewSpeeds;
   /** Challenge rating label, e.g. "1/4", "1", "5". */
   cr: string;
+  /** Proficiency bonus, when stated directly rather than derived from CR. */
+  proficiencyBonus?: number;
   str: number;
   dex: number;
   con: number;
@@ -83,12 +136,35 @@ export interface HomebrewMonster {
   damageImmunities: string[];
   damageVulnerabilities: string[];
   conditionImmunities: string[];
+  /** Free-text qualifier shown after the matching list, e.g. "from nonmagical attacks" — 5e
+   *  stat blocks usually qualify the whole resistance/immunity line, not each damage type. */
+  damageResistanceNote?: string;
+  damageImmunityNote?: string;
+  damageVulnerabilityNote?: string;
+  /** Proficient saving throws and their bonus, e.g. { con: 6, wis: 9 }. Only proficient saves
+   *  are listed (a non-proficient save is just the plain ability modifier). */
+  savingThrows?: Partial<Record<HomebrewAbility, number>>;
+  /** Skill name -> total bonus, e.g. { Perception: 5, Stealth: 7 }. */
+  skills?: Record<string, number>;
+  /** Free text, e.g. "truesight 120 ft., passive Perception 13" — senses vary too much in
+   *  5e stat blocks to usefully split into fields. */
+  senses?: string;
+  /** Free text, e.g. "Common, Draconic" or "--" / "None". */
+  languages?: string;
   /** Repeatable sections — object-keyed maps (never arrays), per the data convention. */
   attacks: Record<string, HomebrewAttack>;
   traits: Record<string, HomebrewFeature>;
   actions: Record<string, HomebrewFeature>;
+  bonusActions?: Record<string, HomebrewFeature>;
   reactions?: Record<string, HomebrewFeature>;
   legendaryActions: Record<string, HomebrewFeature>;
+  /** How many legendary actions this creature can take per round (3, for most). Only meaningful
+   *  when legendaryActions has entries. */
+  legendaryActionCount?: number;
+  lairActions?: Record<string, HomebrewFeature>;
+  regionalEffects?: Record<string, HomebrewFeature>;
+  mythicActions?: Record<string, HomebrewFeature>;
+  spellcasting?: HomebrewSpellcasting;
   /** Flavor text (lore), kept separate from the mechanical fields and shown as written —
    *  set by the paste-parser's "lore" highlight, or typed by hand. */
   lore?: string;
@@ -213,10 +289,19 @@ const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
  *    tagged "(Legendary)"), matching the SRD convention the stat card already parses.
  */
 export function homebrewToBestiaryEntry(hb: HomebrewMonster): BestiaryEntry {
+  // Speed: "30 ft., fly 60 ft. (hover), swim 30 ft." — walking speed always first, then any
+  // other movement types the monster has, in the order 5e stat blocks list them.
+  const speedParts = [`${hb.speed} ft.`];
+  const os = hb.otherSpeeds;
+  if (os?.fly) speedParts.push(`fly ${os.fly} ft.${os.hover ? ' (hover)' : ''}`);
+  if (os?.swim) speedParts.push(`swim ${os.swim} ft.`);
+  if (os?.climb) speedParts.push(`climb ${os.climb} ft.`);
+  if (os?.burrow) speedParts.push(`burrow ${os.burrow} ft.`);
+
   const stats: Record<string, number | string> = {
     ac: hb.ac,
     hp: hb.hp,
-    speed: `${hb.speed} ft.`,
+    speed: speedParts.join(', '),
     type: cap(hb.type),
     size: hb.size,
     alignment: hb.alignment,
@@ -230,28 +315,61 @@ export function homebrewToBestiaryEntry(hb: HomebrewMonster): BestiaryEntry {
     cha: hb.cha,
   };
   // Guard with ?. — Firebase omits empty arrays, so these can read back as undefined.
-  if (hb.damageResistances?.length) stats.resistances = hb.damageResistances.join(', ');
-  if (hb.damageImmunities?.length) stats.immunities = hb.damageImmunities.join(', ');
-  if (hb.damageVulnerabilities?.length) stats.vulnerabilities = hb.damageVulnerabilities.join(', ');
+  if (hb.damageResistances?.length) {
+    stats.resistances = hb.damageResistances.join(', ') + (hb.damageResistanceNote ? ` (${hb.damageResistanceNote})` : '');
+  }
+  if (hb.damageImmunities?.length) {
+    stats.immunities = hb.damageImmunities.join(', ') + (hb.damageImmunityNote ? ` (${hb.damageImmunityNote})` : '');
+  }
+  if (hb.damageVulnerabilities?.length) {
+    stats.vulnerabilities = hb.damageVulnerabilities.join(', ') + (hb.damageVulnerabilityNote ? ` (${hb.damageVulnerabilityNote})` : '');
+  }
   if (hb.conditionImmunities?.length) stats.conditionImmunities = hb.conditionImmunities.join(', ');
 
   if (hb.initiative != null) stats.initiative = hb.initiative;
+  if (hb.proficiencyBonus != null) stats.proficiencyBonus = `+${hb.proficiencyBonus}`;
+
+  if (hb.savingThrows && Object.keys(hb.savingThrows).length) {
+    stats.savingThrows = Object.entries(hb.savingThrows)
+      .map(([ability, bonus]) => `${ability.toUpperCase()} ${bonus >= 0 ? '+' : ''}${bonus}`)
+      .join(', ');
+  }
+  if (hb.skills && Object.keys(hb.skills).length) {
+    stats.skills = Object.entries(hb.skills)
+      .map(([skill, bonus]) => `${skill} ${bonus >= 0 ? '+' : ''}${bonus}`)
+      .join(', ');
+  }
+  if (hb.senses) stats.senses = hb.senses;
+  if (hb.languages) stats.languages = hb.languages;
+  if (hb.legendaryActionCount != null) stats.legendaryActionCount = hb.legendaryActionCount;
 
   const attacks = Object.values(hb.attacks ?? {}).map((a) => ({
     name: a.name,
     diceExpr: a.damageDice,
     damageType: a.damageType,
     attackBonus: a.toHit,
+    // Dual damage (e.g. weapon + fire): the resolver only rolls one diceExpr today, so the
+    // second line is appended as a plain-text note the GM reads and rolls/adds by hand — the
+    // same "data captured, GM runs it" treatment as every other mechanic here.
+    ...(a.damageDice2 ? { note: `plus ${a.damageDice2}${a.damageType2 ? ` ${a.damageType2}` : ''} damage` } : {}),
   }));
 
-  // A paste-parser highlight (toHit/range/damage/dc) is appended in parentheses after the prose
-  // description, same line, so the stat card shows it without a special case per feature kind.
+  // Highlighted/typed mechanical tags are appended in parentheses after the prose description,
+  // same line, so the stat card shows them without a special case per feature kind.
   const withMech = (f: HomebrewFeature) => {
+    const save = f.saveAbility && f.saveDc != null
+      ? `DC ${f.saveDc} ${f.saveAbility.toUpperCase()} save${f.saveEffect ? ` (${f.saveEffect} on success)` : ''}`
+      : f.dc && `Save: ${f.dc}`;
     const tags = [
       f.toHit && `To Hit: ${f.toHit}`,
       f.range && `Range: ${f.range}`,
       f.damage && `Damage: ${f.damage}`,
-      f.dc && `Save: ${f.dc}`,
+      f.damage2 && `Plus: ${f.damage2}`,
+      f.healing && `Healing: ${f.healing}`,
+      save,
+      f.recharge && `Recharge ${f.recharge}`,
+      f.uses && `Uses: ${f.uses}`,
+      f.cost && f.cost > 1 && `Costs ${f.cost} Actions`,
     ].filter(Boolean);
     return tags.length ? `${f.description} (${tags.join('; ')})` : f.description;
   };
@@ -259,9 +377,53 @@ export function homebrewToBestiaryEntry(hb: HomebrewMonster): BestiaryEntry {
   const abilities = [
     ...Object.values(hb.traits ?? {}).map((t) => `${t.name}: ${withMech(t)}`),
     ...Object.values(hb.actions ?? {}).map((a) => `${a.name}: ${withMech(a)}`),
+    ...Object.values(hb.bonusActions ?? {}).map((b) => `${b.name} (Bonus Action): ${withMech(b)}`),
     ...Object.values(hb.reactions ?? {}).map((r) => `${r.name} (Reaction): ${withMech(r)}`),
     ...Object.values(hb.legendaryActions ?? {}).map((l) => `${l.name} (Legendary): ${withMech(l)}`),
+    ...Object.values(hb.lairActions ?? {}).map((l) => `${l.name} (Lair Action): ${withMech(l)}`),
+    ...Object.values(hb.regionalEffects ?? {}).map((r) => `${r.name} (Regional Effect): ${withMech(r)}`),
+    ...Object.values(hb.mythicActions ?? {}).map((m) => `${m.name} (Mythic Action): ${withMech(m)}`),
   ];
+
+  if (hb.spellcasting) {
+    const sc = hb.spellcasting;
+    const bits = [
+      sc.ability && `${sc.ability.toUpperCase()} as spellcasting ability`,
+      sc.saveDc != null && `spell save DC ${sc.saveDc}`,
+      sc.attackBonus != null && `${sc.attackBonus >= 0 ? '+' : ''}${sc.attackBonus} to hit with spell attacks`,
+    ].filter(Boolean).join(', ');
+    const atWill = sc.atWill && Object.keys(sc.atWill).length ? `At will: ${Object.keys(sc.atWill).join(', ')}.` : '';
+    const perDay = sc.perDay && Object.keys(sc.perDay).length
+      ? Object.entries(sc.perDay)
+          .map(([spell, times]) => `${spell} (${times}/day)`)
+          .join(', ')
+      : '';
+    const perDayLine = perDay ? `${perDay}.` : '';
+    abilities.push(
+      `Spellcasting: ${[bits, atWill, perDayLine, sc.notes].filter(Boolean).join(' ')}`,
+    );
+  }
+
+  // Structured saves (CreatureSave[]) feed the stat card's existing save/DC display and prefill —
+  // every trait/action/etc. with saveAbility+saveDc set contributes one entry.
+  const allFeatures = [
+    ...Object.values(hb.traits ?? {}),
+    ...Object.values(hb.actions ?? {}),
+    ...Object.values(hb.bonusActions ?? {}),
+    ...Object.values(hb.reactions ?? {}),
+    ...Object.values(hb.legendaryActions ?? {}),
+    ...Object.values(hb.lairActions ?? {}),
+    ...Object.values(hb.regionalEffects ?? {}),
+    ...Object.values(hb.mythicActions ?? {}),
+  ];
+  const saves = allFeatures
+    .filter((f) => f.saveAbility && f.saveDc != null)
+    .map((f) => ({
+      name: f.name,
+      ability: f.saveAbility as HomebrewAbility,
+      dc: f.saveDc as number,
+      success: f.saveEffect ?? 'none',
+    }));
 
   return {
     id: hb.id,
@@ -271,6 +433,7 @@ export function homebrewToBestiaryEntry(hb: HomebrewMonster): BestiaryEntry {
     stats,
     ...(attacks.length ? { attacks } : {}),
     ...(abilities.length ? { abilities } : {}),
+    ...(saves.length ? { saves } : {}),
     ...(hb.lore ? { lore: hb.lore } : {}),
   };
 }
