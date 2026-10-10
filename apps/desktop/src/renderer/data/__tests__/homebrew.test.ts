@@ -6,6 +6,7 @@ import {
   equipmentList,
   equipmentToInventoryItem,
   homebrewToBestiaryEntry,
+  proficiencyBonusForCr,
   type HomebrewEquipment,
   type HomebrewMonster,
 } from '../homebrew';
@@ -232,6 +233,65 @@ describe('homebrewToBestiaryEntry (Demilich acceptance test)', () => {
         { name: 'Cloud of Dust', ability: 'con', dc: 15, success: 'half' },
       ]),
     );
+  });
+});
+
+describe('proficiencyBonusForCr (5e Monster Manual table, not a formula)', () => {
+  it('matches the real table breakpoints', () => {
+    expect(proficiencyBonusForCr('0')).toBe(2);
+    expect(proficiencyBonusForCr('1/4')).toBe(2);
+    expect(proficiencyBonusForCr('4')).toBe(2);
+    expect(proficiencyBonusForCr('5')).toBe(3);
+    expect(proficiencyBonusForCr('8')).toBe(3);
+    expect(proficiencyBonusForCr('9')).toBe(4);
+    expect(proficiencyBonusForCr('12')).toBe(4);
+    expect(proficiencyBonusForCr('13')).toBe(5);
+    expect(proficiencyBonusForCr('16')).toBe(5);
+    expect(proficiencyBonusForCr('17')).toBe(6);
+    expect(proficiencyBonusForCr('20')).toBe(6);
+    expect(proficiencyBonusForCr('21')).toBe(7);
+    expect(proficiencyBonusForCr('24')).toBe(7);
+    expect(proficiencyBonusForCr('25')).toBe(8);
+    expect(proficiencyBonusForCr('28')).toBe(8);
+    expect(proficiencyBonusForCr('29')).toBe(9);
+    expect(proficiencyBonusForCr('30')).toBe(9);
+  });
+
+  it("homebrewToBestiaryEntry defaults to the CR table when proficiencyBonus isn't set by hand", () => {
+    const e = homebrewToBestiaryEntry(hb({ cr: '18', proficiencyBonus: undefined }));
+    expect(e.stats.proficiencyBonus).toBe('+6');
+  });
+
+  it('a manually-set proficiencyBonus overrides the CR default', () => {
+    const e = homebrewToBestiaryEntry(hb({ cr: '18', proficiencyBonus: 10 }));
+    expect(e.stats.proficiencyBonus).toBe('+10');
+  });
+});
+
+describe('homebrewToBestiaryEntry (attack range + dual damage, as a note)', () => {
+  it('appends range and a second damage line as one readable note, since AttackEntry has no dedicated fields for either', () => {
+    const e = homebrewToBestiaryEntry(hb({
+      attacks: { a0: { name: 'Bite', toHit: 7, damageDice: '2d8+4', damageType: 'piercing', range: 'reach 10 ft.', damageDice2: '1d6', damageType2: 'poison' } },
+    }));
+    expect(e.attacks).toEqual([
+      { name: 'Bite', diceExpr: '2d8+4', damageType: 'piercing', attackBonus: 7, note: 'Range: reach 10 ft.; plus 1d6 poison damage' },
+    ]);
+  });
+
+  it('omits the note entirely when neither range nor a second damage line is set', () => {
+    const e = homebrewToBestiaryEntry(hb());
+    expect(e.attacks![0]).not.toHaveProperty('note');
+  });
+});
+
+describe('homebrewToBestiaryEntry (initiative bug fix)', () => {
+  it('a manually-entered initiative bonus is used for the actual roll, not just shown as text', () => {
+    // creatureInitiativeMod() (data/combat.ts) reads stats.initiativeMod, not stats.initiative —
+    // previously only the display-only `initiative` key was set, so a hand-entered bonus never
+    // affected real initiative rolls.
+    const e = homebrewToBestiaryEntry(hb({ initiative: 5 }));
+    expect(e.stats.initiative).toBe(5);
+    expect(e.stats.initiativeMod).toBe(5);
   });
 });
 

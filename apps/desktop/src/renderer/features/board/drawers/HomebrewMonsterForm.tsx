@@ -1,5 +1,8 @@
 import { useState } from 'react';
 import {
+  crToNumber,
+  proficiencyBonusForCr,
+  saveHomebrewEquipment,
   saveHomebrewMonster,
   type HomebrewAbility,
   type HomebrewAttack,
@@ -12,7 +15,12 @@ import {
 } from '../../../data/homebrew';
 import { Modal } from '../../../components/ui/Modal';
 import { Button } from '../../../components/ui/Button';
+import { spells as allSpells } from '@epoch/systems/dnd5e/spells';
+import { generateLootPool } from '@epoch/systems/dnd5e/lootTables';
+import type { GeneratedLootItem } from '@epoch/shared-types';
 import s from './drawers.module.css';
+
+const SPELL_NAMES = allSpells.map((sp) => sp.name).sort((a, b) => a.localeCompare(b));
 
 const SIZES: HomebrewSize[] = ['Tiny', 'Small', 'Medium', 'Large', 'Huge', 'Gargantuan'];
 const TYPES = [
@@ -33,6 +41,8 @@ const SKILLS = [
   'Intimidation', 'Investigation', 'Medicine', 'Nature', 'Perception', 'Performance', 'Persuasion',
   'Religion', 'Sleight of Hand', 'Stealth', 'Survival',
 ];
+const SPEED_TYPES = ['fly', 'swim', 'climb', 'burrow'] as const;
+const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
 /** Object-keyed map (never an array) from a row list, dropping rows without a name. */
 function toMap<T extends { name: string }>(rows: T[]): Record<string, T> {
@@ -82,6 +92,11 @@ export function HomebrewMonsterForm({
     burrow: existing?.otherSpeeds?.burrow != null ? String(existing.otherSpeeds.burrow) : '',
   }));
   const [hover, setHover] = useState(existing?.otherSpeeds?.hover ?? false);
+  // Which extra movement types are shown as rows — only the ones that actually apply, picked
+  // from the "+ Add movement type" dropdown, rather than six always-visible fields.
+  const [extraSpeedTypes, setExtraSpeedTypes] = useState<Array<typeof SPEED_TYPES[number]>>(() =>
+    SPEED_TYPES.filter((t) => existing?.otherSpeeds?.[t] != null && existing.otherSpeeds[t] !== 0),
+  );
   const [cr, setCr] = useState(existing?.cr ?? '1');
   const [proficiencyBonus, setProficiencyBonus] = useState(existing?.proficiencyBonus != null ? String(existing.proficiencyBonus) : '');
   const [lore, setLore] = useState(existing?.lore ?? '');
@@ -121,14 +136,26 @@ export function HomebrewMonsterForm({
   const [spellAbility, setSpellAbility] = useState<string>(existing?.spellcasting?.ability ?? '');
   const [spellSaveDc, setSpellSaveDc] = useState(existing?.spellcasting?.saveDc != null ? String(existing.spellcasting.saveDc) : '');
   const [spellAttackBonus, setSpellAttackBonus] = useState(existing?.spellcasting?.attackBonus != null ? String(existing.spellcasting.attackBonus) : '');
-  const [atWillText, setAtWillText] = useState(() => Object.keys(existing?.spellcasting?.atWill ?? {}).join(', '));
-  const [perDayText, setPerDayText] = useState(() =>
-    Object.entries(existing?.spellcasting?.perDay ?? {}).map(([spell, n]) => `${spell}:${n}`).join(', '),
-  );
+  // One row per spell — `perDay` blank means at-will, a number means that many times per day.
+  // Picked from the real SRD spell list instead of typed freehand.
+  const [spellRows, setSpellRows] = useState<{ name: string; perDay: string }[]>(() => [
+    ...Object.keys(existing?.spellcasting?.atWill ?? {}).map((name) => ({ name, perDay: '' })),
+    ...Object.entries(existing?.spellcasting?.perDay ?? {}).map(([name, n]) => ({ name, perDay: String(n) })),
+  ]);
   const [spellNotes, setSpellNotes] = useState(existing?.spellcasting?.notes ?? '');
   const [loot, setLoot] = useState<string[]>(Object.keys(existing?.loot ?? {}));
   // Case-insensitive filter for the loot equipment list (helpful once a DM has many items).
   const [lootSearch, setLootSearch] = useState('');
+  // Suggested loot from the CR-based loot generator (data/lootTables.ts) — a preview the DM
+  // checks through and saves, rather than having to hand-build equipment first.
+  const [suggestedLoot, setSuggestedLoot] = useState<GeneratedLootItem[] | null>(null);
+  const [suggestedLootGold, setSuggestedLootGold] = useState(0);
+  const [checkedSuggestions, setCheckedSuggestions] = useState<Set<number>>(new Set());
+  const [savingSuggestions, setSavingSuggestions] = useState(false);
+  // Equipment created from a suggestion this session — merged into the picker below so a
+  // newly-added item shows up (checked) immediately, without waiting for the parent's
+  // `equipment` prop to refetch.
+  const [sessionEquipment, setSessionEquipment] = useState<HomebrewEquipment[]>([]);
   const [busy, setBusy] = useState(false);
 
   const toggle = (list: string[], set: (v: string[]) => void, val: string) =>
@@ -154,18 +181,20 @@ export function HomebrewMonsterForm({
     let spellcasting: HomebrewSpellcasting | undefined;
     if (hasSpellcasting) {
       const atWill = Object.fromEntries(
-        atWillText.split(',').map((x) => x.trim()).filter(Boolean).map((x) => [x, true as const]),
+        spellRows.filter((r) => r.name && !r.perDay.trim()).map((r) => [r.name, true as const]),
       );
       const perDay = Object.fromEntries(
-        perDayText.split(',').map((x) => x.trim()).filter(Boolean).map((x) => {
-          const [spellName, times] = x.split(':').map((p) => p.trim());
-          return [spellName, Number(times) || 1];
-        }),
+        spellRows.filter((r) => r.name && r.perDay.trim()).map((r) => [r.name, Number(r.perDay) || 1]),
       );
+      // 5e's real formula: spell save DC = 8 + proficiency bonus + ability modifier; spell
+      // attack bonus = proficiency bonus + ability modifier. Used as the default whenever the
+      // DM leaves the field blank, same treatment as proficiency bonus's own CR default.
+      const pb = proficiencyBonus.trim() ? Number(proficiencyBonus) : proficiencyBonusForCr(cr);
+      const abilityMod = spellAbility ? Math.floor((Number(scores[spellAbility]) - 10) / 2) : 0;
       spellcasting = {
         ...(spellAbility ? { ability: spellAbility as HomebrewAbility } : {}),
-        ...(spellSaveDc.trim() ? { saveDc: Number(spellSaveDc) || 0 } : {}),
-        ...(spellAttackBonus.trim() ? { attackBonus: Number(spellAttackBonus) || 0 } : {}),
+        saveDc: spellSaveDc.trim() ? Number(spellSaveDc) || 0 : 8 + pb + abilityMod,
+        attackBonus: spellAttackBonus.trim() ? Number(spellAttackBonus) || 0 : pb + abilityMod,
         ...(Object.keys(atWill).length ? { atWill } : {}),
         ...(Object.keys(perDay).length ? { perDay } : {}),
         ...(spellNotes.trim() ? { notes: spellNotes.trim() } : {}),
@@ -224,19 +253,37 @@ export function HomebrewMonsterForm({
     }
   }
 
-  const checkboxGroup = (title: string, options: string[], selected: string[], set: (v: string[]) => void) => (
-    <div>
-      <span className={s.label}>{title}</span>
-      <div style={checkGrid}>
-        {options.map((opt) => (
-          <label key={opt} className={s.itemMeta} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <input type="checkbox" checked={selected.includes(opt)} onChange={() => toggle(selected, set, opt)} />
-            {opt}
-          </label>
-        ))}
+  // A multi-select dropdown with removable tags, instead of a wall of checkboxes — picking one
+  // closes the dropdown (native <select> behavior) and adds a chip; clicking a chip's × removes
+  // it. No layout shift from an always-rendered grid of mostly-unchecked boxes.
+  const checkboxGroup = (title: string, options: string[], selected: string[], set: (v: string[]) => void) => {
+    const remaining = options.filter((opt) => !selected.includes(opt));
+    return (
+      <div>
+        <span className={s.label}>{title}</span>
+        {selected.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4 }}>
+            {selected.map((tag) => (
+              <span key={tag} className={s.itemMeta} style={{
+                display: 'flex', alignItems: 'center', gap: 4, padding: '2px 4px 2px 8px',
+                borderRadius: 999, border: '1px solid var(--border-hairline)', background: 'var(--surface-raised)',
+              }}>
+                {tag}
+                <button className={s.place} aria-label={`Remove ${tag}`} onClick={() => toggle(selected, set, tag)} style={{ lineHeight: 1, padding: '0 4px' }}>×</button>
+              </span>
+            ))}
+          </div>
+        )}
+        {remaining.length > 0 && (
+          <select className={s.input} value="" style={{ width: 200 }}
+            onChange={(e) => { if (e.target.value) toggle(selected, set, e.target.value); }}>
+            <option value="">+ Add {title.toLowerCase()}…</option>
+            {remaining.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+          </select>
+        )}
       </div>
-    </div>
-  );
+    );
+  };
 
   // A damage list (resistances/immunities/vulnerabilities) plus its qualifier, e.g. "from
   // nonmagical attacks" — shown only once at least one type is checked, since an empty list
@@ -266,28 +313,44 @@ export function HomebrewMonsterForm({
   const attackRows = (
     <div>
       <span className={s.label}>Attacks</span>
-      {attacks.map((a, i) => (
-        <div key={i} className={s.section} style={{ gap: 4, marginBottom: 6 }}>
-          <div className={s.row} style={{ alignItems: 'center', gap: 4 }}>
-            <input className={s.input} placeholder="Name" value={a.name} style={{ flex: 2 }}
-              onChange={(e) => setAttacks(attacks.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} />
-            <input className={s.input} type="number" placeholder="+hit" value={a.toHit} style={{ width: 60 }}
-              onChange={(e) => setAttacks(attacks.map((x, j) => (j === i ? { ...x, toHit: Number(e.target.value) || 0 } : x)))} />
-            <input className={s.input} placeholder="2d6+4" value={a.damageDice} style={{ width: 80 }}
-              onChange={(e) => setAttacks(attacks.map((x, j) => (j === i ? { ...x, damageDice: e.target.value } : x)))} />
-            <input className={s.input} placeholder="type" value={a.damageType} style={{ width: 90 }}
-              onChange={(e) => setAttacks(attacks.map((x, j) => (j === i ? { ...x, damageType: e.target.value } : x)))} />
-            <button className={s.place} onClick={() => setAttacks(attacks.filter((_, j) => j !== i))} aria-label="Remove attack">×</button>
+      {attacks.map((a, i) => {
+        const upd = (patch: Partial<HomebrewAttack>) => setAttacks(attacks.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+        return (
+          <div key={i} className={s.section} style={{ gap: 4, marginBottom: 6 }}>
+            <div className={s.row} style={{ alignItems: 'center', gap: 4 }}>
+              <input className={s.input} placeholder="Name" value={a.name} style={{ flex: 2, minWidth: 0 }}
+                onChange={(e) => upd({ name: e.target.value })} />
+              {/* Removal is its own clear, unsqueezed column — not sharing space with the text
+               *  inputs — so it isn't cramped the way it was when every field (including this
+               *  button) competed for room in one flex row. */}
+              <button className={s.place} style={{ flexShrink: 0, minWidth: 28, marginLeft: 'auto' }}
+                onClick={() => setAttacks(attacks.filter((_, j) => j !== i))} aria-label="Remove attack">×</button>
+            </div>
+            <div className={s.row} style={{ alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+              <input className={s.input} type="number" placeholder="+hit" value={a.toHit} style={{ width: 60 }}
+                onChange={(e) => upd({ toHit: Number(e.target.value) || 0 })} />
+              <input className={s.input} placeholder="Range, e.g. reach 5 ft." value={a.range ?? ''} style={{ width: 150 }}
+                onChange={(e) => upd({ range: e.target.value || undefined })} />
+              <input className={s.input} placeholder="2d6+4" value={a.damageDice} style={{ width: 80 }}
+                onChange={(e) => upd({ damageDice: e.target.value })} />
+              <select className={s.input} value={a.damageType} style={{ width: 110 }}
+                onChange={(e) => upd({ damageType: e.target.value })}>
+                {DAMAGE_TYPES.map((dt) => <option key={dt} value={dt}>{dt}</option>)}
+              </select>
+            </div>
+            <div className={s.row} style={{ alignItems: 'center', gap: 4 }}>
+              <span className={s.hint} style={{ width: 60 }}>plus:</span>
+              <input className={s.input} placeholder="1d6 (extra dice, optional)" value={a.damageDice2 ?? ''} style={{ width: 120 }}
+                onChange={(e) => upd({ damageDice2: e.target.value || undefined })} />
+              <select className={s.input} value={a.damageType2 ?? ''} style={{ width: 110 }}
+                onChange={(e) => upd({ damageType2: e.target.value || undefined })}>
+                <option value="">--</option>
+                {DAMAGE_TYPES.map((dt) => <option key={dt} value={dt}>{dt}</option>)}
+              </select>
+            </div>
           </div>
-          <div className={s.row} style={{ alignItems: 'center', gap: 4 }}>
-            <span className={s.hint} style={{ width: 60 }}>plus:</span>
-            <input className={s.input} placeholder="1d6 (extra dice, optional)" value={a.damageDice2 ?? ''} style={{ width: 120 }}
-              onChange={(e) => setAttacks(attacks.map((x, j) => (j === i ? { ...x, damageDice2: e.target.value } : x)))} />
-            <input className={s.input} placeholder="type" value={a.damageType2 ?? ''} style={{ width: 90 }}
-              onChange={(e) => setAttacks(attacks.map((x, j) => (j === i ? { ...x, damageType2: e.target.value } : x)))} />
-          </div>
-        </div>
-      ))}
+        );
+      })}
       <button className={s.place} onClick={() => setAttacks([...attacks, { name: '', toHit: 0, damageDice: '1d6', damageType: 'bludgeoning' }])}>
         + Add attack
       </button>
@@ -310,13 +373,16 @@ export function HomebrewMonsterForm({
         return (
           <div key={i} className={s.section} style={{ gap: 4, marginBottom: 8 }}>
             <div className={s.row} style={{ alignItems: 'center', gap: 4 }}>
-              <input className={s.input} placeholder="Name" value={r.name} style={{ flex: 1 }}
+              <input className={s.input} placeholder="Name" value={r.name} style={{ flex: 1, minWidth: 0 }}
                 onChange={(e) => upd({ name: e.target.value })} />
               {opts?.showCost && (
-                <input className={s.input} type="number" placeholder="Costs" title="Legendary action point cost (1 if blank)" value={r.cost ?? ''} style={{ width: 60 }}
+                <input className={s.input} type="number" placeholder="Costs" title="Legendary action point cost (1 if blank)" value={r.cost ?? ''} style={{ width: 60, flexShrink: 0 }}
                   onChange={(e) => upd({ cost: e.target.value ? Number(e.target.value) || undefined : undefined })} />
               )}
-              <button className={s.place} onClick={() => set(rows.filter((_, j) => j !== i))} aria-label={`Remove ${title}`}>×</button>
+              {/* Its own unsqueezed slot, same fix as the attack rows — not sharing space with
+               *  the name/cost fields, which is what made it cramped before. */}
+              <button className={s.place} style={{ flexShrink: 0, minWidth: 28, marginLeft: opts?.showCost ? 0 : 'auto' }}
+                onClick={() => set(rows.filter((_, j) => j !== i))} aria-label={`Remove ${title}`}>×</button>
             </div>
             <textarea className={s.input} placeholder="Description" value={r.description} rows={2}
               onChange={(e) => upd({ description: e.target.value })} />
@@ -360,17 +426,52 @@ export function HomebrewMonsterForm({
     </div>
   );
 
+  const allEquipment = sessionEquipment.length ? [...equipment, ...sessionEquipment] : equipment;
   const lootQuery = lootSearch.trim().toLowerCase();
   const filteredEquipment = lootQuery
-    ? equipment.filter((eq) => eq.name.toLowerCase().includes(lootQuery))
-    : equipment;
+    ? allEquipment.filter((eq) => eq.name.toLowerCase().includes(lootQuery))
+    : allEquipment;
+
+  function suggestLoot() {
+    const pool = generateLootPool([{ name: name.trim() || 'Monster', cr: crToNumber(cr) }], equipment);
+    setSuggestedLoot(pool.items);
+    setSuggestedLootGold(pool.gold);
+    setCheckedSuggestions(new Set(pool.items.map((_, i) => i)));
+  }
+
+  // Saves each checked suggestion as a new library equipment item (so it shows up in the
+  // DM's Equipment tab too, not just on this monster) and attaches it as loot. A suggestion
+  // that happens to match something already in the library by name is reused instead of
+  // creating a duplicate.
+  async function addCheckedSuggestions() {
+    if (!suggestedLoot) return;
+    setSavingSuggestions(true);
+    const newLootIds: string[] = [];
+    const newEquipment: HomebrewEquipment[] = [];
+    for (const i of checkedSuggestions) {
+      const item = suggestedLoot[i];
+      const existingMatch = [...equipment, ...sessionEquipment].find((eq) => eq.name.toLowerCase() === item.name.toLowerCase());
+      if (existingMatch) {
+        newLootIds.push(existingMatch.id);
+        continue;
+      }
+      const { id: _droppedId, revealDescription: _droppedReveal, rarity: _droppedRarity, ...rest } = item;
+      const id = await saveHomebrewEquipment(uid, rest);
+      newLootIds.push(id);
+      newEquipment.push({ ...rest, id });
+    }
+    setSessionEquipment([...sessionEquipment, ...newEquipment]);
+    setLoot([...new Set([...loot, ...newLootIds])]);
+    setSuggestedLoot(null);
+    setSavingSuggestions(false);
+  }
 
   return (
     <Modal
       open
       onClose={onClose}
       title={existing ? `Edit ${existing.name}` : 'New Homebrew Monster'}
-      width={640}
+      width={720}
       footer={
         <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
@@ -401,19 +502,35 @@ export function HomebrewMonsterForm({
           <label style={label}>AC<input className={s.input} type="number" value={ac} onChange={(e) => setAc(e.target.value)} /></label>
           <label style={label}>Initiative<input className={s.input} type="number" value={initiative} onChange={(e) => setInitiative(e.target.value)} placeholder="uses DEX" /></label>
           <label style={label}>CR<input className={s.input} value={cr} onChange={(e) => setCr(e.target.value)} placeholder="1/4" /></label>
-          <label style={label}>Prof. bonus<input className={s.input} type="number" value={proficiencyBonus} onChange={(e) => setProficiencyBonus(e.target.value)} placeholder="from CR" /></label>
+          <label style={label}>Prof. bonus<input className={s.input} type="number" value={proficiencyBonus} onChange={(e) => setProficiencyBonus(e.target.value)} placeholder={`+${proficiencyBonusForCr(cr)} (from CR table)`} /></label>
         </div>
 
         <span className={s.label}>Speed</span>
-        <div className={s.row} style={{ alignItems: 'center' }}>
+        <div className={s.row} style={{ alignItems: 'center', flexWrap: 'wrap' }}>
           <label style={label}>Walk<input className={s.input} type="number" style={{ width: 70 }} value={speed} onChange={(e) => setSpeed(e.target.value)} /></label>
-          <label style={label}>Fly<input className={s.input} type="number" style={{ width: 70 }} value={otherSpeeds.fly} onChange={(e) => setOtherSpeeds({ ...otherSpeeds, fly: e.target.value })} /></label>
-          <label className={s.itemMeta} style={{ display: 'flex', alignItems: 'center', gap: 4, alignSelf: 'center' }}>
-            <input type="checkbox" checked={hover} onChange={(e) => setHover(e.target.checked)} /> hover
-          </label>
-          <label style={label}>Swim<input className={s.input} type="number" style={{ width: 70 }} value={otherSpeeds.swim} onChange={(e) => setOtherSpeeds({ ...otherSpeeds, swim: e.target.value })} /></label>
-          <label style={label}>Climb<input className={s.input} type="number" style={{ width: 70 }} value={otherSpeeds.climb} onChange={(e) => setOtherSpeeds({ ...otherSpeeds, climb: e.target.value })} /></label>
-          <label style={label}>Burrow<input className={s.input} type="number" style={{ width: 70 }} value={otherSpeeds.burrow} onChange={(e) => setOtherSpeeds({ ...otherSpeeds, burrow: e.target.value })} /></label>
+          {extraSpeedTypes.map((t) => (
+            <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <label style={label}>{cap(t)}<input className={s.input} type="number" style={{ width: 70 }} value={otherSpeeds[t]} onChange={(e) => setOtherSpeeds({ ...otherSpeeds, [t]: e.target.value })} /></label>
+              {t === 'fly' && (
+                <label className={s.itemMeta} style={{ display: 'flex', alignItems: 'center', gap: 4, alignSelf: 'center' }}>
+                  <input type="checkbox" checked={hover} onChange={(e) => setHover(e.target.checked)} /> hover
+                </label>
+              )}
+              <button className={s.place} aria-label={`Remove ${t} speed`} style={{ alignSelf: 'center' }}
+                onClick={() => { setExtraSpeedTypes(extraSpeedTypes.filter((x) => x !== t)); setOtherSpeeds({ ...otherSpeeds, [t]: '' }); }}>
+                ×
+              </button>
+            </div>
+          ))}
+          {extraSpeedTypes.length < SPEED_TYPES.length && (
+            <select className={s.input} value="" style={{ width: 170, alignSelf: 'center' }}
+              onChange={(e) => { const t = e.target.value as typeof SPEED_TYPES[number]; if (t) setExtraSpeedTypes([...extraSpeedTypes, t]); }}>
+              <option value="">+ Add movement type…</option>
+              {SPEED_TYPES.filter((t) => !extraSpeedTypes.includes(t)).map((t) => (
+                <option key={t} value={t}>{cap(t)}</option>
+              ))}
+            </select>
+          )}
         </div>
 
         <div>
@@ -495,29 +612,53 @@ export function HomebrewMonsterForm({
           <input type="checkbox" checked={hasSpellcasting} onChange={(e) => setHasSpellcasting(e.target.checked)} />
           This creature casts spells
         </label>
-        {hasSpellcasting && (
-          <div className={s.section} style={{ gap: 4 }}>
-            <div className={s.row}>
-              <label style={label}>Ability
-                <select className={s.input} value={spellAbility} onChange={(e) => setSpellAbility(e.target.value)}>
-                  <option value="">--</option>
-                  {ABILITIES.map((a) => <option key={a} value={a}>{a.toUpperCase()}</option>)}
-                </select>
+        {hasSpellcasting && (() => {
+          // Same CR-table default used for the monster's own proficiency bonus (above),
+          // applied to 5e's real spellcasting formulas: DC = 8 + prof + ability mod;
+          // attack bonus = prof + ability mod. Shown as the placeholder so leaving these
+          // blank still saves the correct computed number, not a guess.
+          const pb = proficiencyBonus.trim() ? Number(proficiencyBonus) || 0 : proficiencyBonusForCr(cr);
+          const abilityMod = spellAbility ? Math.floor((Number(scores[spellAbility]) - 10) / 2) : 0;
+          return (
+            <div className={s.section} style={{ gap: 4 }}>
+              <div className={s.row}>
+                <label style={label}>Ability
+                  <select className={s.input} value={spellAbility} onChange={(e) => setSpellAbility(e.target.value)}>
+                    <option value="">--</option>
+                    {ABILITIES.map((a) => <option key={a} value={a}>{a.toUpperCase()}</option>)}
+                  </select>
+                </label>
+                <label style={label}>Spell save DC
+                  <input className={s.input} type="number" style={{ width: 70 }} value={spellSaveDc} onChange={(e) => setSpellSaveDc(e.target.value)} placeholder={`${8 + pb + abilityMod}`} />
+                </label>
+                <label style={label}>Spell attack bonus
+                  <input className={s.input} type="number" style={{ width: 70 }} value={spellAttackBonus} onChange={(e) => setSpellAttackBonus(e.target.value)} placeholder={`${pb + abilityMod >= 0 ? '+' : ''}${pb + abilityMod}`} />
+                </label>
+              </div>
+              <span className={s.hint}>Blank DC/attack bonus uses 8 + proficiency + ability mod (DC) or proficiency + ability mod (attack), once an ability is picked above.</span>
+
+              <span className={s.label}>Spells</span>
+              {spellRows.map((r, i) => (
+                <div key={i} className={s.row} style={{ alignItems: 'center', gap: 4 }}>
+                  <select className={s.input} value={r.name} style={{ flex: 1, minWidth: 0 }}
+                    onChange={(e) => setSpellRows(spellRows.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}>
+                    <option value="">Select a spell…</option>
+                    {SPELL_NAMES.map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                  <input className={s.input} type="number" placeholder="At will" title="Times per day — leave blank for at-will" value={r.perDay} style={{ width: 90, flexShrink: 0 }}
+                    onChange={(e) => setSpellRows(spellRows.map((x, j) => (j === i ? { ...x, perDay: e.target.value } : x)))} />
+                  <span className={s.hint} style={{ flexShrink: 0 }}>/day</span>
+                  <button className={s.place} style={{ flexShrink: 0 }} onClick={() => setSpellRows(spellRows.filter((_, j) => j !== i))} aria-label="Remove spell">×</button>
+                </div>
+              ))}
+              <button className={s.place} onClick={() => setSpellRows([...spellRows, { name: '', perDay: '' }])}>+ Add spell</button>
+
+              <label style={label}>Notes
+                <textarea className={s.input} value={spellNotes} onChange={(e) => setSpellNotes(e.target.value)} rows={2} placeholder="Anything else — components, caster level, etc." />
               </label>
-              <label style={label}>Spell save DC<input className={s.input} type="number" style={{ width: 70 }} value={spellSaveDc} onChange={(e) => setSpellSaveDc(e.target.value)} /></label>
-              <label style={label}>Spell attack bonus<input className={s.input} type="number" style={{ width: 70 }} value={spellAttackBonus} onChange={(e) => setSpellAttackBonus(e.target.value)} /></label>
             </div>
-            <label style={label}>At-will spells (comma-separated)
-              <input className={s.input} value={atWillText} onChange={(e) => setAtWillText(e.target.value)} placeholder="e.g. Mage Hand, Minor Illusion" />
-            </label>
-            <label style={label}>Per-day spells (name:times, comma-separated)
-              <input className={s.input} value={perDayText} onChange={(e) => setPerDayText(e.target.value)} placeholder="e.g. Fireball:3, Charm Person:1" />
-            </label>
-            <label style={label}>Notes
-              <textarea className={s.input} value={spellNotes} onChange={(e) => setSpellNotes(e.target.value)} rows={2} placeholder="Anything else — components, caster level, etc." />
-            </label>
-          </div>
-        )}
+          );
+        })()}
 
         <label style={label}>Lore
           <textarea className={s.input} value={lore} onChange={(e) => setLore(e.target.value)} rows={3} placeholder="Flavor text, shown in the creature's detail view." />
@@ -525,8 +666,42 @@ export function HomebrewMonsterForm({
 
         <div>
           <span className={s.label}>Loot</span>
-          {equipment.length === 0 ? (
-            <p className={s.hint}>No homebrew equipment yet. Create items in the Equipment tab, then attach them here.</p>
+          <div className={s.row} style={{ alignItems: 'center', marginBottom: 6 }}>
+            <Button variant="secondary" onClick={suggestLoot}>Suggest loot for CR {cr || '0'}…</Button>
+            <span className={s.hint}>Generates from the loot tables so you don't have to hand-build equipment first.</span>
+          </div>
+
+          {suggestedLoot && (
+            <div className={s.section} style={{ gap: 4, marginBottom: 8 }}>
+              <span className={s.hint}>Also rolled {suggestedLootGold} gp (not attachable here — gold is handed out at loot time, not stored on the monster). Uncheck anything you don't want, then add the rest to your library.</span>
+              {suggestedLoot.length === 0 ? (
+                <p className={s.hint}>Nothing rolled this time — try again, or at a different CR.</p>
+              ) : (
+                <div style={checkGrid}>
+                  {suggestedLoot.map((item, i) => (
+                    <label key={i} className={s.itemMeta} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <input type="checkbox" checked={checkedSuggestions.has(i)}
+                        onChange={() => setCheckedSuggestions((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(i)) next.delete(i); else next.add(i);
+                          return next;
+                        })} />
+                      {item.name}{item.rarity ? ` (${item.rarity})` : ''}
+                    </label>
+                  ))}
+                </div>
+              )}
+              <div className={s.row} style={{ gap: 4 }}>
+                <Button onClick={() => void addCheckedSuggestions()} disabled={savingSuggestions || checkedSuggestions.size === 0}>
+                  {savingSuggestions ? 'Adding…' : `Add ${checkedSuggestions.size} checked to library + loot`}
+                </Button>
+                <Button variant="secondary" onClick={() => setSuggestedLoot(null)}>Discard</Button>
+              </div>
+            </div>
+          )}
+
+          {allEquipment.length === 0 ? (
+            <p className={s.hint}>No homebrew equipment yet. Suggest some above, or create items in the Equipment tab, then attach them here.</p>
           ) : (
             <>
               <input

@@ -38,6 +38,8 @@ export interface HomebrewAttack {
   /** Damage dice term (parseDice-compatible), e.g. "2d6+4". */
   damageDice: string;
   damageType: string;
+  /** e.g. "melee weapon" or "reach 5 ft." or "ranged 80/320 ft." */
+  range?: string;
   /** Second damage line on the same attack, e.g. a weapon hit that also deals fire damage. */
   damageDice2?: string;
   damageType2?: string;
@@ -278,6 +280,21 @@ export function crToNumber(cr: string): number {
   return Number.isFinite(v) ? v : 0;
 }
 
+/** 5e's proficiency bonus is a lookup table by Challenge Rating, not a formula — this is that
+ *  table (Monster Manual / DMG), used as the default shown/stored whenever a monster's own
+ *  `proficiencyBonus` isn't set by hand. */
+export function proficiencyBonusForCr(cr: string): number {
+  const n = crToNumber(cr);
+  if (n >= 29) return 9;
+  if (n >= 25) return 8;
+  if (n >= 21) return 7;
+  if (n >= 17) return 6;
+  if (n >= 13) return 5;
+  if (n >= 9) return 4;
+  if (n >= 5) return 3;
+  return 2;
+}
+
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
 /**
@@ -326,8 +343,11 @@ export function homebrewToBestiaryEntry(hb: HomebrewMonster): BestiaryEntry {
   }
   if (hb.conditionImmunities?.length) stats.conditionImmunities = hb.conditionImmunities.join(', ');
 
-  if (hb.initiative != null) stats.initiative = hb.initiative;
-  if (hb.proficiencyBonus != null) stats.proficiencyBonus = `+${hb.proficiencyBonus}`;
+  // `initiativeMod` is the key creatureInitiativeMod() (data/combat.ts) actually reads when
+  // rolling initiative — write both so a manually-entered initiative bonus is both shown on
+  // the stat card AND actually used for the roll (previously only the display copy was set).
+  if (hb.initiative != null) { stats.initiative = hb.initiative; stats.initiativeMod = hb.initiative; }
+  stats.proficiencyBonus = `+${hb.proficiencyBonus ?? proficiencyBonusForCr(hb.cr)}`;
 
   if (hb.savingThrows && Object.keys(hb.savingThrows).length) {
     stats.savingThrows = Object.entries(hb.savingThrows)
@@ -343,16 +363,23 @@ export function homebrewToBestiaryEntry(hb: HomebrewMonster): BestiaryEntry {
   if (hb.languages) stats.languages = hb.languages;
   if (hb.legendaryActionCount != null) stats.legendaryActionCount = hb.legendaryActionCount;
 
-  const attacks = Object.values(hb.attacks ?? {}).map((a) => ({
-    name: a.name,
-    diceExpr: a.damageDice,
-    damageType: a.damageType,
-    attackBonus: a.toHit,
-    // Dual damage (e.g. weapon + fire): the resolver only rolls one diceExpr today, so the
-    // second line is appended as a plain-text note the GM reads and rolls/adds by hand — the
-    // same "data captured, GM runs it" treatment as every other mechanic here.
-    ...(a.damageDice2 ? { note: `plus ${a.damageDice2}${a.damageType2 ? ` ${a.damageType2}` : ''} damage` } : {}),
-  }));
+  const attacks = Object.values(hb.attacks ?? {}).map((a) => {
+    // Range and dual damage (weapon + fire, etc.) have no dedicated AttackEntry fields — the
+    // resolver only rolls one diceExpr and AttackEntry carries no range at all — so both are
+    // appended as a plain-text note the GM reads, same "data captured, GM runs it" treatment
+    // as every other mechanic here.
+    const noteParts = [
+      a.range && `Range: ${a.range}`,
+      a.damageDice2 && `plus ${a.damageDice2}${a.damageType2 ? ` ${a.damageType2}` : ''} damage`,
+    ].filter(Boolean);
+    return {
+      name: a.name,
+      diceExpr: a.damageDice,
+      damageType: a.damageType,
+      attackBonus: a.toHit,
+      ...(noteParts.length ? { note: noteParts.join('; ') } : {}),
+    };
+  });
 
   // Highlighted/typed mechanical tags are appended in parentheses after the prose description,
   // same line, so the stat card shows them without a special case per feature kind.
