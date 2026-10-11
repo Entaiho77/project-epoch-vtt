@@ -23,6 +23,7 @@ import {
   type HomebrewFeat,
   type HomebrewMonster,
   type HomebrewRace,
+  type HomebrewSystem,
 } from '../../data/homebrew';
 import { dnd5eSystem } from '@epoch/systems/dnd5e/index';
 import { Button } from '../../components/ui/Button';
@@ -62,6 +63,9 @@ export function CustomizePage() {
 
   // Form modals: undefined = closed, null = new, item = editing that one.
   const [monsterForm, setMonsterForm] = useState<HomebrewMonster | null | undefined>(undefined);
+  // Which system tab a brand-new monster form opens on — ignored once `monsterForm` holds an
+  // existing monster, which carries its own `.system`.
+  const [newMonsterSystem, setNewMonsterSystem] = useState<HomebrewSystem>('dnd5e');
   const [eqForm, setEqForm] = useState<HomebrewEquipment | null | undefined>(undefined);
   const [bgForm, setBgForm] = useState<HomebrewBackground | null | undefined>(undefined);
   const [featForm, setFeatForm] = useState<HomebrewFeat | null | undefined>(undefined);
@@ -163,18 +167,21 @@ export function CustomizePage() {
               '+ New Monster',
               monsters,
               (m) => `${m.size} ${m.type} · HP ${m.hp} · AC ${m.ac} · CR ${m.cr}`,
-              () => setMonsterForm(null),
+              () => { setNewMonsterSystem('dnd5e'); setMonsterForm(null); },
               (m) => setMonsterForm(m),
               (id) => void deleteHomebrewMonster(uid, id),
               'No monsters yet. Create one, then spawn it from any of your games.',
             )}
             <div className={s.section}>
               <div className={s.sectionHead}>
-                <span className={s.sectionTitle}>Solryn creatures (converted from 5e)</span>
+                <span className={s.sectionTitle}>Solryn creatures</span>
+                <Button size="sm" onClick={() => { setNewMonsterSystem('solryn'); setMonsterForm(null); }}>
+                  + New Solryn Monster
+                </Button>
               </div>
               <div className={d.list}>
                 {solrynMonsters.length === 0 && (
-                  <p className={d.hint}>None yet — use "Convert 5e → Solryn" above.</p>
+                  <p className={d.hint}>None yet — create one above, or use "Convert 5e → Solryn" above.</p>
                 )}
                 {solrynMonsters.map((m) => (
                   <div key={m.id} className={d.item}>
@@ -267,7 +274,13 @@ export function CustomizePage() {
       </main>
 
       {monsterForm !== undefined && (
-        <HomebrewMonsterForm uid={uid} equipment={equipment} existing={monsterForm ?? undefined} onClose={() => setMonsterForm(undefined)} />
+        <HomebrewMonsterForm
+          uid={uid}
+          equipment={equipment}
+          existing={monsterForm ?? undefined}
+          defaultSystem={newMonsterSystem}
+          onClose={() => setMonsterForm(undefined)}
+        />
       )}
       {eqForm !== undefined && (
         <HomebrewEquipmentForm uid={uid} existing={eqForm ?? undefined} onClose={() => setEqForm(undefined)} />

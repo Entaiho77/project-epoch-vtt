@@ -33,8 +33,9 @@ export type { CritFormula };
 
 export interface HomebrewAttack {
   name: string;
-  /** d20 to-hit bonus. */
-  toHit: number;
+  /** d20 to-hit bonus. 5e only — left unset for a Solryn monster, which auto-hits vs. DR
+   *  instead of rolling to hit. */
+  toHit?: number;
   /** Damage dice term (parseDice-compatible), e.g. "2d6+4". */
   damageDice: string;
   damageType: string;
@@ -46,6 +47,39 @@ export interface HomebrewAttack {
 }
 
 export type HomebrewAbility = 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha';
+
+/** Which game system a homebrew monster is built for. Unset on every monster saved before
+ *  this field existed, which the rest of the codebase treats as 'dnd5e' (see
+ *  homebrewToBestiaryEntry's dispatch) — purely additive, no migration needed. */
+export type HomebrewSystem = 'dnd5e' | 'solryn';
+
+/**
+ * Solryn's seven core stats plus the handful of Solryn-only derived numbers a hand-built
+ * stat block needs (packages/systems/src/solryn/attributes.ts has the real roll-up formulas
+ * for a player character; a monster stat block just states the finished numbers, the same way
+ * a 5e monster states a final AC/HP instead of deriving them). Only meaningful when
+ * HomebrewMonster.system === 'solryn' — a 5e monster leaves this entirely unset.
+ */
+export interface HomebrewSolrynStats {
+  str?: number;
+  nim?: number;
+  end?: number;
+  wis?: number;
+  int?: number;
+  arc?: number;
+  lck?: number;
+  /** Threat Rating — Solryn's CR equivalent. */
+  tr?: number;
+  /** Damage Reduction. */
+  dr?: number;
+  /** Arcana Points. */
+  ap?: number;
+  /** Luck Points. */
+  luckPoints?: number;
+  /** Primary damage dice, e.g. "1d8+2" — used when the monster has no structured `attacks`
+   *  rows, matching the simple HP/DR/Speed/Damage shape Solryn creatures have always used. */
+  damage?: string;
+}
 
 /** A named text feature (trait / action / bonus action / reaction / legendary / lair / regional /
  *  mythic action). `description` always carries the full stat-block prose; the fields below are
@@ -174,6 +208,13 @@ export interface HomebrewMonster {
    *  players from a spawned instance's stat card (Phase B1). Equipment ids reference the DM's
    *  account-wide library. */
   loot?: Record<string, true>;
+  /** Which system this monster is for — see HomebrewSystem. Unset means 'dnd5e' (every monster
+   *  saved before this field existed). */
+  system?: HomebrewSystem;
+  /** Solryn-only stats — set only when system === 'solryn'; ac/cr/proficiencyBonus/
+   *  savingThrows/skills/spellcasting/legendaryActions above are 5e-only and left at their
+   *  unused defaults for a Solryn monster. */
+  solryn?: HomebrewSolrynStats;
 }
 
 /** Create or overwrite a monster in the DM's library (owner-only, enforced by the security rules). */
@@ -306,6 +347,11 @@ const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
  *    tagged "(Legendary)"), matching the SRD convention the stat card already parses.
  */
 export function homebrewToBestiaryEntry(hb: HomebrewMonster): BestiaryEntry {
+  // A monster built with the Solryn toggle on (see HomebrewMonsterForm) has none of the 5e-only
+  // fields below filled in meaningfully — dispatch to its own converter rather than running the
+  // 5e-shaped logic over empty/default values.
+  if (hb.system === 'solryn') return homebrewToSolrynBestiaryEntry(hb);
+
   // Speed: "30 ft., fly 60 ft. (hover), swim 30 ft." — walking speed always first, then any
   // other movement types the monster has, in the order 5e stat blocks list them.
   const speedParts = [`${hb.speed} ft.`];
@@ -376,7 +422,7 @@ export function homebrewToBestiaryEntry(hb: HomebrewMonster): BestiaryEntry {
       name: a.name,
       diceExpr: a.damageDice,
       damageType: a.damageType,
-      attackBonus: a.toHit,
+      attackBonus: a.toHit ?? 0,
       ...(noteParts.length ? { note: noteParts.join('; ') } : {}),
     };
   });
@@ -461,6 +507,98 @@ export function homebrewToBestiaryEntry(hb: HomebrewMonster): BestiaryEntry {
     ...(attacks.length ? { attacks } : {}),
     ...(abilities.length ? { abilities } : {}),
     ...(saves.length ? { saves } : {}),
+    ...(hb.lore ? { lore: hb.lore } : {}),
+  };
+}
+
+/**
+ * Convert a homebrew monster built with the Solryn toggle on into a BestiaryEntry — Solryn's
+ * own homebrew-monster storage shape (see saveHomebrewSolrynMonster). Solryn never had a
+ * separate rich "HomebrewSolrynMonster" record the way 5e has HomebrewMonster — a Solryn
+ * creature, hand-built or converted from 5e, is just a BestiaryEntry — so this is where a
+ * monster built on the shared form (name/size/type/speed/traits/actions/bonus actions/
+ * reactions/attacks/loot) gets flattened into that shape, the same way homebrewToBestiaryEntry
+ * flattens a 5e monster, just without any of 5e's AC/CR/proficiency/saving-throws/skills/
+ * spellcasting/legendary-action mechanics, none of which Solryn has.
+ */
+export function homebrewToSolrynBestiaryEntry(hb: HomebrewMonster): BestiaryEntry {
+  const speedParts = [`${hb.speed} ft.`];
+  const os = hb.otherSpeeds;
+  if (os?.fly) speedParts.push(`fly ${os.fly} ft.${os.hover ? ' (hover)' : ''}`);
+  if (os?.swim) speedParts.push(`swim ${os.swim} ft.`);
+  if (os?.climb) speedParts.push(`climb ${os.climb} ft.`);
+  if (os?.burrow) speedParts.push(`burrow ${os.burrow} ft.`);
+
+  const sr = hb.solryn ?? {};
+  // Solryn creatures have always carried one top-level "Damage" stat (see statBlockShapes in
+  // packages/systems/src/solryn/bestiary.ts) rather than a required attacks list — fall back to
+  // the first structured attack's dice if the DM used the Attacks section instead.
+  const primaryDamage = sr.damage?.trim() || Object.values(hb.attacks ?? {})[0]?.damageDice || '1d6';
+
+  const stats: Record<string, number | string> = {
+    hp: hb.hp,
+    dr: sr.dr ?? 0,
+    speed: speedParts.join(', '),
+    damage: primaryDamage,
+    initiativeMod: hb.initiative ?? 0,
+    type: cap(hb.type),
+    size: hb.size,
+    tr: sr.tr ?? 0,
+    crLabel: `TR ${sr.tr ?? 0}`,
+    ...(sr.str != null ? { str: sr.str } : {}),
+    ...(sr.nim != null ? { nim: sr.nim } : {}),
+    ...(sr.end != null ? { end: sr.end } : {}),
+    ...(sr.wis != null ? { wis: sr.wis } : {}),
+    ...(sr.int != null ? { int: sr.int } : {}),
+    ...(sr.arc != null ? { arc: sr.arc } : {}),
+    ...(sr.lck != null ? { lck: sr.lck } : {}),
+    ...(sr.ap != null ? { ap: sr.ap } : {}),
+    ...(sr.luckPoints != null ? { luckPoints: sr.luckPoints } : {}),
+  };
+
+  const attacks = Object.values(hb.attacks ?? {}).map((a) => {
+    const noteParts = [
+      a.range && `Range: ${a.range}`,
+      a.damageDice2 && `plus ${a.damageDice2}${a.damageType2 ? ` ${a.damageType2}` : ''} damage`,
+    ].filter(Boolean);
+    return {
+      name: a.name,
+      diceExpr: a.damageDice,
+      damageType: a.damageType,
+      // No attackBonus — Solryn creatures auto-hit vs. the target's DR, never roll to hit.
+      ...(noteParts.length ? { note: noteParts.join('; ') } : {}),
+    };
+  });
+
+  // Solryn has no saving-throw mechanic and no legendary-creature system, so the mechanical
+  // tags appended here are the subset that still applies (no save/recharge-vs-legendary-cost).
+  const withMech = (f: HomebrewFeature) => {
+    const tags = [
+      f.range && `Range: ${f.range}`,
+      f.damage && `Damage: ${f.damage}`,
+      f.damage2 && `Plus: ${f.damage2}`,
+      f.healing && `Healing: ${f.healing}`,
+      f.recharge && `Recharge ${f.recharge}`,
+      f.uses && `Uses: ${f.uses}`,
+    ].filter(Boolean);
+    return tags.length ? `${f.description} (${tags.join('; ')})` : f.description;
+  };
+
+  const abilities = [
+    ...Object.values(hb.traits ?? {}).map((t) => `${t.name}: ${withMech(t)}`),
+    ...Object.values(hb.actions ?? {}).map((a) => `${a.name}: ${withMech(a)}`),
+    ...Object.values(hb.bonusActions ?? {}).map((b) => `${b.name} (Bonus Action): ${withMech(b)}`),
+    ...Object.values(hb.reactions ?? {}).map((r) => `${r.name} (Reaction): ${withMech(r)}`),
+  ];
+
+  return {
+    id: hb.id,
+    name: hb.name,
+    category: 'creature',
+    size: hb.size,
+    stats,
+    ...(attacks.length ? { attacks } : {}),
+    ...(abilities.length ? { abilities } : {}),
     ...(hb.lore ? { lore: hb.lore } : {}),
   };
 }

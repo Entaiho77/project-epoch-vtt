@@ -1,17 +1,21 @@
 import { useState } from 'react';
 import {
   crToNumber,
+  homebrewToSolrynBestiaryEntry,
   proficiencyBonusForCr,
   saveHomebrewEquipment,
   saveHomebrewMonster,
+  saveHomebrewSolrynMonster,
   type HomebrewAbility,
   type HomebrewAttack,
   type HomebrewEquipment,
   type HomebrewFeature,
   type HomebrewMonster,
   type HomebrewSize,
+  type HomebrewSolrynStats,
   type HomebrewSpeeds,
   type HomebrewSpellcasting,
+  type HomebrewSystem,
 } from '../../../data/homebrew';
 import { Modal } from '../../../components/ui/Modal';
 import { Button } from '../../../components/ui/Button';
@@ -36,6 +40,12 @@ const CONDITIONS = [
   'invisible', 'paralyzed', 'petrified', 'poisoned', 'prone', 'restrained', 'stunned', 'unconscious',
 ];
 const ABILITIES = ['str', 'dex', 'con', 'int', 'wis', 'cha'] as const satisfies readonly HomebrewAbility[];
+/** Solryn's seven core stats (packages/systems/src/solryn/attributes.ts), lowercase to match
+ *  this form's own key convention. */
+const SOLRYN_ABILITIES = ['str', 'nim', 'end', 'wis', 'int', 'arc', 'lck'] as const;
+const SOLRYN_ABILITY_NAMES: Record<typeof SOLRYN_ABILITIES[number], string> = {
+  str: 'STR', nim: 'NIM', end: 'END', wis: 'WIS', int: 'INT', arc: 'ARC', lck: 'LCK',
+};
 const SKILLS = [
   'Acrobatics', 'Animal Handling', 'Arcana', 'Athletics', 'Deception', 'History', 'Insight',
   'Intimidation', 'Investigation', 'Medicine', 'Nature', 'Perception', 'Performance', 'Persuasion',
@@ -57,26 +67,41 @@ const mechRow: React.CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: 4
 const sectionHeading: React.CSSProperties = { fontSize: 'var(--text-sm)', fontWeight: 600, marginTop: 'var(--space-3)', display: 'block' };
 
 /**
- * DM form to create/edit a library monster. Repeatable sections (attacks, traits, actions,
- * bonus actions, reactions, legendary/lair/regional/mythic actions) are edited as rows and
- * stored as object-keyed maps. The mechanical fields on each feature row (save DC/ability,
- * recharge, uses, legendary cost, extra damage line, healing) are optional and additive — a
- * row with none of them filled in behaves exactly like a plain name+description entry.
+ * DM form to create/edit a library monster, for either system — a toggle at the top (2026-10-10,
+ * Matthew: the monster builder was 5e-only) switches which numbers apply. Shared sections (name,
+ * size, type, speed, traits, actions, bonus actions, reactions, attacks, loot) are edited
+ * identically either way; system-specific sections swap: 5e gets AC/CR/proficiency bonus/saving
+ * throws/skills/spellcasting/legendary actions, Solryn gets its seven ability scores, AP, Luck
+ * Points, TR and DR. Repeatable sections are edited as rows and stored as object-keyed maps. The
+ * mechanical fields on each feature row (save DC/ability, recharge, uses, legendary cost, extra
+ * damage line, healing) are optional and additive — a row with none of them filled in behaves
+ * exactly like a plain name+description entry.
  *
- * On Save, writes to users/$uid/library/monsters (owner-only per the security rules).
+ * On Save: a 5e monster writes to users/$uid/library/monsters (owner-only per the security
+ * rules), unchanged from before the toggle existed. A Solryn monster is flattened into a
+ * BestiaryEntry (homebrewToSolrynBestiaryEntry) and written to users/$uid/library/solrynMonsters
+ * — the same storage Solryn homebrew has always used (there's no separate rich "HomebrewSolryn"
+ * record), so round-trip editing of an already-saved Solryn monster through this form isn't
+ * available yet (same limit as the existing 5e→Solryn converter) — only creating a new one with
+ * full structure, or editing it before that first save.
  */
 export function HomebrewMonsterForm({
   uid,
   existing,
   equipment,
+  defaultSystem,
   onClose,
 }: {
   uid: string;
   existing?: HomebrewMonster;
   /** The DM's library equipment, selectable as loot on this monster. */
   equipment: HomebrewEquipment[];
+  /** Which system the toggle starts on for a brand-new monster (ignored when `existing` is
+   *  set — an existing monster's own `.system` wins). Defaults to 'dnd5e'. */
+  defaultSystem?: HomebrewSystem;
   onClose: () => void;
 }) {
+  const [system, setSystem] = useState<HomebrewSystem>(existing?.system ?? defaultSystem ?? 'dnd5e');
   const [name, setName] = useState(existing?.name ?? '');
   const [size, setSize] = useState<HomebrewSize>(existing?.size ?? 'Medium');
   const [type, setType] = useState(existing?.type ?? 'humanoid');
@@ -103,6 +128,16 @@ export function HomebrewMonsterForm({
   const [scores, setScores] = useState<Record<string, string>>(() =>
     Object.fromEntries(ABILITIES.map((a) => [a, String(existing?.[a] ?? 10)])),
   );
+  // Solryn-only — seven core stats + the derived numbers a monster states directly rather than
+  // rolling up from a build (AP/Luck Points/TR/DR). Unused and untouched while system === 'dnd5e'.
+  const [solrynScores, setSolrynScores] = useState<Record<string, string>>(() =>
+    Object.fromEntries(SOLRYN_ABILITIES.map((a) => [a, String(existing?.solryn?.[a] ?? 10)])),
+  );
+  const [tr, setTr] = useState(existing?.solryn?.tr != null ? String(existing.solryn.tr) : '1');
+  const [dr, setDr] = useState(existing?.solryn?.dr != null ? String(existing.solryn.dr) : '0');
+  const [ap, setAp] = useState(existing?.solryn?.ap != null ? String(existing.solryn.ap) : '');
+  const [luckPoints, setLuckPoints] = useState(existing?.solryn?.luckPoints != null ? String(existing.solryn.luckPoints) : '');
+  const [solrynDamage, setSolrynDamage] = useState(existing?.solryn?.damage ?? '1d6');
   const [savingThrows, setSavingThrows] = useState<Record<string, string>>(() =>
     Object.fromEntries(
       ABILITIES.map((a) => [a, existing?.savingThrows?.[a] != null ? String(existing.savingThrows[a]) : '']),
@@ -171,82 +206,132 @@ export function HomebrewMonsterForm({
     if (Number(otherSpeeds.climb) > 0) otherSpeedsOut.climb = Number(otherSpeeds.climb);
     if (Number(otherSpeeds.burrow) > 0) otherSpeedsOut.burrow = Number(otherSpeeds.burrow);
 
-    const savingThrowsOut = Object.fromEntries(
-      ABILITIES.filter((a) => savingThrows[a]?.trim()).map((a) => [a, Number(savingThrows[a]) || 0]),
-    );
-    const skillsOut = Object.fromEntries(
-      skillRows.filter((r) => r.name.trim()).map((r) => [r.name.trim(), Number(r.bonus) || 0]),
-    );
-
-    let spellcasting: HomebrewSpellcasting | undefined;
-    if (hasSpellcasting) {
-      const atWill = Object.fromEntries(
-        spellRows.filter((r) => r.name && !r.perDay.trim()).map((r) => [r.name, true as const]),
-      );
-      const perDay = Object.fromEntries(
-        spellRows.filter((r) => r.name && r.perDay.trim()).map((r) => [r.name, Number(r.perDay) || 1]),
-      );
-      // 5e's real formula: spell save DC = 8 + proficiency bonus + ability modifier; spell
-      // attack bonus = proficiency bonus + ability modifier. Used as the default whenever the
-      // DM leaves the field blank, same treatment as proficiency bonus's own CR default.
-      const pb = proficiencyBonus.trim() ? Number(proficiencyBonus) : proficiencyBonusForCr(cr);
-      const abilityMod = spellAbility ? Math.floor((Number(scores[spellAbility]) - 10) / 2) : 0;
-      spellcasting = {
-        ...(spellAbility ? { ability: spellAbility as HomebrewAbility } : {}),
-        saveDc: spellSaveDc.trim() ? Number(spellSaveDc) || 0 : 8 + pb + abilityMod,
-        attackBonus: spellAttackBonus.trim() ? Number(spellAttackBonus) || 0 : pb + abilityMod,
-        ...(Object.keys(atWill).length ? { atWill } : {}),
-        ...(Object.keys(perDay).length ? { perDay } : {}),
-        ...(spellNotes.trim() ? { notes: spellNotes.trim() } : {}),
-      };
-    }
-
-    const monster: Omit<HomebrewMonster, 'id'> & { id?: string } = {
-      ...(existing?.id ? { id: existing.id } : {}),
+    // Shared fields — identical construction either way (Matthew's spec: name, size, type,
+    // speed, traits, actions, bonus actions, reactions, loot "stay in the same place and work
+    // identically for both systems").
+    const sharedFields = {
       name: name.trim(),
       size,
       type,
       alignment: alignment.trim(),
-      hp: Number(hp) || 0,
-      ac: Number(ac) || 0,
-      ...(initiative.trim() ? { initiative: Number(initiative) || 0 } : {}),
       speed: Number(speed) || 0,
       ...(Object.keys(otherSpeedsOut).length ? { otherSpeeds: otherSpeedsOut } : {}),
-      cr: cr.trim() || '0',
-      ...(proficiencyBonus.trim() ? { proficiencyBonus: Number(proficiencyBonus) || 0 } : {}),
-      str: Number(scores.str) || 10,
-      dex: Number(scores.dex) || 10,
-      con: Number(scores.con) || 10,
-      int: Number(scores.int) || 10,
-      wis: Number(scores.wis) || 10,
-      cha: Number(scores.cha) || 10,
-      ...(Object.keys(savingThrowsOut).length ? { savingThrows: savingThrowsOut } : {}),
-      ...(Object.keys(skillsOut).length ? { skills: skillsOut } : {}),
-      ...(senses.trim() ? { senses: senses.trim() } : {}),
-      ...(languages.trim() ? { languages: languages.trim() } : {}),
-      damageResistances: resistances,
-      damageImmunities: immunities,
-      damageVulnerabilities: vulnerabilities,
-      conditionImmunities,
-      ...(resistances.length && resistanceNote.trim() ? { damageResistanceNote: resistanceNote.trim() } : {}),
-      ...(immunities.length && immunityNote.trim() ? { damageImmunityNote: immunityNote.trim() } : {}),
-      ...(vulnerabilities.length && vulnerabilityNote.trim() ? { damageVulnerabilityNote: vulnerabilityNote.trim() } : {}),
       attacks: toMap(attacks),
       traits: toMap(traits),
       actions: toMap(actions),
       bonusActions: toMap(bonusActions),
       reactions: toMap(reactions),
-      legendaryActions: toMap(legendary),
-      ...(Object.keys(toMap(legendary)).length ? { legendaryActionCount: Number(legendaryActionCount) || 3 } : {}),
-      lairActions: toMap(lairActions),
-      regionalEffects: toMap(regionalEffects),
-      mythicActions: toMap(mythicActions),
-      ...(spellcasting ? { spellcasting } : {}),
       ...(lore.trim() ? { lore: lore.trim() } : {}),
       ...(loot.length ? { loot: Object.fromEntries(loot.map((id) => [id, true as const])) } : {}),
     };
+
     try {
-      await saveHomebrewMonster(uid, monster);
+      if (system === 'solryn') {
+        // Solryn has no AC/CR/saving-throw/skill/spellcasting/legendary mechanics — this
+        // object only needs to carry enough of the required HomebrewMonster shape for
+        // homebrewToSolrynBestiaryEntry to read (shared fields + .solryn), the rest is
+        // unused placeholder filler.
+        const solrynOut: HomebrewSolrynStats = {
+          str: Number(solrynScores.str) || 10,
+          nim: Number(solrynScores.nim) || 10,
+          end: Number(solrynScores.end) || 10,
+          wis: Number(solrynScores.wis) || 10,
+          int: Number(solrynScores.int) || 10,
+          arc: Number(solrynScores.arc) || 10,
+          lck: Number(solrynScores.lck) || 10,
+          tr: Number(tr) || 0,
+          dr: Number(dr) || 0,
+          ...(ap.trim() ? { ap: Number(ap) || 0 } : {}),
+          ...(luckPoints.trim() ? { luckPoints: Number(luckPoints) || 0 } : {}),
+          damage: solrynDamage.trim() || '1d6',
+        };
+        const monster: HomebrewMonster = {
+          id: existing?.id ?? '',
+          ...sharedFields,
+          hp: Number(hp) || 0,
+          ac: 0,
+          speed: Number(speed) || 0,
+          cr: '0',
+          str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10,
+          damageResistances: [],
+          damageImmunities: [],
+          damageVulnerabilities: [],
+          conditionImmunities: [],
+          legendaryActions: {},
+          lairActions: {},
+          regionalEffects: {},
+          mythicActions: {},
+          system: 'solryn',
+          solryn: solrynOut,
+        };
+        const { id: _generatedId, ...entryRest } = homebrewToSolrynBestiaryEntry(monster);
+        await saveHomebrewSolrynMonster(uid, existing?.id ? { ...entryRest, id: existing.id } : entryRest);
+      } else {
+        const savingThrowsOut = Object.fromEntries(
+          ABILITIES.filter((a) => savingThrows[a]?.trim()).map((a) => [a, Number(savingThrows[a]) || 0]),
+        );
+        const skillsOut = Object.fromEntries(
+          skillRows.filter((r) => r.name.trim()).map((r) => [r.name.trim(), Number(r.bonus) || 0]),
+        );
+
+        let spellcasting: HomebrewSpellcasting | undefined;
+        if (hasSpellcasting) {
+          const atWill = Object.fromEntries(
+            spellRows.filter((r) => r.name && !r.perDay.trim()).map((r) => [r.name, true as const]),
+          );
+          const perDay = Object.fromEntries(
+            spellRows.filter((r) => r.name && r.perDay.trim()).map((r) => [r.name, Number(r.perDay) || 1]),
+          );
+          // 5e's real formula: spell save DC = 8 + proficiency bonus + ability modifier; spell
+          // attack bonus = proficiency bonus + ability modifier. Used as the default whenever the
+          // DM leaves the field blank, same treatment as proficiency bonus's own CR default.
+          const pb = proficiencyBonus.trim() ? Number(proficiencyBonus) : proficiencyBonusForCr(cr);
+          const abilityMod = spellAbility ? Math.floor((Number(scores[spellAbility]) - 10) / 2) : 0;
+          spellcasting = {
+            ...(spellAbility ? { ability: spellAbility as HomebrewAbility } : {}),
+            saveDc: spellSaveDc.trim() ? Number(spellSaveDc) || 0 : 8 + pb + abilityMod,
+            attackBonus: spellAttackBonus.trim() ? Number(spellAttackBonus) || 0 : pb + abilityMod,
+            ...(Object.keys(atWill).length ? { atWill } : {}),
+            ...(Object.keys(perDay).length ? { perDay } : {}),
+            ...(spellNotes.trim() ? { notes: spellNotes.trim() } : {}),
+          };
+        }
+
+        const monster: Omit<HomebrewMonster, 'id'> & { id?: string } = {
+          ...(existing?.id ? { id: existing.id } : {}),
+          ...sharedFields,
+          hp: Number(hp) || 0,
+          ac: Number(ac) || 0,
+          ...(initiative.trim() ? { initiative: Number(initiative) || 0 } : {}),
+          cr: cr.trim() || '0',
+          ...(proficiencyBonus.trim() ? { proficiencyBonus: Number(proficiencyBonus) || 0 } : {}),
+          str: Number(scores.str) || 10,
+          dex: Number(scores.dex) || 10,
+          con: Number(scores.con) || 10,
+          int: Number(scores.int) || 10,
+          wis: Number(scores.wis) || 10,
+          cha: Number(scores.cha) || 10,
+          ...(Object.keys(savingThrowsOut).length ? { savingThrows: savingThrowsOut } : {}),
+          ...(Object.keys(skillsOut).length ? { skills: skillsOut } : {}),
+          ...(senses.trim() ? { senses: senses.trim() } : {}),
+          ...(languages.trim() ? { languages: languages.trim() } : {}),
+          damageResistances: resistances,
+          damageImmunities: immunities,
+          damageVulnerabilities: vulnerabilities,
+          conditionImmunities,
+          ...(resistances.length && resistanceNote.trim() ? { damageResistanceNote: resistanceNote.trim() } : {}),
+          ...(immunities.length && immunityNote.trim() ? { damageImmunityNote: immunityNote.trim() } : {}),
+          ...(vulnerabilities.length && vulnerabilityNote.trim() ? { damageVulnerabilityNote: vulnerabilityNote.trim() } : {}),
+          legendaryActions: toMap(legendary),
+          ...(Object.keys(toMap(legendary)).length ? { legendaryActionCount: Number(legendaryActionCount) || 3 } : {}),
+          lairActions: toMap(lairActions),
+          regionalEffects: toMap(regionalEffects),
+          mythicActions: toMap(mythicActions),
+          ...(spellcasting ? { spellcasting } : {}),
+          system: 'dnd5e',
+        };
+        await saveHomebrewMonster(uid, monster);
+      }
       onClose();
     } catch {
       setBusy(false);
@@ -327,8 +412,10 @@ export function HomebrewMonsterForm({
                 onClick={() => setAttacks(attacks.filter((_, j) => j !== i))} aria-label="Remove attack">×</button>
             </div>
             <div className={s.row} style={{ alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-              <input className={s.input} type="number" placeholder="+hit" value={a.toHit} style={{ width: 60 }}
-                onChange={(e) => upd({ toHit: Number(e.target.value) || 0 })} />
+              {system === 'dnd5e' && (
+                <input className={s.input} type="number" placeholder="+hit" value={a.toHit ?? 0} style={{ width: 60 }}
+                  onChange={(e) => upd({ toHit: Number(e.target.value) || 0 })} />
+              )}
               <input className={s.input} placeholder="Range, e.g. reach 5 ft." value={a.range ?? ''} style={{ width: 150 }}
                 onChange={(e) => upd({ range: e.target.value || undefined })} />
               <input className={s.input} placeholder="2d6+4" value={a.damageDice} style={{ width: 80 }}
@@ -399,21 +486,25 @@ export function HomebrewMonsterForm({
                 onChange={(e) => upd({ healing: e.target.value || undefined })} />
             </div>
             <div style={mechRow}>
-              <label style={{ ...label, flexDirection: 'row', alignItems: 'center', gap: 4 }}>Save
-                <select className={s.input} value={r.saveAbility ?? ''} style={{ width: 70 }}
-                  onChange={(e) => upd({ saveAbility: (e.target.value || undefined) as HomebrewAbility | undefined })}>
-                  <option value="">--</option>
-                  {ABILITIES.map((a) => <option key={a} value={a}>{a.toUpperCase()}</option>)}
-                </select>
-              </label>
-              <input className={s.input} type="number" placeholder="DC" value={r.saveDc ?? ''} style={{ width: 60 }}
-                onChange={(e) => upd({ saveDc: e.target.value ? Number(e.target.value) || undefined : undefined })} />
-              <select className={s.input} value={r.saveEffect ?? ''} style={{ width: 110 }}
-                onChange={(e) => upd({ saveEffect: (e.target.value || undefined) as 'half' | 'none' | undefined })}>
-                <option value="">on fail only</option>
-                <option value="half">half on success</option>
-                <option value="none">none on success</option>
-              </select>
+              {system === 'dnd5e' && (
+                <>
+                  <label style={{ ...label, flexDirection: 'row', alignItems: 'center', gap: 4 }}>Save
+                    <select className={s.input} value={r.saveAbility ?? ''} style={{ width: 70 }}
+                      onChange={(e) => upd({ saveAbility: (e.target.value || undefined) as HomebrewAbility | undefined })}>
+                      <option value="">--</option>
+                      {ABILITIES.map((a) => <option key={a} value={a}>{a.toUpperCase()}</option>)}
+                    </select>
+                  </label>
+                  <input className={s.input} type="number" placeholder="DC" value={r.saveDc ?? ''} style={{ width: 60 }}
+                    onChange={(e) => upd({ saveDc: e.target.value ? Number(e.target.value) || undefined : undefined })} />
+                  <select className={s.input} value={r.saveEffect ?? ''} style={{ width: 110 }}
+                    onChange={(e) => upd({ saveEffect: (e.target.value || undefined) as 'half' | 'none' | undefined })}>
+                    <option value="">on fail only</option>
+                    <option value="half">half on success</option>
+                    <option value="none">none on success</option>
+                  </select>
+                </>
+              )}
               <input className={s.input} placeholder="Recharge, e.g. 5-6" value={r.recharge ?? ''} style={{ width: 110 }}
                 onChange={(e) => upd({ recharge: e.target.value || undefined })} />
               <input className={s.input} placeholder="Uses, e.g. 3/Day" value={r.uses ?? ''} style={{ width: 110 }}
@@ -481,6 +572,25 @@ export function HomebrewMonsterForm({
     >
       <div className={s.section}>
         <input className={s.input} placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
+
+        <div className={s.row} style={{ gap: 4 }}>
+          {(['dnd5e', 'solryn'] as const).map((sys) => (
+            <button
+              key={sys}
+              className={s.place}
+              style={{
+                flex: 1,
+                fontWeight: system === sys ? 700 : 400,
+                background: system === sys ? 'var(--surface-raised)' : undefined,
+                borderColor: system === sys ? 'var(--accent)' : undefined,
+              }}
+              onClick={() => setSystem(sys)}
+            >
+              {sys === 'dnd5e' ? 'D&D 5e' : 'Solryn'}
+            </button>
+          ))}
+        </div>
+
         <div className={s.row}>
           <label style={label}>Size
             <select className={s.input} value={size} onChange={(e) => setSize(e.target.value as HomebrewSize)}>
@@ -497,13 +607,24 @@ export function HomebrewMonsterForm({
           <input className={s.input} value={alignment} onChange={(e) => setAlignment(e.target.value)} />
         </label>
 
-        <div className={s.row}>
-          <label style={label}>HP<input className={s.input} type="number" value={hp} onChange={(e) => setHp(e.target.value)} /></label>
-          <label style={label}>AC<input className={s.input} type="number" value={ac} onChange={(e) => setAc(e.target.value)} /></label>
-          <label style={label}>Initiative<input className={s.input} type="number" value={initiative} onChange={(e) => setInitiative(e.target.value)} placeholder="uses DEX" /></label>
-          <label style={label}>CR<input className={s.input} value={cr} onChange={(e) => setCr(e.target.value)} placeholder="1/4" /></label>
-          <label style={label}>Prof. bonus<input className={s.input} type="number" value={proficiencyBonus} onChange={(e) => setProficiencyBonus(e.target.value)} placeholder={`+${proficiencyBonusForCr(cr)} (from CR table)`} /></label>
-        </div>
+        {system === 'dnd5e' ? (
+          <div className={s.row}>
+            <label style={label}>HP<input className={s.input} type="number" value={hp} onChange={(e) => setHp(e.target.value)} /></label>
+            <label style={label}>AC<input className={s.input} type="number" value={ac} onChange={(e) => setAc(e.target.value)} /></label>
+            <label style={label}>Initiative<input className={s.input} type="number" value={initiative} onChange={(e) => setInitiative(e.target.value)} placeholder="uses DEX" /></label>
+            <label style={label}>CR<input className={s.input} value={cr} onChange={(e) => setCr(e.target.value)} placeholder="1/4" /></label>
+            <label style={label}>Prof. bonus<input className={s.input} type="number" value={proficiencyBonus} onChange={(e) => setProficiencyBonus(e.target.value)} placeholder={`+${proficiencyBonusForCr(cr)} (from CR table)`} /></label>
+          </div>
+        ) : (
+          <div className={s.row} style={{ flexWrap: 'wrap' }}>
+            <label style={label}>HP<input className={s.input} type="number" value={hp} onChange={(e) => setHp(e.target.value)} /></label>
+            <label style={label}>DR<input className={s.input} type="number" style={{ width: 56 }} value={dr} onChange={(e) => setDr(e.target.value)} /></label>
+            <label style={label}>TR (Threat Rating)<input className={s.input} type="number" style={{ width: 70 }} value={tr} onChange={(e) => setTr(e.target.value)} /></label>
+            <label style={label}>AP<input className={s.input} type="number" style={{ width: 56 }} value={ap} onChange={(e) => setAp(e.target.value)} placeholder="ARC mod ×2" /></label>
+            <label style={label}>Luck Points<input className={s.input} type="number" style={{ width: 70 }} value={luckPoints} onChange={(e) => setLuckPoints(e.target.value)} placeholder="LCK mod" /></label>
+            <label style={label}>Damage<input className={s.input} value={solrynDamage} onChange={(e) => setSolrynDamage(e.target.value)} placeholder="1d6" style={{ width: 90 }} /></label>
+          </div>
+        )}
 
         <span className={s.label}>Speed</span>
         <div className={s.row} style={{ alignItems: 'center', flexWrap: 'wrap' }}>
@@ -533,46 +654,64 @@ export function HomebrewMonsterForm({
           )}
         </div>
 
-        <div>
-          <span className={s.label}>Ability scores</span>
-          <div className={s.row}>
-            {ABILITIES.map((a) => (
-              <label key={a} style={label}>{a.toUpperCase()}
-                <input className={s.input} type="number" style={{ width: 56 }} value={scores[a]}
-                  onChange={(e) => setScores({ ...scores, [a]: e.target.value })} />
-              </label>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <span className={s.label}>Saving throws (leave blank unless proficient)</span>
-          <div className={s.row}>
-            {ABILITIES.map((a) => (
-              <label key={a} style={label}>{a.toUpperCase()}
-                <input className={s.input} type="number" style={{ width: 56 }} value={savingThrows[a]} placeholder="--"
-                  onChange={(e) => setSavingThrows({ ...savingThrows, [a]: e.target.value })} />
-              </label>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <span className={s.label}>Skills</span>
-          {skillRows.map((r, i) => (
-            <div key={i} className={s.row} style={{ alignItems: 'center', gap: 4 }}>
-              <select className={s.input} value={r.name} style={{ flex: 1 }}
-                onChange={(e) => setSkillRows(skillRows.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}>
-                <option value="">Select a skill…</option>
-                {SKILLS.map((sk) => <option key={sk} value={sk}>{sk}</option>)}
-              </select>
-              <input className={s.input} type="number" placeholder="bonus" value={r.bonus} style={{ width: 70 }}
-                onChange={(e) => setSkillRows(skillRows.map((x, j) => (j === i ? { ...x, bonus: e.target.value } : x)))} />
-              <button className={s.place} onClick={() => setSkillRows(skillRows.filter((_, j) => j !== i))} aria-label="Remove skill">×</button>
+        {system === 'dnd5e' ? (
+          <div>
+            <span className={s.label}>Ability scores</span>
+            <div className={s.row}>
+              {ABILITIES.map((a) => (
+                <label key={a} style={label}>{a.toUpperCase()}
+                  <input className={s.input} type="number" style={{ width: 56 }} value={scores[a]}
+                    onChange={(e) => setScores({ ...scores, [a]: e.target.value })} />
+                </label>
+              ))}
             </div>
-          ))}
-          <button className={s.place} onClick={() => setSkillRows([...skillRows, { name: '', bonus: '' }])}>+ Add skill</button>
-        </div>
+          </div>
+        ) : (
+          <div>
+            <span className={s.label}>Ability scores</span>
+            <div className={s.row} style={{ flexWrap: 'wrap' }}>
+              {SOLRYN_ABILITIES.map((a) => (
+                <label key={a} style={label}>{SOLRYN_ABILITY_NAMES[a]}
+                  <input className={s.input} type="number" style={{ width: 56 }} value={solrynScores[a]}
+                    onChange={(e) => setSolrynScores({ ...solrynScores, [a]: e.target.value })} />
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {system === 'dnd5e' && (
+          <>
+            <div>
+              <span className={s.label}>Saving throws (leave blank unless proficient)</span>
+              <div className={s.row}>
+                {ABILITIES.map((a) => (
+                  <label key={a} style={label}>{a.toUpperCase()}
+                    <input className={s.input} type="number" style={{ width: 56 }} value={savingThrows[a]} placeholder="--"
+                      onChange={(e) => setSavingThrows({ ...savingThrows, [a]: e.target.value })} />
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <span className={s.label}>Skills</span>
+              {skillRows.map((r, i) => (
+                <div key={i} className={s.row} style={{ alignItems: 'center', gap: 4 }}>
+                  <select className={s.input} value={r.name} style={{ flex: 1 }}
+                    onChange={(e) => setSkillRows(skillRows.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}>
+                    <option value="">Select a skill…</option>
+                    {SKILLS.map((sk) => <option key={sk} value={sk}>{sk}</option>)}
+                  </select>
+                  <input className={s.input} type="number" placeholder="bonus" value={r.bonus} style={{ width: 70 }}
+                    onChange={(e) => setSkillRows(skillRows.map((x, j) => (j === i ? { ...x, bonus: e.target.value } : x)))} />
+                  <button className={s.place} onClick={() => setSkillRows(skillRows.filter((_, j) => j !== i))} aria-label="Remove skill">×</button>
+                </div>
+              ))}
+              <button className={s.place} onClick={() => setSkillRows([...skillRows, { name: '', bonus: '' }])}>+ Add skill</button>
+            </div>
+          </>
+        )}
 
         <div className={s.row}>
           <label style={{ ...label, flex: 1 }}>Senses
@@ -583,10 +722,14 @@ export function HomebrewMonsterForm({
           </label>
         </div>
 
-        {damageGroup('Damage resistances', DAMAGE_TYPES, resistances, setResistances, resistanceNote, setResistanceNote)}
-        {damageGroup('Damage immunities', DAMAGE_TYPES, immunities, setImmunities, immunityNote, setImmunityNote)}
-        {damageGroup('Damage vulnerabilities', DAMAGE_TYPES, vulnerabilities, setVulnerabilities, vulnerabilityNote, setVulnerabilityNote)}
-        {checkboxGroup('Condition immunities', CONDITIONS, conditionImmunities, setConditionImmunities)}
+        {system === 'dnd5e' && (
+          <>
+            {damageGroup('Damage resistances', DAMAGE_TYPES, resistances, setResistances, resistanceNote, setResistanceNote)}
+            {damageGroup('Damage immunities', DAMAGE_TYPES, immunities, setImmunities, immunityNote, setImmunityNote)}
+            {damageGroup('Damage vulnerabilities', DAMAGE_TYPES, vulnerabilities, setVulnerabilities, vulnerabilityNote, setVulnerabilityNote)}
+            {checkboxGroup('Condition immunities', CONDITIONS, conditionImmunities, setConditionImmunities)}
+          </>
+        )}
 
         {attackRows}
 
@@ -596,17 +739,23 @@ export function HomebrewMonsterForm({
         {featureRows('Bonus Actions', bonusActions, setBonusActions)}
         {featureRows('Reactions', reactions, setReactions)}
 
-        <span style={sectionHeading}>Legendary creature (leave empty for a non-legendary monster)</span>
-        {legendary.length > 0 && (
-          <label style={label}>Legendary actions per round
-            <input className={s.input} type="number" style={{ width: 70 }} value={legendaryActionCount} onChange={(e) => setLegendaryActionCount(e.target.value)} />
-          </label>
+        {system === 'dnd5e' && (
+          <>
+            <span style={sectionHeading}>Legendary creature (leave empty for a non-legendary monster)</span>
+            {legendary.length > 0 && (
+              <label style={label}>Legendary actions per round
+                <input className={s.input} type="number" style={{ width: 70 }} value={legendaryActionCount} onChange={(e) => setLegendaryActionCount(e.target.value)} />
+              </label>
+            )}
+            {featureRows('Legendary Actions', legendary, setLegendary, { showCost: true })}
+            {featureRows('Lair Actions', lairActions, setLairActions)}
+            {featureRows('Regional Effects', regionalEffects, setRegionalEffects)}
+            {featureRows('Mythic Actions', mythicActions, setMythicActions)}
+          </>
         )}
-        {featureRows('Legendary Actions', legendary, setLegendary, { showCost: true })}
-        {featureRows('Lair Actions', lairActions, setLairActions)}
-        {featureRows('Regional Effects', regionalEffects, setRegionalEffects)}
-        {featureRows('Mythic Actions', mythicActions, setMythicActions)}
 
+        {system === 'dnd5e' && (
+        <>
         <span style={sectionHeading}>Spellcasting</span>
         <label className={s.itemMeta} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <input type="checkbox" checked={hasSpellcasting} onChange={(e) => setHasSpellcasting(e.target.checked)} />
@@ -659,6 +808,8 @@ export function HomebrewMonsterForm({
             </div>
           );
         })()}
+        </>
+        )}
 
         <label style={label}>Lore
           <textarea className={s.input} value={lore} onChange={(e) => setLore(e.target.value)} rows={3} placeholder="Flavor text, shown in the creature's detail view." />
